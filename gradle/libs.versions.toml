@@ -9,6 +9,8 @@ activityCompose = "1.10.1"
 composeBom = "2025.06.01"
 navigationCompose = "2.9.0"
 coil = "2.7.0"
+googleServices = "4.5.0"
+firebaseBom = "34.17.0"
 junit = "4.13.2"
 
 [libraries]
@@ -26,6 +28,10 @@ androidx-compose-material-icons-extended = { group = "androidx.compose.material"
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+# Firebase — wersje artefaktów zarządza BOM; od BOM 33.x rozszerzenia KTX są scalone w główne artefakty
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
+firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]
@@ -33,3 +39,4 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }

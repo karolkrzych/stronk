@@ -7,6 +7,9 @@ docs/decisions/
 .cursorrules
 .windsurfrules
 
+# Konfiguracja Firebase — zawiera api_key, nigdy nie commitować (wzorzec z bombelka)
+app/google-services.json
+
 # Android / Gradle
 .gradle/
 build/
