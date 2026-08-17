@@ -6,3 +6,19 @@ docs/decisions/
 .claude/
 .cursorrules
 .windsurfrules
+
+# Konfiguracja Firebase — zawiera api_key, nigdy nie commitować (wzorzec z bombelka)
+app/google-services.json
+
+# Android / Gradle
+.gradle/
+build/
+/local.properties
+.kotlin/
+.idea/
+*.iml
+captures/
+.cxx/
+
+# Obrazki ćwiczeń — bundlowane w APK, odtwarzalne skryptem scripts/fetch-images.mjs
+app/src/main/assets/exercise-images/
