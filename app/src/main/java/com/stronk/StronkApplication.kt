@@ -2,6 +2,7 @@ package com.stronk
 
 import android.app.Application
 import com.stronk.data.ExerciseRepository
+import com.stronk.data.FirebaseProvider
 
 /**
  * Ręczna kompozycja zależności (bez frameworka DI — apka jest mała):
@@ -11,4 +12,13 @@ import com.stronk.data.ExerciseRepository
 class StronkApplication : Application() {
 
     val exerciseRepository: ExerciseRepository by lazy { ExerciseRepository(this) }
+
+    /** Firebase (Auth + Firestore) — zasady offline-first opisane w [FirebaseProvider]. */
+    val firebaseProvider: FirebaseProvider by lazy { FirebaseProvider() }
+
+    override fun onCreate() {
+        super.onCreate()
+        // Nieblokująco — UI startuje od razu, logowanie dzieje się w tle.
+        firebaseProvider.ensureSignedIn()
+    }
 }
