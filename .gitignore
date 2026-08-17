@@ -1,0 +1,8 @@
+# Personal Claude/AI tooling — NOT app code, must NOT be committed
+CLAUDE.md
+AGENTS.md
+docs/audits/
+docs/decisions/
+.claude/
+.cursorrules
+.windsurfrules
