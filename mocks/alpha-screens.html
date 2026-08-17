@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stronk · mocki alfa</title>
+<style>
+  /* ============ tokens ============ */
+  :root{
+    /* jedna rodzina kolorów: hue 224 (indygo) */
+    --page:   hsl(224, 30%, 4%);
+    --s0:     hsl(224, 22%, 8%);    /* tło ekranu */
+    --s1:     hsl(224, 20%, 14%);   /* karta */
+    --s2:     hsl(223, 18%, 21%);   /* element na karcie */
+    --line:   hsl(224, 16%, 26%);
+    --line-soft: hsl(224, 18%, 19%);
+
+    --text:   hsl(224, 40%, 95%);
+    --text-2: hsl(224, 16%, 70%);
+    --text-3: hsl(224, 12%, 49%);
+
+    --accent:      hsl(226, 90%, 64%);  /* jedyny mocny akcent — focal point */
+    --accent-deep: hsl(226, 70%, 55%);
+    --fill-dim:    hsl(224, 30%, 38%);  /* neutralne wypełnienia (progres) — wciąż rodzina */
+
+    /* utility — wyłącznie semantyka danych */
+    --ok:   hsl(155, 60%, 47%);   /* zaliczone */
+    --warn: hsl(35, 78%, 57%);    /* ostrzeżenie kontuzji */
+
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{ background:var(--page); }
+  body{
+    font-family:var(--font);
+    color:var(--text);
+    padding:44px 56px 64px;
+    overflow-x:auto;
+  }
+
+  .page-head{ margin-bottom:36px; }
+  .page-head h1{
+    font-size:20px; font-weight:800; letter-spacing:-0.02em;
+  }
+  .page-head h1 span{ color:var(--text-3); font-weight:600; }
+  .page-head p{ margin-top:6px; font-size:13px; color:var(--text-3); }
+
+  .rail{ display:flex; gap:52px; align-items:flex-start; width:max-content; }
+
+  .col{ width:390px; flex:none; }
+  .caption{
+    font-size:12px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--text-3); margin:0 4px 14px;
+  }
+  .caption b{ color:var(--text-2); }
+
+  /* ============ ramka telefonu ============ */
+  .phone{
+    width:390px; height:844px;
+    background:var(--s0);
+    border:1px solid var(--line-soft);
+    border-radius:34px;
+    box-shadow:0 0 0 9px hsl(224,20%,6%), 0 28px 70px rgba(0,0,0,.55);
+    overflow:hidden;
+    display:flex; flex-direction:column;
+  }
+
+  /* status bar */
+  .statusbar{
+    height:34px; flex:none;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 22px; font-size:12px; font-weight:600; color:var(--text-2);
+  }
+  .sb-right{ display:flex; align-items:center; gap:7px; }
+  .sig{ display:flex; align-items:flex-end; gap:1.5px; }
+  .sig i{ width:3px; background:var(--text-2); border-radius:1px; display:block; }
+  .sig i:nth-child(1){height:4px} .sig i:nth-child(2){height:6px}
+  .sig i:nth-child(3){height:8px} .sig i:nth-child(4){height:10px; background:var(--text-3);}
+  .batt{ width:22px; height:11px; border:1.5px solid var(--text-2); border-radius:3px; position:relative; padding:1.5px; }
+  .batt::after{ content:""; position:absolute; right:-4px; top:2.5px; width:2px; height:4px; background:var(--text-2); border-radius:0 1px 1px 0; }
+  .batt i{ display:block; height:100%; width:70%; background:var(--text-2); border-radius:1px; }
+
+  /* ============ wspólne ============ */
+  .app-head{ padding:12px 22px 0; flex:none; }
+  .head-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .h-title{ font-size:26px; font-weight:800; letter-spacing:-0.025em; line-height:1.1; }
+  .h-sub{ margin-top:3px; font-size:13px; color:var(--text-3); font-weight:600; }
+  .chip-meta{
+    flex:none; margin-top:4px; font-size:12px; font-weight:700; color:var(--text-2);
+    background:var(--s1); border:1px solid var(--line-soft);
+    padding:6px 11px; border-radius:999px; white-space:nowrap;
+  }
+
+  .num{ font-variant-numeric:tabular-nums; }
+
+  /* segmentowy progres treningu */
+  .seg-track{ display:flex; gap:5px; margin-top:14px; }
+  .seg-track i{ flex:1; height:4px; border-radius:2px; background:var(--s2); }
+  .seg-track i.done{ background:var(--fill-dim); }
+  .seg-track i.cur{ background:var(--text-2); }
+
+  .cta{
+    display:flex; align-items:center; justify-content:center;
+    width:100%; height:58px; border-radius:18px; border:0;
+    background:var(--accent); color:#fff;
+    font-family:var(--font); font-size:16px; font-weight:800; letter-spacing:.01em;
+    box-shadow:0 10px 28px hsla(226,90%,60%,.28);
+  }
+  .btn-ghost{
+    display:flex; align-items:center; justify-content:center;
+    height:58px; border-radius:18px;
+    background:var(--s1); border:1px solid var(--line);
+    color:var(--text-2); font-family:var(--font); font-size:15px; font-weight:700;
+  }
+
+  /* ================================================= */
+  /* EKRAN 1 — trening, seria                          */
+  /* ================================================= */
+  .ex-card{
+    margin:22px 18px 0; padding:22px 20px 18px;
+    background:var(--s1); border:1px solid var(--line-soft); border-radius:22px;
+  }
+  .ex-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .ex-name{ font-size:22px; font-weight:800; letter-spacing:-0.02em; line-height:1.15; }
+  .swap{
+    flex:none; margin-top:2px;
+    font-size:12px; font-weight:600; color:var(--text-3);
+    background:transparent; border:1px solid var(--line); border-radius:999px;
+    padding:5px 10px; white-space:nowrap;
+  }
+  .swap b{ font-weight:700; margin-right:3px; }
+
+  .series-row{ display:flex; align-items:center; gap:10px; margin-top:12px; }
+  .series-label{ font-size:13px; font-weight:700; color:var(--text-2); }
+  .dots{ display:flex; align-items:center; gap:6px; }
+  .dot{ width:8px; height:8px; border-radius:50%; }
+  .dot.done{ background:var(--ok); }                              /* zaliczona seria — semantyka */
+  .dot.cur{ width:10px; height:10px; border:2.5px solid var(--text); background:transparent; }
+  .dot.next{ border:1.5px solid var(--line); background:transparent; }
+
+  .value{
+    margin-top:26px; text-align:center;
+    font-size:46px; font-weight:800; letter-spacing:-0.03em; line-height:1;
+  }
+  .value .edit{
+    border-bottom:2px dashed hsl(224,14%,36%);
+    padding-bottom:5px;
+  }
+  .value .unit{ font-size:22px; font-weight:700; color:var(--text-2); margin-left:3px; }
+  .value .x{ font-size:26px; font-weight:600; color:var(--text-3); margin:0 10px; }
+
+  .last{ margin-top:16px; text-align:center; font-size:13px; color:var(--text-3); font-weight:600; }
+  .hint{ margin-top:5px; text-align:center; font-size:11px; color:hsl(224,12%,40%); }
+
+  .next-strip{
+    margin:16px 18px 0; padding:11px 16px;
+    background:transparent; border:1px dashed var(--line-soft); border-radius:14px;
+    font-size:12.5px; color:var(--text-3); font-weight:600;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .next-strip b{ color:var(--text-2); font-weight:700; }
+
+  .thumb{ margin-top:auto; padding:18px 18px 26px; flex:none; }
+  .cta-big{
+    width:100%; height:108px; border:0; border-radius:28px;
+    background:var(--accent); color:#fff;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    box-shadow:0 14px 40px hsla(226,90%,60%,.32);
+    font-family:var(--font);
+  }
+  .cta-big .mark{ font-size:42px; font-weight:800; line-height:1; }
+  .cta-big .sub{ font-size:12px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:hsla(0,0%,100%,.78); }
+
+  /* ================================================= */
+  /* EKRAN 1b — przerwa                                */
+  /* ================================================= */
+  .rest-zone{ display:flex; flex-direction:column; align-items:center; padding-top:40px; }
+  .ring{
+    width:248px; height:248px; border-radius:50%;
+    background:conic-gradient(from -90deg, var(--accent) 0 224deg, var(--s2) 224deg 360deg);
+    position:relative;
+  }
+  .ring-in{
+    position:absolute; inset:13px; border-radius:50%; background:var(--s0);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+  }
+  .rest-k{ font-size:11.5px; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--text-3); }
+  .rest-time{ font-size:58px; font-weight:800; letter-spacing:-0.02em; line-height:1; }
+  .rest-total{ font-size:12.5px; color:var(--text-3); font-weight:600; }
+
+  .next-card{
+    margin:34px 18px 0; align-self:stretch;
+    background:var(--s1); border:1px solid var(--line-soft); border-radius:18px;
+    padding:16px 18px;
+  }
+  .next-k{ font-size:11px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:var(--text-3); }
+  .next-v{ margin-top:6px; font-size:16.5px; font-weight:800; letter-spacing:-0.01em; }
+  .next-w{ margin-top:3px; font-size:14px; color:var(--text-2); font-weight:600; }
+
+  /* ================================================= */
+  /* EKRAN 2 — tydzień                                 */
+  /* ================================================= */
+  .week-grid{
+    display:grid; grid-template-columns:repeat(7,1fr); gap:6px;
+    margin:20px 16px 0;
+  }
+  .day{
+    background:var(--s1); border:1px solid var(--line-soft); border-radius:13px;
+    padding:9px 2px 10px; text-align:center; min-height:82px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+  }
+  .day .ab{ font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); }
+  .day .no{ font-size:14px; font-weight:800; }
+  .day .nm{ font-size:10px; font-weight:700; color:var(--text-2); margin-top:auto; }
+  .day.rest{ background:transparent; border:1px dashed var(--line-soft); }
+  .day.rest .no{ color:var(--text-3); }
+  .day.rest .nm{ color:hsl(224,12%,36%); font-weight:600; }
+  .day.done .ok-mark{ margin-top:auto; font-size:11px; font-weight:800; color:var(--ok); line-height:1; }
+  .day.done .nm{ margin-top:1px; }
+  .day.today{ background:var(--s2); border:1.5px solid var(--accent); }
+  .day.today .ab{ color:var(--accent); }
+
+  .day-card{
+    margin:18px 16px 0; padding:18px;
+    background:var(--s1); border:1px solid var(--line-soft); border-radius:20px;
+  }
+  .dc-head{ display:flex; align-items:baseline; justify-content:space-between; }
+  .dc-title{ font-size:19px; font-weight:800; letter-spacing:-0.02em; }
+  .dc-title span{ color:var(--text-3); font-weight:700; }
+  .dc-dur{ font-size:12.5px; color:var(--text-3); font-weight:600; }
+
+  .pill-wrap{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .pill{
+    display:flex; align-items:center; gap:7px;
+    background:var(--s2); border:1px solid var(--line); border-radius:999px;
+    padding:7px 12px;
+  }
+  .pill .pn{ font-size:12.5px; font-weight:600; color:var(--text); }
+  .pill .pc{ font-size:11.5px; font-weight:800; color:var(--text-3); }
+
+  .day-card .cta{ margin-top:18px; }
+  .sec-actions{
+    margin-top:13px; display:flex; justify-content:center; gap:9px;
+    font-size:13px; font-weight:600; color:var(--text-3);
+  }
+  .sec-actions u{ text-decoration:none; border-bottom:1px solid var(--line); padding-bottom:1px; }
+
+  /* ================================================= */
+  /* EKRAN 3 — kreator planu                           */
+  /* ================================================= */
+  .wiz-head{ padding:14px 22px 0; }
+  .wiz-over{ display:flex; align-items:center; justify-content:space-between; }
+  .wiz-name{ font-size:11.5px; font-weight:700; letter-spacing:.15em; text-transform:uppercase; color:var(--text-3); }
+  .wiz-step{ font-size:12px; font-weight:700; color:var(--text-2); }
+  .wiz-track{ display:flex; gap:5px; margin-top:11px; }
+  .wiz-track i{ flex:1; height:4px; border-radius:2px; background:var(--s2); }
+  .wiz-track i.on{ background:var(--fill-dim); }
+  .wiz-track i.cur{ background:var(--text-2); }
+
+  .wiz-title{ margin:30px 22px 0; font-size:27px; font-weight:800; letter-spacing:-0.025em; }
+  .wiz-sub{ margin:8px 22px 0; font-size:14px; color:var(--text-2); line-height:1.45; }
+
+  .chips{ display:flex; flex-wrap:wrap; gap:10px; margin:24px 22px 0; }
+  .chip{
+    font-size:13.5px; font-weight:600; color:var(--text-2);
+    background:var(--s1); border:1px solid var(--line); border-radius:999px;
+    padding:10px 16px;
+  }
+  .chip.on{
+    color:var(--text); font-weight:700;
+    background:hsla(35,78%,57%,.13);
+    border:1.5px solid var(--warn);
+    padding:9.5px 15px;
+  }
+  .chip.on b{ color:var(--warn); font-weight:800; margin-right:6px; }
+
+  .wiz-info{
+    margin:26px 22px 0; padding:14px 16px;
+    background:var(--s1); border:1px solid var(--line-soft); border-left:3px solid var(--warn);
+    border-radius:14px;
+    font-size:13.5px; line-height:1.5; color:var(--text-2);
+  }
+
+  .wiz-nav{ margin-top:auto; padding:18px 18px 26px; display:flex; gap:10px; }
+  .wiz-nav .btn-ghost{ flex:1; }
+  .wiz-nav .cta{ flex:1.7; height:58px; border-radius:18px; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>stronk <span>· mocki ekranów — alfa</span></h1>
+  <p>3 ekrany + wariant przerwy · dark theme · 390×844 · dane przykładowe</p>
+</div>
+
+<div class="rail">
+
+  <!-- ============================================= -->
+  <!-- EKRAN 1 — TRENING (seria)                     -->
+  <!-- ============================================= -->
+  <div class="col">
+    <div class="caption"><b>Ekran 1</b> · Trening — seria</div>
+    <div class="phone">
+      <div class="statusbar">
+        <span class="num">17:42</span>
+        <span class="sb-right">
+          <span class="sig"><i></i><i></i><i></i><i></i></span>
+          <span class="batt"><i></i></span>
+        </span>
+      </div>
+
+      <header class="app-head">
+        <div class="head-row">
+          <div>
+            <div class="h-title">Pull</div>
+            <div class="h-sub num">tydzień 2/5</div>
+          </div>
+          <div class="chip-meta num">ćwiczenie 3/6</div>
+        </div>
+        <div class="seg-track">
+          <i class="done"></i><i class="done"></i><i class="cur"></i><i></i><i></i><i></i>
+        </div>
+      </header>
+
+      <section class="ex-card">
+        <div class="ex-top">
+          <div class="ex-name">Wiosłowanie sztangą</div>
+          <button class="swap"><b>⇄</b>zamień</button>
+        </div>
+        <div class="series-row">
+          <span class="series-label num">seria 2/3</span>
+          <span class="dots">
+            <span class="dot done"></span>
+            <span class="dot cur"></span>
+            <span class="dot next"></span>
+          </span>
+        </div>
+
+        <div class="value num">
+          <span class="edit">42,5<span class="unit">kg</span></span><span class="x">×</span><span class="edit">8</span>
+        </div>
+        <div class="last num">ostatnio: 40 kg × 8</div>
+        <div class="hint">dotknij liczbę, aby ją zmienić</div>
+      </section>
+
+      <div class="next-strip num">
+        <span>następne ćwiczenie</span>
+        <span><b>Podciąganie</b> · 3×6</span>
+      </div>
+
+      <div class="thumb">
+        <button class="cta-big">
+          <span class="mark">✓</span>
+          <span class="sub">zalicz serię</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================= -->
+  <!-- EKRAN 1b — TRENING (przerwa)                  -->
+  <!-- ============================================= -->
+  <div class="col">
+    <div class="caption"><b>Ekran 1b</b> · Trening — przerwa po serii</div>
+    <div class="phone">
+      <div class="statusbar">
+        <span class="num">17:44</span>
+        <span class="sb-right">
+          <span class="sig"><i></i><i></i><i></i><i></i></span>
+          <span class="batt"><i></i></span>
+        </span>
+      </div>
+
+      <header class="app-head">
+        <div class="head-row">
+          <div>
+            <div class="h-title">Pull</div>
+            <div class="h-sub num">tydzień 2/5</div>
+          </div>
+          <div class="chip-meta num">ćwiczenie 3/6</div>
+        </div>
+        <div class="seg-track">
+          <i class="done"></i><i class="done"></i><i class="cur"></i><i></i><i></i><i></i>
+        </div>
+      </header>
+
+      <section class="rest-zone">
+        <div class="ring">
+          <div class="ring-in">
+            <div class="rest-k">przerwa</div>
+            <div class="rest-time num">01:24</div>
+            <div class="rest-total num">z 02:00</div>
+          </div>
+        </div>
+
+        <div class="next-card">
+          <div class="next-k">następnie</div>
+          <div class="next-v num">seria 3/3 · Wiosłowanie sztangą</div>
+          <div class="next-w num">42,5 kg × 8</div>
+        </div>
+      </section>
+
+      <div class="thumb">
+        <button class="btn-ghost" style="width:100%;">pomiń przerwę</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================= -->
+  <!-- EKRAN 2 — TYDZIEŃ                             -->
+  <!-- ============================================= -->
+  <div class="col">
+    <div class="caption"><b>Ekran 2</b> · Tydzień — harmonogram</div>
+    <div class="phone">
+      <div class="statusbar">
+        <span class="num">17:42</span>
+        <span class="sb-right">
+          <span class="sig"><i></i><i></i><i></i><i></i></span>
+          <span class="batt"><i></i></span>
+        </span>
+      </div>
+
+      <header class="app-head">
+        <div class="head-row">
+          <div>
+            <div class="h-title">Twój tydzień</div>
+            <div class="h-sub num">10–16 sierpnia</div>
+          </div>
+          <div class="chip-meta num">tydzień 2/5</div>
+        </div>
+      </header>
+
+      <div class="week-grid num">
+        <div class="day done">
+          <span class="ab">Pn</span><span class="no">10</span>
+          <span class="ok-mark">✓</span><span class="nm">Push</span>
+        </div>
+        <div class="day rest">
+          <span class="ab">Wt</span><span class="no">11</span><span class="nm">—</span>
+        </div>
+        <div class="day today">
+          <span class="ab">Śr</span><span class="no">12</span><span class="nm">Pull</span>
+        </div>
+        <div class="day rest">
+          <span class="ab">Cz</span><span class="no">13</span><span class="nm">—</span>
+        </div>
+        <div class="day">
+          <span class="ab">Pt</span><span class="no">14</span><span class="nm">Nogi</span>
+        </div>
+        <div class="day rest">
+          <span class="ab">So</span><span class="no">15</span><span class="nm">—</span>
+        </div>
+        <div class="day rest">
+          <span class="ab">Nd</span><span class="no">16</span><span class="nm">—</span>
+        </div>
+      </div>
+
+      <section class="day-card">
+        <div class="dc-head">
+          <div class="dc-title">Dziś <span>·</span> Pull</div>
+          <div class="dc-dur num">~50 min</div>
+        </div>
+
+        <div class="pill-wrap num">
+          <span class="pill"><span class="pn">Wiosłowanie sztangą</span><span class="pc">3×8</span></span>
+          <span class="pill"><span class="pn">Podciąganie</span><span class="pc">3×6</span></span>
+          <span class="pill"><span class="pn">Ściąganie drążka</span><span class="pc">3×10</span></span>
+          <span class="pill"><span class="pn">Wiosłowanie hantlem</span><span class="pc">3×10</span></span>
+          <span class="pill"><span class="pn">Uginanie ramion</span><span class="pc">3×12</span></span>
+          <span class="pill"><span class="pn">Face pull</span><span class="pc">3×15</span></span>
+        </div>
+
+        <button class="cta">Zacznij trening</button>
+        <div class="sec-actions"><u>przesuń</u><span>·</span><u>odwołaj</u></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============================================= -->
+  <!-- EKRAN 3 — KREATOR PLANU                       -->
+  <!-- ============================================= -->
+  <div class="col">
+    <div class="caption"><b>Ekran 3</b> · Kreator planu — krok 3/4</div>
+    <div class="phone">
+      <div class="statusbar">
+        <span class="num">17:42</span>
+        <span class="sb-right">
+          <span class="sig"><i></i><i></i><i></i><i></i></span>
+          <span class="batt"><i></i></span>
+        </span>
+      </div>
+
+      <header class="wiz-head">
+        <div class="wiz-over">
+          <span class="wiz-name">Kreator planu</span>
+          <span class="wiz-step num">krok 3/4</span>
+        </div>
+        <div class="wiz-track">
+          <i class="on"></i><i class="on"></i><i class="cur"></i><i></i>
+        </div>
+      </header>
+
+      <h2 class="wiz-title">Twoje ograniczenia</h2>
+      <p class="wiz-sub">Zaznacz miejsca, które musimy oszczędzać podczas treningu.</p>
+
+      <div class="chips">
+        <span class="chip on"><b>✓</b>dolny odcinek pleców (L5-S1)</span>
+        <span class="chip on"><b>✓</b>kolano (łąkotka)</span>
+        <span class="chip">bark</span>
+        <span class="chip">nadgarstek</span>
+        <span class="chip">łokieć</span>
+        <span class="chip">biodro</span>
+        <span class="chip">kark</span>
+      </div>
+
+      <div class="wiz-info">
+        Ćwiczenia mocno obciążające te miejsca oznaczymy i&nbsp;zaproponujemy zamienniki.
+      </div>
+
+      <div class="wiz-nav">
+        <button class="btn-ghost">Wstecz</button>
+        <button class="cta">Dalej</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
