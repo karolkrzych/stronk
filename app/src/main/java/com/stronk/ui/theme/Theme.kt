@@ -1,22 +1,41 @@
 package com.stronk.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
 
 /**
- * Motyw aplikacji — domyślne schematy Material 3, ciemny wg ustawień systemu.
- * Charakter wizualny (kolory, typografia) będzie osobną rundą — nie kombinujemy.
+ * Motyw aplikacji — DARK ONLY, niezależnie od ustawienia systemu.
+ * Wygląd jest wzorowany 1:1 na `mocks/alpha-screens.html` (zaakceptowane mocki):
+ * jedna rodzina granatu + jeden akcent indygo, zieleń/bursztyn tylko jako semantyka.
+ *
+ * Role spoza Material 3 (tekst wygaszony, sukces, ostrzeżenie, badge piktogramu)
+ * są w [StronkTheme.colors].
  */
 @Composable
-fun StronkTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    content: @Composable () -> Unit,
-) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme(),
-        content = content,
-    )
+fun StronkTheme(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalStronkColors provides StronkColorsDark) {
+        MaterialTheme(
+            colorScheme = StronkColorScheme,
+            typography = StronkTypography,
+            shapes = StronkShapes,
+        ) {
+            // Domyślny styl tekstu to tekst wspierający — duże napisy zawsze deklaruj
+            // jawnie. Bez koloru: `Text` dziedziczy LocalContentColor powierzchni.
+            CompositionLocalProvider(
+                LocalTextStyle provides MaterialTheme.typography.bodyMedium,
+                content = content,
+            )
+        }
+    }
+}
+
+/** Dostęp do ról koloru spoza Material 3: `StronkTheme.colors.warning` itd. */
+object StronkTheme {
+    val colors: StronkColors
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalStronkColors.current
 }
