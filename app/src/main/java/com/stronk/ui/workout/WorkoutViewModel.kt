@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.stronk.StronkApplication
 import com.stronk.data.Exercise
 import com.stronk.data.ExerciseState
+import com.stronk.data.GoalDefaults
 import com.stronk.data.ProfileDetails
 import com.stronk.data.ScheduleStatus
 import com.stronk.data.SetLog
@@ -37,6 +38,8 @@ data class WorkoutExerciseUi(
     val index: Int,
     val exerciseId: String,
     val name: String,
+    /** Klucz partii z datasetu (np. "lats") — pod ikony/podpisy z MuscleIcons. */
+    val muscle: String?,
     val muscleLabel: String,
     val targetLabel: String,
     val lastLabel: String?,
@@ -48,6 +51,9 @@ data class WorkoutExerciseUi(
     val skipped: Boolean,
     val substituted: Boolean,
     val imagePath: String?,
+    /** Wszystkie obrazki ćwiczenia (start/koniec) — podgląd w bottom sheetach. */
+    val images: List<String>,
+    val instructions: List<String>,
 )
 
 /** Bieżąca seria pod wielki ✓ (ADR-005). */
@@ -55,6 +61,8 @@ data class CurrentSetUi(
     val exerciseIndex: Int,
     val exerciseId: String,
     val exerciseName: String,
+    /** Klucz partii z datasetu — pod ikonę/podpis grupy przy nazwie. */
+    val muscle: String?,
     val setNumber: Int,
     val totalSets: Int,
     /** Gotowa seria do zalogowania jednym tapnięciem (i baza do dialogu edycji). */
@@ -261,6 +269,9 @@ class WorkoutViewModel(
                 fullBlockLengthWeeks = fullBlock,
                 returningFromBreak = returning,
                 exercises = sessionExercises,
+                // Domyślna przerwa zależna od celu z profilu (siła 180 s / masa 90 s /
+                // powrót 75 s); ręczna zmiana w treningu nadal działa.
+                restSeconds = GoalDefaults.restSecondsFor(profileDetails.goal),
             ),
         )
     }
@@ -280,6 +291,7 @@ class WorkoutViewModel(
                 index = index,
                 exerciseId = se.exerciseId,
                 name = se.name,
+                muscle = se.exercise?.primaryMuscles?.firstOrNull(),
                 muscleLabel = se.exercise?.primaryMuscles?.firstOrNull()
                     ?.let(PlLabels::muscle).orEmpty(),
                 targetLabel = WorkoutLabels.proposalTarget(se.proposal),
@@ -292,6 +304,8 @@ class WorkoutViewModel(
                 skipped = se.skipped && !se.isComplete,
                 substituted = se.substitutedFromId != null,
                 imagePath = se.exercise?.images?.firstOrNull(),
+                images = se.exercise?.images.orEmpty(),
+                instructions = se.exercise?.instructionsPl.orEmpty(),
             )
         }
         val currentSe = session.currentExercise
@@ -301,6 +315,7 @@ class WorkoutViewModel(
                 exerciseIndex = session.currentExerciseIndex,
                 exerciseId = se.exerciseId,
                 exerciseName = se.name,
+                muscle = se.exercise?.primaryMuscles?.firstOrNull(),
                 setNumber = se.nextSetNumber,
                 totalSets = se.proposal.sets,
                 prefill = prefill,

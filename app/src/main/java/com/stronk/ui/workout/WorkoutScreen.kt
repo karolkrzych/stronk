@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,20 +23,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -43,16 +36,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -64,10 +53,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -76,26 +64,46 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.stronk.data.ExerciseRepository
 import com.stronk.data.SetLog
-import com.stronk.ui.PlLabels
+import com.stronk.ui.components.MuscleIcons
+import com.stronk.ui.components.StronkBadge
+import com.stronk.ui.components.StronkBigActionButton
+import com.stronk.ui.components.StronkCard
+import com.stronk.ui.components.StronkFooterActions
+import com.stronk.ui.components.StronkGhostButton
+import com.stronk.ui.components.StronkHeroNumber
+import com.stronk.ui.components.StronkIconBadge
+import com.stronk.ui.components.StronkIconBadgeSize
+import com.stronk.ui.components.StronkIcons
+import com.stronk.ui.components.StronkPrimaryButton
+import com.stronk.ui.components.StronkScreenHeader
+import com.stronk.ui.components.StronkSectionHeader
+import com.stronk.ui.components.StronkSegmentedProgress
+import com.stronk.ui.components.StronkSeriesDots
+import com.stronk.ui.components.StronkStat
+import com.stronk.ui.components.StronkStatRow
+import com.stronk.ui.components.StronkTextAction
+import com.stronk.ui.components.StronkTone
+import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTheme
 
 /**
- * Tryb treningu (moduł 5 CONCEPT, ADR-005): checklist serii z prefillami
- * z silnika progresji, wielki "✓ Zalicz serię" (happy path = jedno tapnięcie),
- * rest timer z auto-startem, zamiennik na szybko i zapis treningu na koniec.
+ * Tryb treningu (ADR-005) — po redesignie: ekran ma DWA zamienne stany
+ * centralne (seria ↔ przerwa), nic więcej. W stanie SERIA jest hero-liczba
+ * prefillu i wielki "zalicz serię"; w stanie PRZERWA pełnoekranowy zegar bez
+ * możliwości zaliczania (nie da się przeklikać treningu). Nadchodzące
+ * ćwiczenia i szczegóły bieżącego żyją w bottom sheetach, zamiennik
+ * i pominięcie schowane w menu ⋮.
  *
- * Stan sesji żyje w [WorkoutSessionManager] (singleton), więc wygaszenie
- * ekranu / wyjście do bazy ćwiczeń niczego nie gubi; timer i akcja "✓ seria"
- * z lock screena działają przez [com.stronk.service.RestTimerService].
+ * Stan sesji żyje w [WorkoutSessionManager] (singleton), timer i akcja
+ * "✓ seria" z lock screena — w [com.stronk.service.RestTimerService].
  *
  * @param planId plan, z którego pochodzi trening.
  * @param dayIndex indeks dnia w [com.stronk.data.Plan.days].
- * @param scheduleEntryId wpis harmonogramu do odhaczenia; null = trening
- *   uruchomiony poza harmonogramem.
+ * @param scheduleEntryId wpis harmonogramu do odhaczenia; null = poza harmonogramem.
  * @param onFinished po zakończeniu i zapisaniu treningu (nawigacja wstecz).
  * @param onExit porzucenie treningu bez zapisu.
- * @param onExerciseClick podgląd ćwiczenia w bazie (instrukcje/obrazki).
+ * @param onExerciseClick pełne szczegóły ćwiczenia w bazie (akcja w sheecie).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkoutScreen(
     planId: String,
@@ -122,6 +130,8 @@ fun WorkoutScreen(
     var showExitDialog by remember { mutableStateOf(false) }
     var showFinishDialog by remember { mutableStateOf(false) }
     var editorOpen by remember { mutableStateOf(false) }
+    var upcomingOpen by remember { mutableStateOf(false) }
+    var currentSheetOpen by remember { mutableStateOf(false) }
 
     // Przy konflikcie sesji back wychodzi normalnie (stary trening zostaje).
     val active = !state.loading && state.error == null && !state.finished &&
@@ -140,89 +150,59 @@ fun WorkoutScreen(
             contentAlignment = Alignment.Center,
         ) { CircularProgressIndicator() }
 
-        else -> Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(state.dayName, fontWeight = FontWeight.Bold)
-                            Text(
-                                text = state.planName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { showExitDialog = true }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Przerwij trening")
-                        }
-                    },
-                    actions = {
-                        if (!state.allFinished && state.hasLoggedSets) {
-                            TextButton(onClick = { showFinishDialog = true }) { Text("Zakończ") }
-                        }
-                    },
-                )
-            },
-        ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-            ) {
-                ProgressHeader(completed = state.completedSets, total = state.totalSets)
-                Spacer(Modifier.height(12.dp))
-
-                state.restRemainingSeconds?.let { remaining ->
-                    RestTimerCard(
-                        remainingSeconds = remaining,
-                        onExtend = viewModel::extendRest,
-                        onSkip = viewModel::skipRest,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                }
-
+        else -> WorkoutContent(
+            state = state,
+            onCompleteSet = {
                 val current = state.current
-                when {
-                    state.allFinished -> FinishedCard(
-                        saving = state.saving,
-                        onFinish = viewModel::finishWorkout,
-                    )
+                if (current?.needsInput == true) editorOpen = true
+                else viewModel.completeCurrentSet()
+            },
+            onEditSet = { editorOpen = true },
+            onExtendRest = viewModel::extendRest,
+            onSkipRest = viewModel::skipRest,
+            onFinish = viewModel::finishWorkout,
+            onOpenUpcoming = { upcomingOpen = true },
+            onOpenCurrentSheet = { currentSheetOpen = true },
+            onSubstitute = viewModel::showSubstitutes,
+            onSkipExercise = viewModel::skipCurrentExercise,
+            onRequestFinishEarly = { showFinishDialog = true },
+            onRequestExit = { showExitDialog = true },
+        )
+    }
 
-                    current != null -> CurrentSetCard(
-                        current = current,
-                        nextUp = state.nextUp,
-                        onComplete = {
-                            if (current.needsInput) editorOpen = true
-                            else viewModel.completeCurrentSet()
-                        },
-                        onEdit = { editorOpen = true },
-                        onSubstitute = viewModel::showSubstitutes,
-                        onSkipExercise = viewModel::skipCurrentExercise,
-                        onExerciseClick = onExerciseClick,
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
+    // ------------------------------------------------------------- sheety
 
-                RestLengthRow(
-                    restSeconds = state.restSeconds,
-                    onAdjust = viewModel::adjustRestLength,
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    if (upcomingOpen) {
+        UpcomingSheet(
+            exercises = state.exercises,
+            onRestore = { index ->
+                viewModel.selectExercise(index)
+                upcomingOpen = false
+            },
+            onDismiss = { upcomingOpen = false },
+        )
+    }
 
-                state.exercises.forEach { row ->
-                    ExerciseRowItem(
-                        row = row,
-                        onSelect = { viewModel.selectExercise(row.index) },
-                        onInfo = { onExerciseClick(row.exerciseId) },
-                    )
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+    val currentRow = state.current?.let { cur -> state.exercises.getOrNull(cur.exerciseIndex) }
+    if (currentSheetOpen && currentRow != null) {
+        CurrentExerciseSheet(
+            row = currentRow,
+            restSeconds = state.restSeconds,
+            onAdjustRest = viewModel::adjustRestLength,
+            onSubstitute = {
+                currentSheetOpen = false
+                viewModel.showSubstitutes()
+            },
+            onSkipExercise = {
+                currentSheetOpen = false
+                viewModel.skipCurrentExercise()
+            },
+            onOpenInDatabase = {
+                currentSheetOpen = false
+                onExerciseClick(currentRow.exerciseId)
+            },
+            onDismiss = { currentSheetOpen = false },
+        )
     }
 
     // ------------------------------------------------------------- dialogi
@@ -297,6 +277,781 @@ fun WorkoutScreen(
     }
 }
 
+// ------------------------------------------------------------------ layout
+
+/**
+ * Szkielet ekranu: nagłówek + segmenty ćwiczeń u góry, JEDEN zamienny stan
+ * centralny (seria / przerwa / koniec), strefa akcji i cienka linijka
+ * bieżącego ćwiczenia na dole.
+ */
+@Composable
+private fun WorkoutContent(
+    state: WorkoutUiState,
+    onCompleteSet: () -> Unit,
+    onEditSet: () -> Unit,
+    onExtendRest: () -> Unit,
+    onSkipRest: () -> Unit,
+    onFinish: () -> Unit,
+    onOpenUpcoming: () -> Unit,
+    onOpenCurrentSheet: () -> Unit,
+    onSubstitute: () -> Unit,
+    onSkipExercise: () -> Unit,
+    onRequestFinishEarly: () -> Unit,
+    onRequestExit: () -> Unit,
+) {
+    val current = state.current
+    val resting = state.restRemainingSeconds != null
+
+    Column(Modifier.fillMaxSize()) {
+        Column(Modifier.padding(horizontal = StronkSpacing.screen)) {
+            Spacer(Modifier.height(StronkSpacing.md))
+            StronkScreenHeader(
+                title = state.dayName,
+                subtitle = state.planName,
+                meta = current?.let {
+                    "ćwiczenie ${it.exerciseIndex + 1}/${state.exercises.size}"
+                },
+                actions = {
+                    IconButton(onClick = onOpenUpcoming) {
+                        Icon(
+                            StronkIcons.plans,
+                            contentDescription = "Nadchodzące ćwiczenia",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    WorkoutMenu(
+                        hasCurrent = current != null,
+                        canFinishEarly = state.hasLoggedSets && !state.allFinished,
+                        onSubstitute = onSubstitute,
+                        onSkipExercise = onSkipExercise,
+                        onRequestFinishEarly = onRequestFinishEarly,
+                        onRequestExit = onRequestExit,
+                    )
+                },
+            )
+            Spacer(Modifier.height(StronkSpacing.sm))
+            StronkSegmentedProgress(
+                total = state.exercises.size,
+                currentIndex = current?.exerciseIndex ?: state.exercises.size,
+            )
+        }
+
+        // Zamienny stan centralny — jeden focal point naraz.
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = StronkSpacing.screen),
+        ) {
+            when {
+                state.allFinished -> FinishedPane()
+                resting && current != null -> RestPane(
+                    remainingSeconds = state.restRemainingSeconds ?: 0,
+                    totalSeconds = state.restSeconds,
+                    next = current,
+                )
+                current != null -> SetPane(current = current, onEdit = onEditSet)
+            }
+        }
+
+        // Strefa akcji — w przerwie NIE MA zaliczania serii.
+        Column(Modifier.padding(horizontal = StronkSpacing.screen)) {
+            when {
+                state.allFinished -> StronkPrimaryButton(
+                    text = if (state.saving) "Zapisywanie…" else "Zakończ i zapisz",
+                    onClick = onFinish,
+                    enabled = !state.saving,
+                    icon = StronkIcons.done,
+                )
+
+                resting -> StronkFooterActions {
+                    StronkGhostButton(
+                        text = "+${WorkoutConstants.REST_STEP_SECONDS} s",
+                        onClick = onExtendRest,
+                        modifier = Modifier.weight(1f),
+                    )
+                    StronkGhostButton(
+                        text = "Pomiń przerwę",
+                        onClick = onSkipRest,
+                        modifier = Modifier.weight(1.7f),
+                    )
+                }
+
+                current != null -> StronkBigActionButton(
+                    mark = if (current.needsInput) StronkIcons.edit else StronkIcons.done,
+                    label = if (current.needsInput) "wpisz ciężar" else "zalicz serię",
+                    onClick = onCompleteSet,
+                )
+            }
+        }
+        Spacer(Modifier.height(StronkSpacing.md))
+
+        if (current != null) {
+            CurrentExerciseBar(
+                row = state.exercises.getOrNull(current.exerciseIndex),
+                setNumber = current.setNumber,
+                totalSets = current.totalSets,
+                onClick = onOpenCurrentSheet,
+            )
+        }
+    }
+}
+
+/** Menu ⋮ — zamiennik, pominięcie i wyjścia schowane z głównego widoku. */
+@Composable
+private fun WorkoutMenu(
+    hasCurrent: Boolean,
+    canFinishEarly: Boolean,
+    onSubstitute: () -> Unit,
+    onSkipExercise: () -> Unit,
+    onRequestFinishEarly: () -> Unit,
+    onRequestExit: () -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(
+                Icons.Rounded.MoreVert,
+                contentDescription = "Więcej akcji",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (hasCurrent) {
+                DropdownMenuItem(
+                    text = { Text("Podmień ćwiczenie…") },
+                    leadingIcon = { Icon(StronkIcons.swap, contentDescription = null) },
+                    onClick = {
+                        open = false
+                        onSubstitute()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Pomiń ćwiczenie") },
+                    leadingIcon = { Icon(StronkIcons.close, contentDescription = null) },
+                    onClick = {
+                        open = false
+                        onSkipExercise()
+                    },
+                )
+            }
+            if (canFinishEarly) {
+                DropdownMenuItem(
+                    text = { Text("Zakończ i zapisz") },
+                    leadingIcon = { Icon(StronkIcons.done, contentDescription = null) },
+                    onClick = {
+                        open = false
+                        onRequestFinishEarly()
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("Przerwij trening") },
+                leadingIcon = { Icon(StronkIcons.delete, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onRequestExit()
+                },
+            )
+        }
+    }
+}
+
+// ------------------------------------------------------------- stan: SERIA
+
+/** Stan SERIA: kontekst ćwiczenia + hero-prefill + (niżej) wielki przycisk. */
+@Composable
+private fun SetPane(current: CurrentSetUi, onEdit: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.weight(0.7f))
+
+        StronkIconBadge(
+            icon = MuscleIcons.forMuscle(current.muscle),
+            size = StronkIconBadgeSize.MEDIUM,
+        )
+        Spacer(Modifier.height(StronkSpacing.xs))
+        Text(
+            text = MuscleIcons.groupLabel(current.muscle).uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = StronkTheme.colors.textDim,
+        )
+        Text(
+            text = current.exerciseName,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        Spacer(Modifier.height(StronkSpacing.md))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+        ) {
+            Text(
+                text = "SERIA ${current.setNumber} Z ${current.totalSets}",
+                style = MaterialTheme.typography.labelSmall,
+                color = StronkTheme.colors.textDim,
+            )
+            StronkSeriesDots(total = current.totalSets, currentIndex = current.setNumber - 1)
+        }
+
+        if (current.badges.isNotEmpty()) {
+            Spacer(Modifier.height(StronkSpacing.sm))
+            Row(horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs)) {
+                current.badges.forEach { StronkBadge(text = it, tone = StronkTone.ACCENT) }
+            }
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        // Hero-prefill: tap = edycja odstępstwa (stepper/klawiatura).
+        Column(
+            modifier = Modifier
+                .clip(MaterialTheme.shapes.large)
+                .clickable(onClick = onEdit)
+                .padding(horizontal = StronkSpacing.lg, vertical = StronkSpacing.sm),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (current.needsInput) {
+                StronkHeroNumber(
+                    value = "?",
+                    unit = "kg",
+                    caption = "pierwsza seria — dotknij i wpisz ciężar",
+                )
+            } else {
+                PrefillHero(prefill = current.prefill)
+                current.lastLabel?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StronkTheme.colors.textDim,
+                        modifier = Modifier.padding(top = StronkSpacing.sm),
+                    )
+                }
+                Text(
+                    text = "dotknij, aby zmienić",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = StronkTheme.colors.textDim,
+                    modifier = Modifier.padding(top = StronkSpacing.xxs),
+                )
+            }
+        }
+
+        Spacer(Modifier.weight(1f))
+    }
+}
+
+/** Hero-liczby prefillu: wielkie wartości, jednostki i "×" małe (mocki: `.value`). */
+@Composable
+private fun PrefillHero(prefill: SetLog) {
+    val big = MaterialTheme.typography.displayMedium
+    val small = MaterialTheme.typography.headlineSmall
+    val bigColor = MaterialTheme.colorScheme.onSurface
+    val smallColor = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(verticalAlignment = Alignment.Bottom) {
+        when (prefill) {
+            is SetLog.WeightReps -> {
+                Text(WorkoutLabels.kg(prefill.kg), style = big, color = bigColor, maxLines = 1)
+                Text(
+                    "kg",
+                    style = small,
+                    color = smallColor,
+                    modifier = Modifier.padding(start = StronkSpacing.xxs, bottom = 6.dp),
+                )
+                Text(
+                    "×",
+                    style = small,
+                    color = StronkTheme.colors.textDim,
+                    modifier = Modifier.padding(horizontal = StronkSpacing.xs, vertical = 6.dp),
+                )
+                Text("${prefill.reps}", style = big, color = bigColor, maxLines = 1)
+            }
+
+            is SetLog.Reps -> {
+                Text("${prefill.reps}", style = big, color = bigColor, maxLines = 1)
+                Text(
+                    text = prefill.extraKg?.let { "powt. +${WorkoutLabels.kg(it)} kg" } ?: "powt.",
+                    style = small,
+                    color = smallColor,
+                    modifier = Modifier.padding(start = StronkSpacing.xs, bottom = 6.dp),
+                )
+            }
+
+            is SetLog.Time -> Text(
+                WorkoutLabels.seconds(prefill.seconds),
+                style = big,
+                color = bigColor,
+                maxLines = 1,
+            )
+
+            is SetLog.DistanceTime -> {
+                Text(
+                    WorkoutLabels.meters(prefill.meters),
+                    style = big,
+                    color = bigColor,
+                    maxLines = 1,
+                )
+                Text(
+                    "· ${WorkoutLabels.countdown(prefill.seconds)}",
+                    style = small,
+                    color = smallColor,
+                    modifier = Modifier.padding(start = StronkSpacing.xs, bottom = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+// ----------------------------------------------------------- stan: PRZERWA
+
+/** Stan PRZERWA: pełny zegar + karta "Następnie"; zero zaliczania serii. */
+@Composable
+private fun RestPane(
+    remainingSeconds: Int,
+    totalSeconds: Int,
+    next: CurrentSetUi,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.weight(1f))
+
+        Text(
+            text = "PRZERWA",
+            style = MaterialTheme.typography.labelSmall,
+            color = StronkTheme.colors.textDim,
+        )
+        Spacer(Modifier.height(StronkSpacing.xs))
+        StronkHeroNumber(
+            value = WorkoutLabels.countdown(remainingSeconds),
+            caption = "z ${WorkoutLabels.countdown(totalSeconds)}",
+            valueStyle = MaterialTheme.typography.displayLarge,
+        )
+
+        Spacer(Modifier.weight(1f))
+
+        StronkSectionHeader(title = "Następnie", modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(StronkSpacing.sm))
+        StronkCard(Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+            ) {
+                StronkIconBadge(
+                    icon = MuscleIcons.forMuscle(next.muscle),
+                    size = StronkIconBadgeSize.LARGE,
+                )
+                Column {
+                    Text(
+                        text = MuscleIcons.groupLabel(next.muscle).uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = StronkTheme.colors.textDim,
+                    )
+                    Text(
+                        text = next.exerciseName,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Spacer(Modifier.height(StronkSpacing.sm))
+            StronkStatRow {
+                StronkStat(
+                    label = "seria",
+                    value = "${next.setNumber}/${next.totalSets}",
+                    modifier = Modifier.weight(1f),
+                )
+                StronkStat(
+                    label = prefillStatLabel(next.prefill),
+                    value = if (next.needsInput) "wpisz" else next.prefillLabel,
+                    modifier = Modifier.weight(1.7f),
+                )
+            }
+        }
+    }
+}
+
+/** Etykieta kafelka z prefillem w karcie "Następnie" — zależna od typu pomiaru. */
+private fun prefillStatLabel(prefill: SetLog): String = when (prefill) {
+    is SetLog.WeightReps -> "ciężar × powt."
+    is SetLog.Reps -> "powtórzenia"
+    is SetLog.Time -> "czas"
+    is SetLog.DistanceTime -> "dystans · czas"
+}
+
+// ------------------------------------------------------------ stan: KONIEC
+
+/** Wszystkie serie zrobione — jedno zdanie i CTA w strefie akcji. */
+@Composable
+private fun FinishedPane() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        StronkIconBadge(
+            icon = StronkIcons.done,
+            size = StronkIconBadgeSize.LARGE,
+            tone = StronkTone.SUCCESS,
+        )
+        Spacer(Modifier.height(StronkSpacing.md))
+        Text(
+            text = "Wszystkie serie zrobione",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(StronkSpacing.xs))
+        Text(
+            text = "Zapisz trening — progresja zaktualizuje się sama.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+// -------------------------------------------------- linijka bieżącego ćwiczenia
+
+/** Cienka linijka na dole: miniaturka + nazwa; tap = sheet z podglądem. */
+@Composable
+private fun CurrentExerciseBar(
+    row: WorkoutExerciseUi?,
+    setNumber: Int,
+    totalSets: Int,
+    onClick: () -> Unit,
+) {
+    if (row == null) return
+    Column {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+        ) {
+            AsyncImage(
+                model = ExerciseRepository.IMAGES_BASE_URI + row.imagePath.orEmpty(),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(MaterialTheme.shapes.extraSmall),
+            )
+            Text(
+                text = row.name,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "seria $setNumber/$totalSets",
+                style = MaterialTheme.typography.labelMedium,
+                color = StronkTheme.colors.textDim,
+            )
+            Icon(
+                Icons.Rounded.KeyboardArrowUp,
+                contentDescription = "Podgląd ćwiczenia",
+                tint = StronkTheme.colors.textDim,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+// ------------------------------------------------------------------ sheety
+
+/**
+ * Bottom sheet nadchodzących ćwiczeń — podgląd, nie edycja. Tap w pozycję
+ * rozwija większe obrazki (start/koniec) z assets; pominięte można przywrócić.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UpcomingSheet(
+    exercises: List<WorkoutExerciseUi>,
+    onRestore: (index: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val upcoming = exercises.filter { !it.isComplete && !it.isCurrent }
+    var expandedId by remember { mutableStateOf<String?>(null) }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(Modifier.padding(horizontal = StronkSpacing.screen)) {
+            StronkSectionHeader(title = "Nadchodzące ćwiczenia")
+            Spacer(Modifier.height(StronkSpacing.sm))
+            if (upcoming.isEmpty()) {
+                Text(
+                    text = "To już ostatnie ćwiczenie tego treningu.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = StronkSpacing.xl),
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 520.dp),
+                    verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
+                ) {
+                    items(upcoming, key = { "${it.index}-${it.exerciseId}" }) { row ->
+                        UpcomingRow(
+                            row = row,
+                            expanded = expandedId == row.exerciseId,
+                            onToggle = {
+                                expandedId =
+                                    if (expandedId == row.exerciseId) null else row.exerciseId
+                            },
+                            onRestore = { onRestore(row.index) },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(StronkSpacing.xl))
+        }
+    }
+}
+
+@Composable
+private fun UpcomingRow(
+    row: WorkoutExerciseUi,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onRestore: () -> Unit,
+) {
+    androidx.compose.material3.Surface(
+        onClick = onToggle,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(Modifier.padding(StronkSpacing.sm)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+            ) {
+                AsyncImage(
+                    model = ExerciseRepository.IMAGES_BASE_URI + row.imagePath.orEmpty(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(MaterialTheme.shapes.small),
+                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = row.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = listOf(row.muscleLabel, row.targetLabel)
+                            .filter { it.isNotEmpty() }
+                            .joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StronkTheme.colors.textDim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (row.skipped) {
+                    StronkBadge(text = "pominięte", tone = StronkTone.NEUTRAL)
+                }
+            }
+            if (expanded) {
+                Spacer(Modifier.height(StronkSpacing.sm))
+                ExerciseImagesRow(images = row.images)
+                if (row.skipped) {
+                    StronkTextAction(
+                        text = "Przywróć do treningu",
+                        onClick = onRestore,
+                        tone = StronkTone.ACCENT,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Obrazki start/koniec z assets, obok siebie (jak w szczegółach ćwiczenia). */
+@Composable
+private fun ExerciseImagesRow(images: List<String>) {
+    if (images.isEmpty()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs)) {
+        images.take(2).forEach { path ->
+            AsyncImage(
+                model = ExerciseRepository.IMAGES_BASE_URI + path,
+                contentDescription = null,
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(4f / 3f)
+                    .clip(MaterialTheme.shapes.small),
+            )
+        }
+    }
+}
+
+/**
+ * Bottom sheet bieżącego ćwiczenia: obrazki, cel, instrukcje, długość przerwy
+ * i schowane akcje (zamiennik / pominięcie / baza ćwiczeń).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CurrentExerciseSheet(
+    row: WorkoutExerciseUi,
+    restSeconds: Int,
+    onAdjustRest: (Int) -> Unit,
+    onSubstitute: () -> Unit,
+    onSkipExercise: () -> Unit,
+    onOpenInDatabase: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            Modifier
+                .padding(horizontal = StronkSpacing.screen)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+            ) {
+                StronkIconBadge(
+                    icon = MuscleIcons.forMuscle(row.muscle),
+                    size = StronkIconBadgeSize.MEDIUM,
+                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = MuscleIcons.groupLabel(row.muscle).uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = StronkTheme.colors.textDim,
+                    )
+                    Text(
+                        text = row.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(StronkSpacing.md))
+            ExerciseImagesRow(images = row.images)
+
+            Spacer(Modifier.height(StronkSpacing.md))
+            StronkStatRow {
+                StronkStat(
+                    label = "cel",
+                    value = row.targetLabel,
+                    valueStyle = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                StronkStat(
+                    label = "serie",
+                    value = "${row.doneSets}/${row.totalSets}",
+                    valueStyle = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            row.lastLabel?.let {
+                Spacer(Modifier.height(StronkSpacing.xs))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StronkTheme.colors.textDim,
+                )
+            }
+
+            // Ręczna zmiana długości przerwy zostaje — schowana tu, nie na głównym widoku.
+            Spacer(Modifier.height(StronkSpacing.md))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    StronkIcons.rest,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "Przerwa między seriami",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = StronkSpacing.xs),
+                )
+                TextButton(onClick = { onAdjustRest(-WorkoutConstants.REST_STEP_SECONDS) }) {
+                    Text("−")
+                }
+                Text(
+                    text = "$restSeconds s",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                TextButton(onClick = { onAdjustRest(WorkoutConstants.REST_STEP_SECONDS) }) {
+                    Text("+")
+                }
+            }
+
+            if (row.instructions.isNotEmpty()) {
+                Spacer(Modifier.height(StronkSpacing.md))
+                StronkSectionHeader(title = "Wykonanie")
+                Spacer(Modifier.height(StronkSpacing.sm))
+                row.instructions.forEachIndexed { index, step ->
+                    Row(Modifier.padding(bottom = StronkSpacing.xs)) {
+                        Text(
+                            text = "${index + 1}.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StronkTheme.colors.textDim,
+                            modifier = Modifier.width(StronkSpacing.lg),
+                        )
+                        Text(
+                            text = step,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(StronkSpacing.sm))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StronkTextAction(
+                    text = "Podmień",
+                    onClick = onSubstitute,
+                    icon = StronkIcons.swap,
+                    tone = StronkTone.ACCENT,
+                )
+                StronkTextAction(text = "Pomiń ćwiczenie", onClick = onSkipExercise)
+                StronkTextAction(text = "W bazie", onClick = onOpenInDatabase)
+            }
+            Spacer(Modifier.height(StronkSpacing.xl))
+        }
+    }
+}
+
+// ---------------------------------------------------------------- pomocnicze
+
 /** Runtime uprawnienie na notyfikacje (API 33+); timer działa też bez niego. */
 @Composable
 private fun NotificationPermissionRequest() {
@@ -318,373 +1073,24 @@ private fun ErrorContent(message: String, onExit: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(StronkSpacing.xl),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("Nie można rozpocząć treningu", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Nie można rozpocząć treningu",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(StronkSpacing.xs))
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = onExit) { Text("Wróć") }
-    }
-}
-
-@Composable
-private fun ProgressHeader(completed: Int, total: Int) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "Serie",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = "$completed z $total",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        Spacer(Modifier.height(4.dp))
-        LinearProgressIndicator(
-            progress = { if (total > 0) completed.toFloat() / total else 0f },
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-/** Biegnąca przerwa: wielki zegar + "+15 s" i "Pomiń". */
-@Composable
-private fun RestTimerCard(
-    remainingSeconds: Int,
-    onExtend: () -> Unit,
-    onSkip: () -> Unit,
-) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "PRZERWA",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            Text(
-                text = WorkoutLabels.countdown(remainingSeconds),
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            Row {
-                OutlinedButton(onClick = onExtend) {
-                    Text("+${WorkoutConstants.REST_STEP_SECONDS} s")
-                }
-                Spacer(Modifier.width(12.dp))
-                OutlinedButton(onClick = onSkip) { Text("Pomiń") }
-            }
-        }
-    }
-}
-
-/** Serce ekranu: bieżąca seria z prefillem i wielkim ✓ (ADR-005 pkt 1-2). */
-@Composable
-private fun CurrentSetCard(
-    current: CurrentSetUi,
-    nextUp: String?,
-    onComplete: () -> Unit,
-    onEdit: () -> Unit,
-    onSubstitute: () -> Unit,
-    onSkipExercise: () -> Unit,
-    onExerciseClick: (String) -> Unit,
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "SERIA ${current.setNumber} Z ${current.totalSets}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = current.exerciseName,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable { onExerciseClick(current.exerciseId) },
-                    )
-                }
-                Box {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Więcej akcji")
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Podmień ćwiczenie…") },
-                            onClick = {
-                                menuOpen = false
-                                onSubstitute()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Pomiń ćwiczenie") },
-                            onClick = {
-                                menuOpen = false
-                                onSkipExercise()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Szczegóły w bazie") },
-                            onClick = {
-                                menuOpen = false
-                                onExerciseClick(current.exerciseId)
-                            },
-                        )
-                    }
-                }
-            }
-            if (current.badges.isNotEmpty()) {
-                Text(
-                    text = current.badges.joinToString(" · "),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.tertiary,
-                )
-            }
-            current.lastLabel?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-
-            // Prefillowana wartość — tap = edycja odstępstwa (stepper/klawiatura).
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onEdit),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = if (current.needsInput) "wpisz ciężar" else current.prefillLabel,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(
-                        Icons.Filled.Edit,
-                        contentDescription = "Edytuj wartości serii",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-
-            // Wielki ✓ — nie do spudłowania zmęczoną ręką (ADR-005 pkt 1).
-            Button(
-                onClick = onComplete,
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(88.dp),
-            ) {
-                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(32.dp))
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = if (current.needsInput) "Wpisz ciężar" else "Zalicz serię",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            nextUp?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun FinishedCard(saving: Boolean, onFinish: () -> Unit) {
-    Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Icon(
-                Icons.Filled.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(48.dp),
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Wszystkie serie zrobione",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "Zapisz trening — stan progresji zaktualizuje się automatycznie.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(14.dp))
-            Button(
-                onClick = onFinish,
-                enabled = !saving,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-            ) {
-                if (saving) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                } else {
-                    Text("Zakończ i zapisz", style = MaterialTheme.typography.titleMedium)
-                }
-            }
-        }
-    }
-}
-
-/** Konfiguracja długości przerwy (stała edytowalna w UI treningu). */
-@Composable
-private fun RestLengthRow(restSeconds: Int, onAdjust: (Int) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "Przerwa między seriami",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        TextButton(onClick = { onAdjust(-WorkoutConstants.REST_STEP_SECONDS) }) { Text("−") }
-        Text(
-            text = "$restSeconds s",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-        )
-        TextButton(onClick = { onAdjust(WorkoutConstants.REST_STEP_SECONDS) }) { Text("+") }
-    }
-}
-
-@Composable
-private fun ExerciseRowItem(
-    row: WorkoutExerciseUi,
-    onSelect: () -> Unit,
-    onInfo: () -> Unit,
-) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = if (row.isCurrent) MaterialTheme.colorScheme.secondaryContainer
-        else MaterialTheme.colorScheme.surface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .clickable(enabled = !row.isComplete, onClick = onSelect)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AsyncImage(
-                model = ExerciseRepository.IMAGES_BASE_URI + row.imagePath.orEmpty(),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (row.substituted) "${row.name} (zamiennik)" else row.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (row.isCurrent) FontWeight.Bold else FontWeight.Medium,
-                    textDecoration = if (row.isComplete) TextDecoration.LineThrough else null,
-                )
-                Text(
-                    text = listOf(row.muscleLabel, row.targetLabel)
-                        .filter { it.isNotEmpty() }
-                        .joinToString(" · "),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                row.lastLabel?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (row.badges.isNotEmpty()) {
-                    Text(
-                        text = row.badges.joinToString(" · "),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
-                    )
-                }
-            }
-            Spacer(Modifier.width(8.dp))
-            when {
-                row.isComplete -> Icon(
-                    Icons.Filled.Check,
-                    contentDescription = "Zrobione",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-                row.skipped -> Text(
-                    text = "pominięte",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                else -> Text(
-                    text = "${row.doneSets}/${row.totalSets}",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            IconButton(onClick = onInfo) {
-                Icon(
-                    Icons.Filled.Info,
-                    contentDescription = "Szczegóły ćwiczenia",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+        Spacer(Modifier.height(StronkSpacing.md))
+        StronkPrimaryButton(text = "Wróć", onClick = onExit)
     }
 }
 
@@ -1009,33 +1415,42 @@ private fun SubstitutesSheet(
     onPick: (exercise: com.stronk.data.Exercise, permanent: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(Modifier.padding(horizontal = StronkSpacing.screen)) {
+            StronkSectionHeader(title = "Zamiennik")
+            Spacer(Modifier.height(StronkSpacing.xxs))
             Text(
-                text = "Zamiennik dla: ${subs.forExerciseName}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                text = subs.forExerciseName,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = "Podmiana na ten jeden trening albo na stałe w planie.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = StronkTheme.colors.textDim,
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(StronkSpacing.sm))
             if (subs.options.isEmpty()) {
                 Text(
                     text = "Brak zamienników pasujących do Twojego sprzętu.",
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(vertical = 24.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = StronkSpacing.xl),
                 )
             } else {
-                LazyColumn(modifier = Modifier.heightIn(max = 480.dp)) {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 480.dp),
+                    verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
+                ) {
                     items(subs.options, key = { it.exercise.id }) { option ->
                         SubstituteRow(option = option, onPick = onPick)
                     }
                 }
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(StronkSpacing.xl))
         }
     }
 }
@@ -1045,48 +1460,61 @@ private fun SubstituteRow(
     option: SubstituteUi,
     onPick: (exercise: com.stronk.data.Exercise, permanent: Boolean) -> Unit,
 ) {
-    Column(modifier = Modifier.padding(vertical = 6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = ExerciseRepository.IMAGES_BASE_URI +
-                    option.exercise.images.firstOrNull().orEmpty(),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = option.exercise.namePl,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
+    androidx.compose.material3.Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(Modifier.padding(StronkSpacing.sm)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+            ) {
+                AsyncImage(
+                    model = ExerciseRepository.IMAGES_BASE_URI +
+                        option.exercise.images.firstOrNull().orEmpty(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(MaterialTheme.shapes.small),
                 )
-                Text(
-                    text = listOf(
-                        option.exercise.primaryMuscles.firstOrNull()
-                            ?.let(PlLabels::muscle).orEmpty(),
-                        option.equipmentLabel,
-                    ).filter { it.isNotEmpty() }.joinToString(" · "),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                option.warningLabels.forEach { warning ->
+                Column(Modifier.weight(1f)) {
                     Text(
-                        text = warning,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
+                        text = option.exercise.namePl,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = option.equipmentLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StronkTheme.colors.textDim,
+                        maxLines = 1,
+                    )
+                }
+                if (option.warningLabels.isNotEmpty()) {
+                    StronkBadge(
+                        text = option.warningLabels.first(),
+                        tone = StronkTone.WARNING,
+                        icon = StronkIcons.injury,
                     )
                 }
             }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                StronkTextAction(
+                    text = "Na ten trening",
+                    onClick = { onPick(option.exercise, false) },
+                    tone = StronkTone.ACCENT,
+                )
+                StronkTextAction(
+                    text = "Na stałe",
+                    onClick = { onPick(option.exercise, true) },
+                    tone = StronkTone.ACCENT,
+                )
+            }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-        ) {
-            TextButton(onClick = { onPick(option.exercise, false) }) { Text("Na ten trening") }
-            TextButton(onClick = { onPick(option.exercise, true) }) { Text("Na stałe") }
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
