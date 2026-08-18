@@ -1,31 +1,26 @@
 package com.stronk.ui.plans
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -33,13 +28,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,19 +42,42 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import com.stronk.data.Exercise
+import com.stronk.data.ExerciseRepository
 import com.stronk.data.MeasurementType
 import com.stronk.data.PlanExercise
 import com.stronk.data.SetTarget
+import com.stronk.ui.PlLabels
+import com.stronk.ui.components.MuscleIcons
+import com.stronk.ui.components.StronkBadge
+import com.stronk.ui.components.StronkCard
+import com.stronk.ui.components.StronkChoiceChip
+import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkGhostButton
+import com.stronk.ui.components.StronkIconBadge
+import com.stronk.ui.components.StronkIconBadgeSize
+import com.stronk.ui.components.StronkIcons
+import com.stronk.ui.components.StronkInsetCard
+import com.stronk.ui.components.StronkNoteCard
+import com.stronk.ui.components.StronkScreenHeader
+import com.stronk.ui.components.StronkSectionHeader
+import com.stronk.ui.components.StronkTextAction
+import com.stronk.ui.components.StronkTone
+import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTheme
 
 /**
- * Edytor/kreator planu (moduł 3 CONCEPT, mock "Ekran 3"): nazwa, długość bloku,
- * dni z ćwiczeniami, presety parametryzowane profilem, picker ćwiczeń
- * i zamienniki. Nawigacja wewnętrzna (picker) jest stanem ViewModelu —
- * sygnatura trasy pozostaje nietknięta.
+ * Edytor/kreator planu (moduł 3, lift czytelności rundy UI/UX): nazwa, długość
+ * bloku, dni jako karty z czytelnymi wierszami ćwiczeń (miniaturka + duże
+ * serie×powtórzenia), sugestie pokrycia partii, presety parametryzowane
+ * profilem/celem i picker ćwiczeń. Nawigacja wewnętrzna (picker) jest stanem
+ * ViewModelu — sygnatura trasy pozostaje nietknięta.
  *
  * @param planId id edytowanego planu; null = tworzenie nowego.
  * @param onBack powrót (także po zapisie).
@@ -82,7 +98,7 @@ fun PlanEditorScreen(
     }
 
     when {
-        state.loading -> LoadingScaffold(onBack)
+        state.loading -> LoadingScreen(onBack)
 
         state.showStartChooser -> StartChooser(
             presets = state.presets,
@@ -117,30 +133,52 @@ fun PlanEditorScreen(
             onDismiss = viewModel::closeSubstitutes,
         )
     }
+    state.suggestions?.let { suggestions ->
+        SuggestionsSheet(
+            suggestions = suggestions,
+            onChoose = viewModel::pickSuggestion,
+            onDismiss = viewModel::closeSuggestions,
+        )
+    }
 }
 
 // ---------- warstwy ekranu ----------
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Nagłówek podekranu edytora: strzałka wstecz + [StronkScreenHeader]. Współdzielony z [ExercisePicker]. */
 @Composable
-private fun LoadingScaffold(onBack: () -> Unit) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = { BackIcon(onBack) },
+internal fun EditorHeader(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
+    ) {
+        IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+            Icon(
+                Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "Wstecz",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier.padding(innerPadding).fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) { CircularProgressIndicator() }
+        }
+        StronkScreenHeader(title = title, modifier = Modifier.weight(1f), actions = actions)
+    }
+}
+
+@Composable
+private fun LoadingScreen(onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        EditorHeader(title = "", onBack = onBack, modifier = Modifier.padding(StronkSpacing.screen))
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        }
     }
 }
 
 /** Nowy plan: wybór presetu albo start od zera. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StartChooser(
     presets: List<PlanPreset>,
@@ -148,67 +186,53 @@ private fun StartChooser(
     onFromScratch: () -> Unit,
     onBack: () -> Unit,
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Nowy plan") },
-                navigationIcon = { BackIcon(onBack) },
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
+    ) {
+        item { EditorHeader(title = "Nowy plan", onBack = onBack) }
+        item {
             Text(
-                text = "Zacznij od gotowego szablonu — ćwiczenia dobiorą się " +
-                    "pod Twój sprzęt i ograniczenia z profilu.",
+                text = "Zacznij od gotowego szablonu — ćwiczenia dobiorą się pod Twój " +
+                    "sprzęt, ograniczenia i cel z profilu.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = StronkTheme.colors.textDim,
             )
-            presets.forEach { preset ->
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth().clickable { onPreset(preset) },
+        }
+        items(presets, key = { it.id }) { preset ->
+            StronkCard(onClick = { onPreset(preset) }) {
+                Text(
+                    text = preset.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = preset.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = StronkTheme.colors.textDim,
+                    modifier = Modifier.padding(top = StronkSpacing.xxs),
+                )
+                Row(
+                    modifier = Modifier.padding(top = StronkSpacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = preset.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = preset.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = "${preset.days.size} dni · ${preset.slotCount} ćwiczeń",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
+                    StronkBadge(text = "${preset.days.size} dni", icon = StronkIcons.week)
+                    StronkBadge(text = "${preset.slotCount} ćwiczeń", icon = StronkIcons.plans)
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            OutlinedButton(
+        }
+        item {
+            StronkGhostButton(
+                text = "Zacznij od zera",
                 onClick = onFromScratch,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Text("Zacznij od zera")
-            }
+                icon = StronkIcons.add,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditorContent(
     state: PlanEditorUiState,
@@ -219,25 +243,27 @@ private fun EditorContent(
     // Edytowane ćwiczenie: (indeks dnia, indeks ćwiczenia); null = dialog zamknięty.
     var editTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (state.isNew) "Nowy plan" else "Edycja planu") },
-                navigationIcon = { BackIcon(onBack) },
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
+    ) {
+        item {
+            EditorHeader(
+                title = if (state.isNew) "Nowy plan" else "Edycja planu",
+                onBack = onBack,
                 actions = {
-                    TextButton(onClick = viewModel::save, enabled = state.canSave) {
-                        Text("Zapisz")
-                    }
+                    StronkTextAction(
+                        text = "Zapisz",
+                        onClick = viewModel::save,
+                        enabled = state.canSave,
+                        tone = StronkTone.ACCENT,
+                    )
                 },
             )
-        },
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier.padding(innerPadding).fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            item {
+        }
+        item {
+            StronkCard {
                 OutlinedTextField(
                     value = state.name,
                     onValueChange = viewModel::onNameChange,
@@ -245,57 +271,44 @@ private fun EditorContent(
                     label = { Text("Nazwa planu") },
                     singleLine = true,
                 )
-            }
-            item {
+                Spacer(Modifier.height(StronkSpacing.sm))
                 BlockLengthRow(
                     blockLengthWeeks = state.blockLengthWeeks,
                     onChange = viewModel::onBlockLengthChange,
                 )
             }
-            state.days.forEachIndexed { dayIndex, day ->
-                item {
-                    DayHeader(
-                        name = day.name,
-                        onRename = { viewModel.renameDay(dayIndex, it) },
-                        onRemove = { viewModel.removeDay(dayIndex) },
-                    )
-                }
-                day.exercises.forEachIndexed { exerciseIndex, exercise ->
-                    item {
-                        ExerciseCard(
-                            exercise = exercise,
-                            onClick = { editTarget = dayIndex to exerciseIndex },
-                            onMoveUp = { viewModel.moveExercise(dayIndex, exerciseIndex, -1) },
-                            onMoveDown = { viewModel.moveExercise(dayIndex, exerciseIndex, +1) },
-                            onSubstitutes = {
-                                viewModel.openSubstitutesForRow(dayIndex, exerciseIndex)
-                            },
-                            onDetails = { onExerciseClick(exercise.planExercise.exerciseId) },
-                            onRemove = { viewModel.removeExercise(dayIndex, exerciseIndex) },
-                        )
-                    }
-                }
-                item {
-                    TextButton(onClick = { viewModel.openPicker(dayIndex) }) {
-                        Icon(Icons.Filled.Add, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Dodaj ćwiczenie")
-                    }
-                }
-            }
-            item {
-                OutlinedButton(
-                    onClick = viewModel::addDay,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Dodaj dzień")
-                }
-            }
-            item { Spacer(Modifier.height(24.dp)) }
         }
+        state.days.forEachIndexed { dayIndex, day ->
+            item {
+                DayCard(
+                    day = day,
+                    onRename = { viewModel.renameDay(dayIndex, it) },
+                    onRemoveDay = { viewModel.removeDay(dayIndex) },
+                    onExerciseClick = { exerciseIndex -> editTarget = dayIndex to exerciseIndex },
+                    onMoveUp = { exerciseIndex -> viewModel.moveExercise(dayIndex, exerciseIndex, -1) },
+                    onMoveDown = { exerciseIndex -> viewModel.moveExercise(dayIndex, exerciseIndex, +1) },
+                    onSubstitutes = { exerciseIndex ->
+                        viewModel.openSubstitutesForRow(dayIndex, exerciseIndex)
+                    },
+                    onDetails = { exerciseIndex ->
+                        val exercise = day.exercises.getOrNull(exerciseIndex)?.planExercise?.exerciseId
+                        if (exercise != null) onExerciseClick(exercise)
+                    },
+                    onRemoveExercise = { exerciseIndex -> viewModel.removeExercise(dayIndex, exerciseIndex) },
+                    onAddExercise = { viewModel.openPicker(dayIndex) },
+                    onSuggestion = { group -> viewModel.openSuggestions(dayIndex, group) },
+                )
+            }
+        }
+        item {
+            StronkGhostButton(
+                text = "Dodaj dzień",
+                onClick = viewModel::addDay,
+                icon = StronkIcons.add,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        item { Spacer(Modifier.height(StronkSpacing.xxl)) }
     }
 
     editTarget?.let { (dayIndex, exerciseIndex) ->
@@ -316,85 +329,133 @@ private fun EditorContent(
     }
 }
 
-// ---------- elementy edytora ----------
-
-@Composable
-private fun BackIcon(onBack: () -> Unit) {
-    IconButton(onClick = onBack) {
-        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Wstecz")
-    }
-}
+// ---------- karta dnia ----------
 
 /** Długość bloku progresji: tygodnie pracy − / + (ADR-004). */
 @Composable
 private fun BlockLengthRow(blockLengthWeeks: Int, onChange: (Int) -> Unit) {
-    Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Długość bloku",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "tygodnie pracy — po nich 1 tydzień lekki",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(
-                onClick = { onChange(blockLengthWeeks - 1) },
-                enabled = blockLengthWeeks > PlanDefaults.BLOCK_WEEKS_MIN,
-            ) {
-                Text("−", style = MaterialTheme.typography.titleLarge)
-            }
-            Text(
-                text = "$blockLengthWeeks tyg.",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            IconButton(
-                onClick = { onChange(blockLengthWeeks + 1) },
-                enabled = blockLengthWeeks < PlanDefaults.BLOCK_WEEKS_MAX,
-            ) {
-                Text("+", style = MaterialTheme.typography.titleLarge)
-            }
-        }
-    }
-}
-
-@Composable
-private fun DayHeader(
-    name: String,
-    onRename: (String) -> Unit,
-    onRemove: () -> Unit,
-) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedTextField(
-            value = name,
-            onValueChange = onRename,
-            modifier = Modifier.weight(1f),
-            label = { Text("Nazwa dnia") },
-            singleLine = true,
-        )
-        IconButton(onClick = onRemove) {
-            Icon(
-                Icons.Filled.Delete,
-                contentDescription = "Usuń dzień",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Długość bloku",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
             )
+            Text(
+                text = "tygodnie pracy — po nich 1 tydzień lekki",
+                style = MaterialTheme.typography.bodySmall,
+                color = StronkTheme.colors.textDim,
+            )
+        }
+        IconButton(
+            onClick = { onChange(blockLengthWeeks - 1) },
+            enabled = blockLengthWeeks > PlanDefaults.BLOCK_WEEKS_MIN,
+        ) {
+            Text("−", style = MaterialTheme.typography.titleLarge)
+        }
+        Text(
+            text = "$blockLengthWeeks tyg.",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        IconButton(
+            onClick = { onChange(blockLengthWeeks + 1) },
+            enabled = blockLengthWeeks < PlanDefaults.BLOCK_WEEKS_MAX,
+        ) {
+            Text("+", style = MaterialTheme.typography.titleLarge)
         }
     }
 }
 
+/** Dzień planu jako jedna karta: nazwa, ćwiczenia, sugestie pokrycia, dodaj ćwiczenie. */
 @Composable
-private fun ExerciseCard(
+private fun DayCard(
+    day: EditorDayUi,
+    onRename: (String) -> Unit,
+    onRemoveDay: () -> Unit,
+    onExerciseClick: (Int) -> Unit,
+    onMoveUp: (Int) -> Unit,
+    onMoveDown: (Int) -> Unit,
+    onSubstitutes: (Int) -> Unit,
+    onDetails: (Int) -> Unit,
+    onRemoveExercise: (Int) -> Unit,
+    onAddExercise: () -> Unit,
+    onSuggestion: (MuscleGroup) -> Unit,
+) {
+    StronkCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm)) {
+            OutlinedTextField(
+                value = day.name,
+                onValueChange = onRename,
+                modifier = Modifier.weight(1f),
+                label = { Text("Nazwa dnia") },
+                singleLine = true,
+            )
+            IconButton(onClick = onRemoveDay) {
+                Icon(StronkIcons.delete, contentDescription = "Usuń dzień", tint = StronkTheme.colors.textDim)
+            }
+        }
+
+        if (day.exercises.isEmpty()) {
+            StronkNoteCard(
+                text = "Ten dzień jest jeszcze pusty — dodaj pierwsze ćwiczenie.",
+                modifier = Modifier.padding(top = StronkSpacing.sm),
+                tone = StronkTone.NEUTRAL,
+            )
+        } else {
+            Column(
+                modifier = Modifier.padding(top = StronkSpacing.sm),
+                verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
+            ) {
+                day.exercises.forEachIndexed { exerciseIndex, exercise ->
+                    ExercisePlanRow(
+                        exercise = exercise,
+                        onClick = { onExerciseClick(exerciseIndex) },
+                        onMoveUp = { onMoveUp(exerciseIndex) },
+                        onMoveDown = { onMoveDown(exerciseIndex) },
+                        onSubstitutes = { onSubstitutes(exerciseIndex) },
+                        onDetails = { onDetails(exerciseIndex) },
+                        onRemove = { onRemoveExercise(exerciseIndex) },
+                    )
+                }
+            }
+        }
+
+        if (day.missingGroups.isNotEmpty()) {
+            StronkSectionHeader(
+                title = "Sugestie",
+                modifier = Modifier.padding(top = StronkSpacing.md),
+            )
+            FlowRow(
+                modifier = Modifier.padding(top = StronkSpacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
+            ) {
+                day.missingGroups.forEach { group ->
+                    StronkChoiceChip(
+                        label = group.label,
+                        selected = false,
+                        onClick = { onSuggestion(group) },
+                        icon = MuscleIcons.forMuscle(group.representativeMuscleKey()),
+                    )
+                }
+            }
+        }
+
+        StronkGhostButton(
+            text = "Dodaj ćwiczenie",
+            onClick = onAddExercise,
+            icon = StronkIcons.add,
+            modifier = Modifier.fillMaxWidth().padding(top = StronkSpacing.md),
+        )
+    }
+}
+
+/** Wiersz ćwiczenia w dniu: miniaturka, nazwa + partia, duże serie×powtórzenia, menu akcji. */
+@Composable
+private fun ExercisePlanRow(
     exercise: EditorExerciseUi,
     onClick: () -> Unit,
     onMoveUp: () -> Unit,
@@ -403,47 +464,61 @@ private fun ExerciseCard(
     onDetails: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    val issues = PlanTexts.complianceIssues(exercise.compliance)
+    val warning = !exercise.compliance.isFullyCompliant
+    val thumbnailPath = exercise.exercise?.images?.firstOrNull()
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-    ) {
+    StronkInsetCard(onClick = onClick, contentPadding = PaddingValues(StronkSpacing.xs)) {
         Row(
-            modifier = Modifier.padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 2.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = exercise.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
+            if (thumbnailPath != null) {
+                AsyncImage(
+                    model = ExerciseRepository.IMAGES_BASE_URI + thumbnailPath,
+                    contentDescription = null,
+                    modifier = Modifier.size(52.dp).clip(MaterialTheme.shapes.medium),
                 )
-                Text(
-                    text = buildString {
-                        append(PlanTexts.targetLabel(exercise.planExercise))
-                        exercise.planExercise.startWeightKg?.let { append(" · start $it kg") }
-                        if (!exercise.planExercise.progressionEnabled) append(" · bez progresji")
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            } else {
+                StronkIconBadge(
+                    icon = exercise.exercise?.let(MuscleIcons::forExercise) ?: MuscleIcons.forMuscle(null),
+                    size = StronkIconBadgeSize.MEDIUM,
                 )
-                issues.forEach { issue ->
+            }
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = issue,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        text = exercise.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
                     )
+                    if (warning) {
+                        Icon(
+                            StronkIcons.injury,
+                            contentDescription = "Niezgodne z profilem",
+                            tint = StronkTheme.colors.warning,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
                 }
-            }
-            if (issues.isNotEmpty()) {
-                Icon(
-                    Icons.Filled.Warning,
-                    contentDescription = "Niezgodne z profilem",
-                    tint = MaterialTheme.colorScheme.error,
+                Text(
+                    text = exercise.exercise?.primaryMuscles?.firstOrNull()?.let(PlLabels::muscle)
+                        ?: "ćwiczenie spoza bazy",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StronkTheme.colors.textDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            ExerciseCardMenu(
+            Text(
+                text = PlanTexts.targetLabel(exercise.planExercise),
+                style = MaterialTheme.typography.titleLarge,
+                color = if (warning) StronkTheme.colors.warning else MaterialTheme.colorScheme.onSurface,
+            )
+            ExerciseRowMenu(
                 onMoveUp = onMoveUp,
                 onMoveDown = onMoveDown,
                 onSubstitutes = onSubstitutes,
@@ -455,7 +530,7 @@ private fun ExerciseCard(
 }
 
 @Composable
-private fun ExerciseCardMenu(
+private fun ExerciseRowMenu(
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onSubstitutes: () -> Unit,
@@ -471,7 +546,7 @@ private fun ExerciseCardMenu(
 
     Box {
         IconButton(onClick = { expanded = true }) {
-            Icon(Icons.Filled.MoreVert, contentDescription = "Więcej akcji")
+            Icon(Icons.Rounded.MoreVert, contentDescription = "Więcej akcji", tint = StronkTheme.colors.textDim)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(text = { Text("W górę") }, onClick = action(onMoveUp))
@@ -480,6 +555,42 @@ private fun ExerciseCardMenu(
             DropdownMenuItem(text = { Text("Podgląd w bazie") }, onClick = action(onDetails))
             DropdownMenuItem(text = { Text("Usuń") }, onClick = action(onRemove))
         }
+    }
+}
+
+// ---------- arkusz sugestii ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SuggestionsSheet(
+    suggestions: SuggestionsUi,
+    onChoose: (Exercise) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        StronkSectionHeader(
+            title = "Sugestie: ${suggestions.group.label}",
+            modifier = Modifier.padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.xs),
+        )
+        if (suggestions.matches.isEmpty()) {
+            StronkEmptyState(
+                icon = StronkIcons.database,
+                title = "Brak propozycji pod Twój profil",
+                description = "Dobierz ćwiczenie tej partii ręcznie z bazy.",
+            )
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
+                verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
+            ) {
+                suggestions.matches.forEach { exercise ->
+                    ExercisePickerRow(exercise = exercise, warning = false, onClick = { onChoose(exercise) })
+                }
+            }
+        }
+        Spacer(Modifier.height(StronkSpacing.lg))
     }
 }
 

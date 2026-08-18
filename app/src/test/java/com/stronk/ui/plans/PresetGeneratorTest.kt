@@ -1,11 +1,13 @@
 package com.stronk.ui.plans
 
 import com.stronk.data.Exercise
+import com.stronk.data.GoalDefaults
 import com.stronk.data.JointStress
 import com.stronk.data.MeasurementType
 import com.stronk.data.ProfileDetails
 import com.stronk.data.SetTarget
 import com.stronk.data.StressLevel
+import com.stronk.data.TrainingGoal
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -162,18 +164,19 @@ class PresetGeneratorTest {
     }
 
     @Test
-    fun `cel budowany wg typu pomiaru kandydata`() {
+    fun `cel budowany wg typu pomiaru kandydata, powtorzenia z GoalDefaults`() {
+        // reps < 12 w definicji slotu = złożone (defaultReps), reps >= 12 = akcesoryjne (accessoryReps).
         val weightReps = exercise("wr", measurementType = MeasurementType.WEIGHT_REPS)
         val reps = exercise("r", primaryMuscles = listOf("chest"), measurementType = MeasurementType.REPS)
         val time = exercise("t", primaryMuscles = listOf("abdominals"), measurementType = MeasurementType.TIME)
         val days = generatePresetDays(
             preset(PresetDay("Dzień", listOf(slot("wr", reps = 8), slot("r", reps = 12), slot("t")))),
             listOf(weightReps, reps, time),
-            ProfileDetails(),
+            ProfileDetails(), // brak celu -> GoalDefaults.FALLBACK (MASS)
         )
         val exercises = days.first().exercises
-        assertEquals(SetTarget.WeightReps(8), exercises[0].target)
-        assertEquals(SetTarget.Reps(12), exercises[1].target)
+        assertEquals(SetTarget.WeightReps(GoalDefaults.forGoal(null).defaultReps), exercises[0].target)
+        assertEquals(SetTarget.Reps(GoalDefaults.forGoal(null).accessoryReps), exercises[1].target)
         assertEquals(SetTarget.Time(PlanDefaults.DEFAULT_TIME_SECONDS), exercises[2].target)
     }
 
@@ -190,7 +193,7 @@ class PresetGeneratorTest {
     }
 
     @Test
-    fun `preset ustawia serie ze slotu i wlaczona progresje`() {
+    fun `preset ustawia serie z GoalDefaults (brak celu = fallback) i wlaczona progresje`() {
         val a = exercise("a")
         val days = generatePresetDays(
             preset(PresetDay("Dzień", listOf(slot("a", sets = 4)))),
@@ -198,9 +201,26 @@ class PresetGeneratorTest {
             ProfileDetails(),
         )
         val planExercise = days.first().exercises.single()
-        assertEquals(4, planExercise.sets)
+        assertEquals(GoalDefaults.forGoal(null).defaultSets, planExercise.sets)
         assertTrue(planExercise.progressionEnabled)
         assertNull(planExercise.startWeightKg)
+    }
+
+    @Test
+    fun `serie i powtorzenia podazaja za celem treningowym z profilu`() {
+        val compound = exercise("a") // slot reps < 12 -> złożone
+        val accessory = exercise("b", primaryMuscles = listOf("chest"))
+        val strength = ProfileDetails(goal = TrainingGoal.STRENGTH)
+        val days = generatePresetDays(
+            preset(PresetDay("Dzień", listOf(slot("a", sets = 4, reps = 8), slot("b", sets = 3, reps = 15)))),
+            listOf(compound, accessory),
+            strength,
+        )
+        val exercises = days.first().exercises
+        assertEquals(GoalDefaults.STRENGTH.defaultSets, exercises[0].sets)
+        assertEquals(SetTarget.WeightReps(GoalDefaults.STRENGTH.defaultReps), exercises[0].target)
+        assertEquals(GoalDefaults.STRENGTH.defaultSets, exercises[1].sets)
+        assertEquals(SetTarget.WeightReps(GoalDefaults.STRENGTH.accessoryReps), exercises[1].target)
     }
 
     // --- convertTarget ---

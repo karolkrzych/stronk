@@ -1,6 +1,7 @@
 package com.stronk.ui.plans
 
 import com.stronk.data.Exercise
+import com.stronk.data.GoalDefaults
 import com.stronk.data.MeasurementType
 import com.stronk.data.PlanDay
 import com.stronk.data.PlanExercise
@@ -87,9 +88,25 @@ fun resolveSlotExercise(
 }
 
 /**
+ * Slot jest "akcesoryjny" (izolowany), gdy jego autorska liczba powtórzeń
+ * w [PresetSlot.reps] jest wysoka (≥12) — reszta to ćwiczenia złożone. To jedyna
+ * rola, jaką [PresetSlot.sets]/[PresetSlot.reps] pełnią od czasu GoalDefaults:
+ * realne serie×powtórzenia generuje [GoalDefaults] wg celu z profilu ([resolveSets], [resolveReps]).
+ */
+private fun PresetSlot.isAccessory(): Boolean = reps >= 12
+
+/** Docelowa liczba serii dla dowolnego slotu presetu — wyłącznie z [GoalDefaults]. */
+private fun resolveSets(profile: ProfileDetails): Int = GoalDefaults.setsFor(profile.goal)
+
+/** Docelowa liczba powtórzeń slotu — z [GoalDefaults], rozróżniając złożone/akcesoryjne. */
+private fun resolveReps(slot: PresetSlot, profile: ProfileDetails): Int =
+    GoalDefaults.repsFor(profile.goal, accessory = slot.isAccessory())
+
+/**
  * Buduje dni planu z presetu pod profil użytkownika. Wynik trafia do edytora
  * do przejrzenia — nic nie jest zapisywane tutaj. Sloty bez żadnego
- * istniejącego kandydata są pomijane.
+ * istniejącego kandydata są pomijane. Serie×powtórzenia pochodzą z [GoalDefaults]
+ * wg celu z profilu — presety definiują tylko DOBÓR i KOLEJNOŚĆ ćwiczeń.
  */
 fun generatePresetDays(
     preset: PlanPreset,
@@ -106,8 +123,8 @@ fun generatePresetDays(
             usedIds += exercise.id
             PlanExercise(
                 exerciseId = exercise.id,
-                sets = slot.sets,
-                target = defaultTargetFor(exercise.measurementType, slot.reps),
+                sets = resolveSets(profile),
+                target = defaultTargetFor(exercise.measurementType, resolveReps(slot, profile)),
             )
         }
         PlanDay(name = day.name, exercises = exercises)

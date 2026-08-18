@@ -1,9 +1,8 @@
 package com.stronk.ui.plans
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,42 +12,37 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stronk.data.Plan
+import com.stronk.ui.components.StronkBadge
+import com.stronk.ui.components.StronkCard
+import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkFooterActions
+import com.stronk.ui.components.StronkGhostButton
+import com.stronk.ui.components.StronkIcons
+import com.stronk.ui.components.StronkNoteCard
+import com.stronk.ui.components.StronkPrimaryButton
+import com.stronk.ui.components.StronkScreenHeader
+import com.stronk.ui.components.StronkSectionHeader
+import com.stronk.ui.components.StronkTone
+import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTheme
 
 /**
- * Lista planów treningowych (moduł 3 CONCEPT): aktywne + archiwum,
- * nowy plan (od zera albo z presetu — wybór trybu w edytorze), archiwizacja.
+ * Lista planów treningowych (moduł 3, lift czytelności rundy UI/UX): aktywne +
+ * archiwum, każdy plan z JAWNYMI akcjami "Edytuj"/"Archiwizuj" (nie tylko tap
+ * w kartę), nowy plan (od zera albo z presetu — wybór trybu w edytorze).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlansScreen(
     onPlanClick: (planId: String) -> Unit,
@@ -58,13 +52,18 @@ fun PlansScreen(
     val state by viewModel.uiState.collectAsState()
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Plany") }) },
-        floatingActionButton = {
-            if (!state.loading && state.activePlans.isNotEmpty()) {
-                ExtendedFloatingActionButton(
+        bottomBar = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(StronkSpacing.screen),
+            ) {
+                StronkPrimaryButton(
+                    text = "Nowy plan",
                     onClick = onNewPlan,
-                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                    text = { Text("Nowy plan") },
+                    icon = StronkIcons.add,
+                    enabled = !state.loading,
                 )
             }
         },
@@ -73,57 +72,66 @@ fun PlansScreen(
             state.loading -> Box(
                 modifier = Modifier.padding(innerPadding).fillMaxSize(),
                 contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
 
-            state.activePlans.isEmpty() && state.archivedPlans.isEmpty() -> NoPlansYet(
-                modifier = Modifier.padding(innerPadding),
-                onNewPlan = onNewPlan,
-            )
+            state.activePlans.isEmpty() && state.archivedPlans.isEmpty() -> Box(
+                modifier = Modifier.padding(innerPadding).fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                StronkEmptyState(
+                    icon = StronkIcons.plans,
+                    title = "Zero planów",
+                    description = "Złóż plan ręcznie z bazy ćwiczeń albo zacznij od gotowego " +
+                        "presetu dopasowanego do Twojego sprzętu, ograniczeń i celu.",
+                    actionLabel = "Stwórz plan",
+                    onAction = onNewPlan,
+                )
+            }
 
             else -> LazyColumn(
                 modifier = Modifier.padding(innerPadding).fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
+                verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
             ) {
+                item {
+                    StronkScreenHeader(
+                        title = "Plany",
+                        meta = "${state.activePlans.size} aktywne",
+                    )
+                }
                 if (state.activePlans.isEmpty()) {
                     item {
-                        Text(
+                        StronkNoteCard(
                             text = "Brak aktywnych planów — stwórz nowy albo przywróć z archiwum.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp),
+                            tone = StronkTone.NEUTRAL,
                         )
                     }
                 }
                 items(state.activePlans, key = { it.id }) { plan ->
                     PlanCard(
                         plan = plan,
-                        menuLabel = "Archiwizuj",
-                        onMenuAction = { viewModel.setArchived(plan, true) },
-                        onClick = { onPlanClick(plan.id) },
+                        active = true,
+                        onEdit = { onPlanClick(plan.id) },
+                        onArchiveAction = { viewModel.setArchived(plan, true) },
                     )
                 }
                 if (state.archivedPlans.isNotEmpty()) {
                     item {
-                        Text(
-                            text = "ARCHIWUM",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+                        StronkSectionHeader(
+                            title = "Archiwum",
+                            modifier = Modifier.padding(top = StronkSpacing.xs),
                         )
                     }
                     items(state.archivedPlans, key = { it.id }) { plan ->
                         PlanCard(
                             plan = plan,
-                            menuLabel = "Przywróć",
-                            onMenuAction = { viewModel.setArchived(plan, false) },
-                            onClick = { onPlanClick(plan.id) },
-                            dimmed = true,
+                            active = false,
+                            onEdit = { onPlanClick(plan.id) },
+                            onArchiveAction = { viewModel.setArchived(plan, false) },
                         )
                     }
                 }
-                // Miejsce na FAB, żeby nie zasłaniał ostatniej karty.
-                item { Spacer(Modifier.height(72.dp)) }
+                item { Spacer(Modifier.height(StronkSpacing.xxl)) }
             }
         }
     }
@@ -132,87 +140,43 @@ fun PlansScreen(
 @Composable
 private fun PlanCard(
     plan: Plan,
-    menuLabel: String,
-    onMenuAction: () -> Unit,
-    onClick: () -> Unit,
-    dimmed: Boolean = false,
+    active: Boolean,
+    onEdit: () -> Unit,
+    onArchiveAction: () -> Unit,
 ) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = plan.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (dimmed) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                )
-                Text(
-                    text = PlanTexts.planSummary(plan),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            PlanCardMenu(menuLabel = menuLabel, onMenuAction = onMenuAction)
-        }
-    }
-}
-
-@Composable
-private fun PlanCardMenu(menuLabel: String, onMenuAction: () -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(Icons.Filled.MoreVert, contentDescription = "Więcej akcji")
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text(menuLabel) },
-                onClick = {
-                    expanded = false
-                    onMenuAction()
-                },
+    StronkCard(onClick = onEdit) {
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm)) {
+            Text(
+                text = plan.name,
+                style = MaterialTheme.typography.titleLarge,
+                color = if (active) MaterialTheme.colorScheme.onSurface else StronkTheme.colors.textDim,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
+            if (active) {
+                StronkBadge(text = "aktywny", tone = StronkTone.SUCCESS, icon = StronkIcons.done)
+            }
         }
-    }
-}
-
-@Composable
-private fun NoPlansYet(modifier: Modifier, onNewPlan: () -> Unit) {
-    Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
         Text(
-            text = "Zero planów",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
+            text = PlanTexts.planSummary(plan),
+            style = MaterialTheme.typography.bodySmall,
+            color = StronkTheme.colors.textDim,
+            modifier = Modifier.padding(top = StronkSpacing.xxs),
         )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = "Złóż plan ręcznie z bazy ćwiczeń albo zacznij od gotowego " +
-                "presetu dopasowanego do Twojego sprzętu i ograniczeń.",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(16.dp))
-        Button(
-            onClick = onNewPlan,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(16.dp),
-        ) {
-            Text("Stwórz plan", style = MaterialTheme.typography.titleMedium)
+        StronkFooterActions(Modifier.padding(top = StronkSpacing.md)) {
+            StronkGhostButton(
+                text = "Edytuj",
+                onClick = onEdit,
+                icon = StronkIcons.edit,
+                modifier = Modifier.weight(1f),
+            )
+            StronkGhostButton(
+                text = if (active) "Archiwizuj" else "Przywróć",
+                onClick = onArchiveAction,
+                icon = if (active) StronkIcons.restDay else StronkIcons.start,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

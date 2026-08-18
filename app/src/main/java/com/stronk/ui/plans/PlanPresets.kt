@@ -44,11 +44,18 @@ data class PresetSlot(
     val label: String,
     /** exerciseId z bundlowanej bazy, od najbardziej preferowanego. */
     val candidateIds: List<String>,
-    /** Startowa liczba serii. */
+    /**
+     * Autorska liczba serii — od [generatePresetDays] NIE trafia już wprost do
+     * planu (realne serie pochodzą z [com.stronk.data.GoalDefaults] wg celu
+     * z profilu); zostaje jako walidowana wartość startowa i dokumentacja intencji.
+     */
     val sets: Int,
     /**
-     * Startowy cel powtórzeń; gdy wybrany kandydat mierzy czas/dystans,
-     * cel powstaje z wartości domyślnych [PlanDefaults].
+     * Autorska liczba powtórzeń — jak [sets], realny cel liczy [generatePresetDays]
+     * z [com.stronk.data.GoalDefaults]. Wartość ≥12 tutaj oznacza slot akcesoryjny/
+     * izolowany (dostaje `accessoryReps` zamiast `defaultReps` — patrz `isAccessory()`
+     * w `PresetGenerator.kt`); typy czas/dystans i tak dostają wartości domyślne
+     * z [PlanDefaults].
      */
     val reps: Int,
 )

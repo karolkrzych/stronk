@@ -1,6 +1,5 @@
 package com.stronk.ui.plans
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,25 +13,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,7 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.stronk.data.Exercise
@@ -52,6 +44,16 @@ import com.stronk.data.SubstituteMatch
 import com.stronk.data.filterExercises
 import com.stronk.data.isCompliant
 import com.stronk.ui.PlLabels
+import com.stronk.ui.components.MuscleIcons
+import com.stronk.ui.components.StronkChoiceChip
+import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkIconBadge
+import com.stronk.ui.components.StronkIconBadgeSize
+import com.stronk.ui.components.StronkIcons
+import com.stronk.ui.components.StronkInsetCard
+import com.stronk.ui.components.StronkSectionHeader
+import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTheme
 
 /**
  * Picker ćwiczeń do planu — pełnoekranowa warstwa edytora (wzorzec listy
@@ -59,7 +61,6 @@ import com.stronk.ui.PlLabels
  * bez diakrytyków + filtr partii; ćwiczenia niezgodne z profilem są flagowane,
  * ikona ostrzeżenia otwiera zamienniki.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ExercisePicker(
     exercises: List<Exercise>,
@@ -78,64 +79,61 @@ internal fun ExercisePicker(
         filterExercises(exercises, query, ExerciseFilters(muscle = muscle))
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Dodaj ćwiczenie") },
-                navigationIcon = {
-                    IconButton(onClick = onClose) {
-                        Icon(Icons.Filled.Close, contentDescription = "Zamknij")
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+        EditorHeader(
+            title = "Dodaj ćwiczenie",
+            onBack = onClose,
+            modifier = Modifier.padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
+        )
+        Column(Modifier.padding(horizontal = StronkSpacing.screen)) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Szukaj ćwiczenia…") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                leadingIcon = { Icon(StronkIcons.database, contentDescription = null) },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
                         IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Wyczyść")
+                            Icon(Icons.Rounded.Close, contentDescription = "Wyczyść")
                         }
                     }
                 },
+                shape = MaterialTheme.shapes.medium,
                 singleLine = true,
             )
-            Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                MuscleFilterChip(
-                    selected = muscle,
-                    options = muscleOptions,
-                    onSelect = { muscle = it },
+            MuscleFilterChip(
+                selected = muscle,
+                options = muscleOptions,
+                onSelect = { muscle = it },
+                modifier = Modifier.padding(top = StronkSpacing.sm),
+            )
+        }
+        if (filtered.isEmpty()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                StronkEmptyState(
+                    icon = StronkIcons.database,
+                    title = "Brak wyników",
+                    description = "Spróbuj innego słowa albo wyczyść filtr partii.",
                 )
             }
-            if (filtered.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Brak wyników",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(
+                    horizontal = StronkSpacing.screen,
+                    vertical = StronkSpacing.sm,
+                ),
+                verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
+            ) {
+                items(filtered, key = { it.id }) { exercise ->
+                    val compliance = remember(exercise.id, profile) { isCompliant(exercise, profile) }
+                    ExercisePickerRow(
+                        exercise = exercise,
+                        warning = !compliance.isFullyCompliant,
+                        onClick = { onPick(exercise) },
+                        onWarningClick = { onShowSubstitutes(exercise) },
                     )
-                }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(filtered, key = { it.id }) { exercise ->
-                        PickerRow(
-                            exercise = exercise,
-                            profile = profile,
-                            onPick = { onPick(exercise) },
-                            onShowSubstitutes = { onShowSubstitutes(exercise) },
-                        )
-                    }
                 }
             }
         }
@@ -147,14 +145,15 @@ private fun MuscleFilterChip(
     selected: String?,
     options: List<String>,
     onSelect: (String?) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
-        FilterChip(
+    Box(modifier) {
+        StronkChoiceChip(
+            label = selected?.let(PlLabels::muscle) ?: "Partia",
             selected = selected != null,
             onClick = { expanded = true },
-            label = { Text(selected?.let(PlLabels::muscle) ?: "Partia") },
-            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+            icon = Icons.Rounded.ArrowDropDown,
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             if (selected != null) {
@@ -179,52 +178,61 @@ private fun MuscleFilterChip(
     }
 }
 
+/**
+ * Wiersz ćwiczenia w języku design systemu: miniaturka, nazwa + partie,
+ * ostrzeżenie o naruszeniu profilu jako ikona otwierająca zamienniki.
+ * Współdzielony przez picker i arkusz sugestii ([SuggestionsSheet]).
+ */
 @Composable
-private fun PickerRow(
+internal fun ExercisePickerRow(
     exercise: Exercise,
-    profile: ProfileDetails,
-    onPick: () -> Unit,
-    onShowSubstitutes: () -> Unit,
+    warning: Boolean,
+    onClick: () -> Unit,
+    onWarningClick: (() -> Unit)? = null,
 ) {
-    val compliance = remember(exercise.id, profile) { isCompliant(exercise, profile) }
-    val issues = remember(compliance) { PlanTexts.complianceIssues(compliance) }
-
-    ListItem(
-        modifier = Modifier.clickable(onClick = onPick),
-        leadingContent = {
-            AsyncImage(
-                model = ExerciseRepository.IMAGES_BASE_URI + exercise.images.firstOrNull().orEmpty(),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-            )
-        },
-        headlineContent = { Text(exercise.namePl) },
-        supportingContent = {
-            Column {
-                Text(exercise.primaryMuscles.joinToString { PlLabels.muscle(it) })
-                issues.forEach { issue ->
-                    Text(
-                        text = issue,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
+    val thumbnail = exercise.images.firstOrNull()
+    StronkInsetCard(onClick = onClick, contentPadding = PaddingValues(StronkSpacing.xs)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+        ) {
+            if (thumbnail != null) {
+                AsyncImage(
+                    model = ExerciseRepository.IMAGES_BASE_URI + thumbnail,
+                    contentDescription = null,
+                    modifier = Modifier.size(52.dp).clip(MaterialTheme.shapes.medium),
+                )
+            } else {
+                StronkIconBadge(icon = MuscleIcons.forExercise(exercise), size = StronkIconBadgeSize.MEDIUM)
             }
-        },
-        trailingContent = {
-            if (!compliance.isFullyCompliant) {
-                IconButton(onClick = onShowSubstitutes) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = exercise.namePl,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = exercise.primaryMuscles.joinToString { PlLabels.muscle(it) },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StronkTheme.colors.textDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (warning) {
+                IconButton(onClick = { onWarningClick?.invoke() }, enabled = onWarningClick != null) {
                     Icon(
-                        Icons.Filled.Warning,
-                        contentDescription = "Pokaż zamienniki",
-                        tint = MaterialTheme.colorScheme.error,
+                        StronkIcons.injury,
+                        contentDescription = "Narusza ograniczenia z profilu — pokaż zamienniki",
+                        tint = StronkTheme.colors.warning,
                     )
                 }
             }
-        },
-    )
+        }
+    }
 }
 
 /**
@@ -240,69 +248,86 @@ internal fun SubstitutesSheet(
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Text(
-            text = "Zamienniki: ${substitutes.forExercise.namePl}",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        StronkSectionHeader(
+            title = "Zamienniki: ${substitutes.forExercise.namePl}",
+            modifier = Modifier.padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.xs),
         )
         if (substitutes.matches.isEmpty()) {
-            Text(
-                text = "Brak sensownych zamienników pod Twój sprzęt.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+            StronkEmptyState(
+                icon = StronkIcons.swap,
+                title = "Brak sensownych zamienników",
+                description = "Żadne ćwiczenie w bazie nie pasuje do Twojego sprzętu.",
             )
         } else {
-            LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
-                items(substitutes.matches, key = { it.exercise.id }) { match ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
+                verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
+            ) {
+                substitutes.matches.forEach { match ->
                     SubstituteRow(match = match, onChoose = { onChoose(match) })
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(StronkSpacing.lg))
     }
 }
 
 @Composable
 private fun SubstituteRow(match: SubstituteMatch, onChoose: () -> Unit) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onChoose),
-        leadingContent = {
-            AsyncImage(
-                model = ExerciseRepository.IMAGES_BASE_URI +
-                    match.exercise.images.firstOrNull().orEmpty(),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-            )
-        },
-        headlineContent = { Text(match.exercise.namePl) },
-        supportingContent = {
-            Column {
-                Text(
-                    match.exercise.primaryMuscles.joinToString { PlLabels.muscle(it) } +
-                        " · " + PlLabels.equipment(match.exercise.equipment),
+    val exercise = match.exercise
+    val thumbnail = exercise.images.firstOrNull()
+    StronkInsetCard(onClick = onChoose, contentPadding = PaddingValues(StronkSpacing.xs)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+        ) {
+            if (thumbnail != null) {
+                AsyncImage(
+                    model = ExerciseRepository.IMAGES_BASE_URI + thumbnail,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp).clip(MaterialTheme.shapes.medium),
                 )
-                match.warnings.forEach { violation ->
+            } else {
+                StronkIconBadge(icon = MuscleIcons.forExercise(exercise), size = StronkIconBadgeSize.MEDIUM)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = exercise.namePl,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = exercise.primaryMuscles.joinToString { PlLabels.muscle(it) } +
+                        " · " + PlLabels.equipment(exercise.equipment),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StronkTheme.colors.textDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (match.warnings.isNotEmpty()) {
                     Text(
-                        text = "obciąża: ${PlLabels.joint(violation.joint)} " +
-                            "(${PlanTexts.stressLevel(violation.exerciseStress)})",
+                        text = match.warnings.joinToString {
+                            "${PlLabels.joint(it.joint)} (${PlanTexts.stressLevel(it.exerciseStress)})"
+                        },
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = StronkTheme.colors.warning,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-        },
-        trailingContent = {
             if (match.warnings.isNotEmpty()) {
                 Icon(
-                    Icons.Filled.Warning,
+                    StronkIcons.injury,
                     contentDescription = "Narusza ograniczenia z profilu",
-                    tint = MaterialTheme.colorScheme.error,
+                    tint = StronkTheme.colors.warning,
                 )
             }
-        },
-    )
+        }
+    }
 }

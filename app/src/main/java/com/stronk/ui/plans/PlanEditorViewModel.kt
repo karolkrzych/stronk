@@ -9,6 +9,7 @@ import com.stronk.StronkApplication
 import com.stronk.data.ComplianceResult
 import com.stronk.data.Exercise
 import com.stronk.data.ExerciseRepository
+import com.stronk.data.GoalDefaults
 import com.stronk.data.MeasurementType
 import com.stronk.data.Plan
 import com.stronk.data.PlanDay
@@ -43,6 +44,15 @@ data class EditorExerciseUi(
 data class EditorDayUi(
     val name: String,
     val exercises: List<EditorExerciseUi>,
+    /** Duże partie nieobecne w dniu ([missingMajorGroups]) — sekcja "Sugestie". */
+    val missingGroups: List<MuscleGroup> = emptyList(),
+)
+
+/** Sugestie ćwiczeń dla brakującej partii w dniu [dayIndex]; tap dodaje wybrane do dnia. */
+data class SuggestionsUi(
+    val group: MuscleGroup,
+    val dayIndex: Int,
+    val matches: List<Exercise>,
 )
 
 /**
@@ -73,6 +83,7 @@ data class PlanEditorUiState(
     /** Dzień, dla którego otwarty jest picker; null = picker zamknięty. */
     val pickerDayIndex: Int? = null,
     val substitutes: SubstitutesUi? = null,
+    val suggestions: SuggestionsUi? = null,
     val canSave: Boolean = false,
     /** true po zleceniu zapisu — ekran woła onBack. */
     val saved: Boolean = false,
@@ -96,10 +107,11 @@ class PlanEditorViewModel(
         val started: Boolean = false,
     )
 
-    /** Warstwy UI ponad edytorem (picker, arkusz zamienników). */
+    /** Warstwy UI ponad edytorem (picker, arkusz zamienników, arkusz sugestii). */
     private data class Overlay(
         val pickerDayIndex: Int? = null,
         val substitutes: SubstitutesUi? = null,
+        val suggestions: SuggestionsUi? = null,
     )
 
     private val draft = MutableStateFlow<Draft?>(null)
@@ -123,23 +135,26 @@ class PlanEditorViewModel(
                 name = d.name,
                 blockLengthWeeks = d.blockLengthWeeks,
                 days = d.days.map { day ->
+                    val dayExercises = day.exercises.map { planExercise ->
+                        val exercise = byId[planExercise.exerciseId]
+                        EditorExerciseUi(
+                            planExercise = planExercise,
+                            exercise = exercise,
+                            compliance = exercise?.let { isCompliant(it, currentProfile) }
+                                ?: ComplianceResult(emptyList(), true),
+                        )
+                    }
                     EditorDayUi(
                         name = day.name,
-                        exercises = day.exercises.map { planExercise ->
-                            val exercise = byId[planExercise.exerciseId]
-                            EditorExerciseUi(
-                                planExercise = planExercise,
-                                exercise = exercise,
-                                compliance = exercise?.let { isCompliant(it, currentProfile) }
-                                    ?: ComplianceResult(emptyList(), true),
-                            )
-                        },
+                        exercises = dayExercises,
+                        missingGroups = missingMajorGroups(dayExercises.mapNotNull { it.exercise }),
                     )
                 },
                 allExercises = all,
                 profile = currentProfile,
                 pickerDayIndex = ov.pickerDayIndex,
                 substitutes = ov.substitutes,
+                suggestions = ov.suggestions,
                 canSave = d.started && d.name.isNotBlank() &&
                     d.days.any { it.exercises.isNotEmpty() },
                 saved = isSaved,
@@ -290,6 +305,28 @@ class PlanEditorViewModel(
         overlay.value = overlay.value.copy(substitutes = null)
     }
 
+    // ---------- sugestie pokrycia partii ----------
+
+    /** Otwiera arkusz sugestii dla brakującej [group] w dniu [dayIndex]. */
+    fun openSuggestions(dayIndex: Int, group: MuscleGroup) {
+        val all = allExercises.value ?: return
+        val day = draft.value?.days?.getOrNull(dayIndex) ?: return
+        val excludeIds = day.exercises.map { it.exerciseId }.toSet()
+        val matches = suggestExercisesForGroup(group, all, profile.value, excludeIds)
+        overlay.value = overlay.value.copy(suggestions = SuggestionsUi(group, dayIndex, matches))
+    }
+
+    fun closeSuggestions() {
+        overlay.value = overlay.value.copy(suggestions = null)
+    }
+
+    /** Dodaje wybraną sugestię do dnia i zamyka arkusz. */
+    fun pickSuggestion(exercise: Exercise) {
+        val suggestions = overlay.value.suggestions ?: return
+        addExercise(suggestions.dayIndex, exercise)
+        overlay.value = overlay.value.copy(suggestions = null)
+    }
+
     fun chooseSubstitute(match: SubstituteMatch) {
         val substitutes = overlay.value.substitutes ?: return
         val replacement = match.exercise
@@ -343,12 +380,14 @@ class PlanEditorViewModel(
 
     // ---------- pomocnicze ----------
 
+    /** Prefill serii×powtórzeń nowego ćwiczenia z [GoalDefaults] wg celu z profilu. */
     private fun addExercise(dayIndex: Int, exercise: Exercise) = updateDay(dayIndex) { day ->
+        val goal = profile.value.goal
         day.copy(
             exercises = day.exercises + PlanExercise(
                 exerciseId = exercise.id,
-                sets = PlanDefaults.DEFAULT_SETS,
-                target = defaultTargetFor(exercise.measurementType),
+                sets = GoalDefaults.setsFor(goal),
+                target = defaultTargetFor(exercise.measurementType, GoalDefaults.repsFor(goal)),
             ),
         )
     }
