@@ -1,13 +1,15 @@
 package com.stronk.ui.list
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,23 +17,19 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -41,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -48,6 +47,14 @@ import com.stronk.data.Exercise
 import com.stronk.data.ExerciseFilters
 import com.stronk.data.ExerciseRepository
 import com.stronk.ui.PlLabels
+import com.stronk.ui.components.StronkBadge
+import com.stronk.ui.components.StronkChoiceChip
+import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkIcons
+import com.stronk.ui.components.StronkScreenHeader
+import com.stronk.ui.components.StronkTone
+import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTheme
 
 /** Ekran 1: przeszukiwalna, filtrowalna lista wszystkich ćwiczeń. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,18 +65,19 @@ fun ExerciseListScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("Ćwiczenia") }) },
-    ) { innerPadding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            SearchField(
-                query = state.query,
-                onQueryChange = viewModel::onQueryChange,
-            )
-            FilterChipsRow(
-                state = state,
-                onFiltersChange = viewModel::onFiltersChange,
-            )
+            Column(modifier = Modifier.padding(horizontal = StronkSpacing.screen)) {
+                Spacer(Modifier.height(StronkSpacing.sm))
+                StronkScreenHeader(
+                    title = "Baza",
+                    meta = if (state.totalCount > 0) "${state.totalCount} ćwiczeń" else null,
+                )
+                Spacer(Modifier.height(StronkSpacing.sm))
+                SearchField(query = state.query, onQueryChange = viewModel::onQueryChange)
+                Spacer(Modifier.height(StronkSpacing.xs))
+            }
+            FilterChipsRow(state = state, onFiltersChange = viewModel::onFiltersChange)
             when {
                 state.loading -> Box(
                     modifier = Modifier.fillMaxSize(),
@@ -80,14 +88,23 @@ fun ExerciseListScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "Brak wyników",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    StronkEmptyState(
+                        icon = StronkIcons.database,
+                        title = "Brak wyników",
+                        description = "Zmień filtry albo wyszukiwane hasło.",
                     )
                 }
 
-                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = StronkSpacing.screen,
+                        end = StronkSpacing.screen,
+                        top = StronkSpacing.xxs,
+                        bottom = StronkSpacing.xxl,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
+                ) {
                     items(state.exercises, key = { it.id }) { exercise ->
                         ExerciseRow(exercise = exercise, onClick = { onExerciseClick(exercise.id) })
                     }
@@ -102,19 +119,18 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth(),
         placeholder = { Text("Szukaj ćwiczenia…") },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
         trailingIcon = {
             if (query.isNotEmpty()) {
                 IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Default.Close, contentDescription = "Wyczyść")
+                    Icon(Icons.Rounded.Close, contentDescription = "Wyczyść")
                 }
             }
         },
         singleLine = true,
+        shape = MaterialTheme.shapes.medium,
     )
 }
 
@@ -125,8 +141,8 @@ private fun FilterChipsRow(
 ) {
     val filters = state.filters
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = StronkSpacing.screen, vertical = StronkSpacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
     ) {
         item {
             FilterDropdownChip(
@@ -167,7 +183,7 @@ private fun FilterChipsRow(
     }
 }
 
-/** Chip filtra otwierający menu z opcjami; wybrana opcja podświetla chip. */
+/** Chip filtra otwierający menu z opcjami; wybrana opcja podświetla chip (bez zmiany szerokości). */
 @Composable
 private fun FilterDropdownChip(
     label: String,
@@ -178,11 +194,10 @@ private fun FilterDropdownChip(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        FilterChip(
+        StronkChoiceChip(
+            label = selectedValue?.let(optionLabel) ?: label,
             selected = selectedValue != null,
             onClick = { expanded = true },
-            label = { Text(selectedValue?.let(optionLabel) ?: label) },
-            trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) },
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             if (selectedValue != null) {
@@ -207,31 +222,48 @@ private fun FilterDropdownChip(
     }
 }
 
+/** Wiersz ćwiczenia (mocki: `.ex-row`, powiększony) — duża miniaturka, nazwa + partia, badge HIGH. */
 @Composable
 private fun ExerciseRow(exercise: Exercise, onClick: () -> Unit) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        leadingContent = {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(StronkSpacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+        ) {
             AsyncImage(
                 model = ExerciseRepository.IMAGES_BASE_URI + exercise.images.firstOrNull().orEmpty(),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(13.dp)),
             )
-        },
-        headlineContent = { Text(exercise.namePl) },
-        supportingContent = {
-            Text(exercise.primaryMuscles.joinToString { PlLabels.muscle(it) })
-        },
-        trailingContent = {
-            if (exercise.hasHighJointStress) {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = "Wysokie obciążenie stawów",
-                    tint = MaterialTheme.colorScheme.error,
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = exercise.namePl,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = exercise.primaryMuscles.joinToString { PlLabels.muscle(it) },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StronkTheme.colors.textDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
-        },
-    )
+            if (exercise.hasHighJointStress) {
+                StronkBadge(text = "HIGH", tone = StronkTone.WARNING, icon = StronkIcons.injury)
+            }
+        }
+    }
 }

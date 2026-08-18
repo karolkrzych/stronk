@@ -29,14 +29,24 @@ data class ExerciseSessionUi(
     val hasPr: Boolean,
 )
 
+/** Jeden rekord osobisty do karty/wiersza — pola osobno, żeby UI mógł je złożyć w komponent. */
+data class ExercisePrRowUi(
+    /** Nazwa rodzaju rekordu, np. "Najcięższa seria". */
+    val kindLabel: String,
+    /** Wartość rekordu, np. "80 kg". */
+    val valueLabel: String,
+    /** Data ustanowienia, np. "wtorek, 18 sierpnia". */
+    val dateLabel: String,
+)
+
 /** Stan ekranu wykresu progresu jednego ćwiczenia. */
 data class ExerciseProgressUiState(
     val loading: Boolean = true,
     val exerciseName: String = "",
     /** false, gdy ćwiczenie nie ma jeszcze żadnej serii roboczej w historii. */
     val hasHistory: Boolean = false,
-    /** Rekordy z datami, np. "Najcięższa seria: 80 kg · wtorek, 18 sierpnia". */
-    val prLabels: List<String> = emptyList(),
+    /** Rekordy osobiste tego ćwiczenia, w kolejności priorytetu. */
+    val prRows: List<ExercisePrRowUi> = emptyList(),
     /** Metryki dostępne dla tego ćwiczenia (przełącznik, gdy więcej niż jedna). */
     val availableMetrics: List<ChartMetric> = emptyList(),
     val selectedMetric: ChartMetric? = null,
@@ -95,13 +105,15 @@ class ExerciseProgressViewModel(
             loading = false,
             exerciseName = exercise?.namePl ?: exerciseId,
             hasHistory = workouts.isNotEmpty(),
-            prLabels = records
+            prRows = records
                 .sortedBy { PR_KIND_PRIORITY.indexOf(it.kind) }
                 .map { record ->
-                    val kindLabel = ProgressFormat.prKindLabel(record.kind)
-                        .replaceFirstChar { it.uppercase() }
-                    "$kindLabel: ${ProgressFormat.prValue(record.kind, record.value)} · " +
-                        ProgressFormat.date(record.achievedAt)
+                    ExercisePrRowUi(
+                        kindLabel = ProgressFormat.prKindLabel(record.kind)
+                            .replaceFirstChar { it.uppercase() },
+                        valueLabel = ProgressFormat.prValue(record.kind, record.value),
+                        dateLabel = ProgressFormat.date(record.achievedAt),
+                    )
                 },
             availableMetrics = available,
             selectedMetric = metric,

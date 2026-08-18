@@ -30,6 +30,8 @@ data class SetRowUi(
 data class WorkoutExerciseUi(
     val exerciseId: String,
     val name: String,
+    /** Klucz partii głównej z datasetu (do doboru ikony) — null, gdy nieznane. */
+    val primaryMuscle: String?,
     val sets: List<SetRowUi>,
 )
 
@@ -40,8 +42,12 @@ data class WorkoutHistoryUi(
     val dateLabel: String,
     /** Np. "Nogi · Full Body 3d" albo "Trening" gdy bez planu. */
     val title: String,
-    /** Np. "5 ćwiczeń · 15 serii · 3 250 kg". */
-    val summaryLabel: String,
+    /** Liczba ćwiczeń w treningu — hero-liczba karty. */
+    val exercisesCount: Int,
+    /** Liczba serii roboczych — hero-liczba karty. */
+    val workingSetsCount: Int,
+    /** Objętość treningu w kg; 0, gdy trening bez serii WEIGHT_REPS. */
+    val volumeKg: Double,
     /** Rekordy ustanowione w tym treningu (niepuste tylko dla najnowszego). */
     val prLabels: List<String>,
     val exercises: List<WorkoutExerciseUi>,
@@ -51,6 +57,8 @@ data class WorkoutHistoryUi(
 data class ExerciseHistoryUi(
     val exerciseId: String,
     val name: String,
+    /** Klucz partii głównej z datasetu (do doboru ikony) — null, gdy nieznane. */
+    val primaryMuscle: String?,
     /** Np. "czworogłowe uda · 6 treningów". */
     val subtitleLabel: String,
     /** Główny rekord, np. "najcięższa seria: 80 kg"; null gdy brak rekordów. */
@@ -138,20 +146,15 @@ class ProgressViewModel(
                     plan != null -> plan.name
                     else -> "Trening"
                 },
-                summaryLabel = buildString {
-                    append(ProgressFormat.exercisesCount(workout.exerciseIds.size))
-                    append(" · ")
-                    append(ProgressFormat.setsCount(workingCount))
-                    if (volume > 0) {
-                        append(" · ")
-                        append(ProgressFormat.volume(volume))
-                    }
-                },
+                exercisesCount = workout.exerciseIds.size,
+                workingSetsCount = workingCount,
+                volumeKg = volume,
                 prLabels = if (workout.id == latestId) celebrationLabels else emptyList(),
                 exercises = workout.sets.groupBy { it.exerciseId }.map { (id, sets) ->
                     WorkoutExerciseUi(
                         exerciseId = id,
                         name = exerciseName(id),
+                        primaryMuscle = exercises[id]?.primaryMuscles?.firstOrNull(),
                         sets = sets
                             .sortedWith(compareBy({ !it.isWarmup }, { it.setNumber }))
                             .map { SetRowUi(ProgressFormat.setLabel(it), it.isWarmup) },
@@ -175,6 +178,7 @@ class ProgressViewModel(
                 ExerciseHistoryUi(
                     exerciseId = row.exerciseId,
                     name = exerciseName(row.exerciseId),
+                    primaryMuscle = exercises[row.exerciseId]?.primaryMuscles?.firstOrNull(),
                     subtitleLabel = listOfNotNull(
                         exercises[row.exerciseId]?.primaryMuscles?.firstOrNull()
                             ?.let { PlLabels.muscle(it) },

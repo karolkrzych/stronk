@@ -1,6 +1,5 @@
 package com.stronk.ui.progress
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,31 +7,19 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -41,13 +28,27 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.stronk.ui.components.MuscleIcons
+import com.stronk.ui.components.StronkBadge
+import com.stronk.ui.components.StronkCard
+import com.stronk.ui.components.StronkChoiceChip
+import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkIconBadge
+import com.stronk.ui.components.StronkIconBadgeSize
+import com.stronk.ui.components.StronkIcons
+import com.stronk.ui.components.StronkListRow
+import com.stronk.ui.components.StronkScreenHeader
+import com.stronk.ui.components.StronkSectionHeader
+import com.stronk.ui.components.StronkStat
+import com.stronk.ui.components.StronkStatRow
+import com.stronk.ui.components.StronkTone
+import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTheme
 
 /**
- * Progres (moduł 6 CONCEPT): dziennik treningów z rozwijanymi szczegółami,
+ * Progres (moduł 6 CONCEPT): dziennik treningów z rozwijanymi kartami,
  * lista ćwiczeń z historią (wejście w wykres) i rekordy osobiste z celebracją
  * nowych PR — bez gamifikacji ponad to.
  *
@@ -63,21 +64,14 @@ fun ProgressScreen(
     val state by viewModel.uiState.collectAsState()
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("Progres") }) },
-    ) { innerPadding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("Historia") },
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text("Ćwiczenia") },
-                )
+            Column(modifier = Modifier.padding(horizontal = StronkSpacing.screen)) {
+                Spacer(Modifier.height(StronkSpacing.sm))
+                StronkScreenHeader(title = "Progres")
+                Spacer(Modifier.height(StronkSpacing.sm))
+                ProgressTabRow(selectedTab = selectedTab, onSelect = { selectedTab = it })
+                Spacer(Modifier.height(StronkSpacing.xs))
             }
             when {
                 state.loading -> Box(
@@ -97,6 +91,14 @@ fun ProgressScreen(
     }
 }
 
+@Composable
+private fun ProgressTabRow(selectedTab: Int, onSelect: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs)) {
+        StronkChoiceChip(label = "Historia", selected = selectedTab == 0, onClick = { onSelect(0) })
+        StronkChoiceChip(label = "Ćwiczenia", selected = selectedTab == 1, onClick = { onSelect(1) })
+    }
+}
+
 // --- Zakładka: dziennik treningów ---
 
 @Composable
@@ -106,19 +108,27 @@ private fun HistoryTab(
     onExerciseClick: (exerciseId: String) -> Unit,
 ) {
     if (state.history.isEmpty()) {
-        EmptyState(
-            title = "Brak treningów",
-            message = "Dziennik i rekordy pojawią się po pierwszym zapisanym treningu.",
-        )
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            StronkEmptyState(
+                icon = StronkIcons.progress,
+                title = "Brak treningów",
+                description = "Dziennik i rekordy pojawią się po pierwszym zapisanym treningu.",
+            )
+        }
         return
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(
+            start = StronkSpacing.screen,
+            end = StronkSpacing.screen,
+            top = StronkSpacing.xs,
+            bottom = StronkSpacing.xxl,
+        ),
+        verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
     ) {
         if (state.celebrationLabels.isNotEmpty()) {
-            item(key = "celebration") { CelebrationBanner(state.celebrationLabels) }
+            item(key = "celebration") { CelebrationCard(state.celebrationLabels) }
         }
         items(state.history, key = { it.workoutId }) { item ->
             WorkoutHistoryCard(
@@ -131,34 +141,24 @@ private fun HistoryTab(
     }
 }
 
-/** Baner celebracji nowych rekordów z ostatniego treningu. */
+/** Baner celebracji nowych rekordów z ostatniego treningu (focal point ekranu, gdy obecny). */
 @Composable
-private fun CelebrationBanner(labels: List<String>) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(modifier = Modifier.padding(14.dp)) {
-            Icon(
-                Icons.Filled.Star,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.size(22.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-            Column {
+private fun CelebrationCard(labels: List<String>) {
+    StronkCard {
+        Row {
+            StronkIconBadge(icon = StronkIcons.record, tone = StronkTone.SUCCESS)
+            Column(modifier = Modifier.weight(1f).padding(start = StronkSpacing.sm)) {
                 Text(
                     text = if (labels.size == 1) "Nowy rekord!" else "Nowe rekordy!",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 labels.forEach { label ->
                     Text(
                         text = label,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = StronkSpacing.xxs),
                     )
                 }
             }
@@ -173,84 +173,82 @@ private fun WorkoutHistoryCard(
     onToggle: () -> Unit,
     onExerciseClick: (exerciseId: String) -> Unit,
 ) {
-    Card(
-        onClick = onToggle,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.dateLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = item.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                if (item.prLabels.isNotEmpty()) {
-                    PrBadge()
-                    Spacer(Modifier.width(8.dp))
-                }
-                Icon(
-                    imageVector = if (expanded) {
-                        Icons.Filled.KeyboardArrowUp
-                    } else {
-                        Icons.Filled.KeyboardArrowDown
-                    },
-                    contentDescription = if (expanded) "Zwiń" else "Rozwiń",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+    StronkCard(onClick = onToggle) {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.dateLabel.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = StronkTheme.colors.textDim,
+                )
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = item.summaryLabel,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (item.prLabels.isNotEmpty()) {
+                StronkBadge(
+                    text = "PR",
+                    tone = StronkTone.SUCCESS,
+                    icon = StronkIcons.record,
+                    modifier = Modifier.padding(end = StronkSpacing.xs),
+                )
+            }
+            Icon(
+                imageVector = if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                contentDescription = if (expanded) "Zwiń" else "Rozwiń",
+                tint = StronkTheme.colors.textDim,
             )
-            if (expanded) {
-                Spacer(Modifier.height(10.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+        StronkStatRow(modifier = Modifier.padding(top = StronkSpacing.md)) {
+            StronkStat(
+                label = "ćwiczenia",
+                value = item.exercisesCount.toString(),
+                modifier = Modifier.weight(1f),
+            )
+            StronkStat(
+                label = "serie",
+                value = item.workingSetsCount.toString(),
+                modifier = Modifier.weight(1f),
+            )
+            if (item.volumeKg > 0) {
+                StronkStat(
+                    label = "objętość",
+                    value = ProgressFormat.volume(item.volumeKg),
+                    valueColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1.4f),
+                )
+            }
+        }
+        if (expanded) {
+            Column(
+                modifier = Modifier.padding(top = StronkSpacing.md),
+                verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
+            ) {
                 item.exercises.forEach { exercise ->
-                    WorkoutExerciseDetail(
-                        exercise = exercise,
-                        onClick = { onExerciseClick(exercise.exerciseId) },
-                    )
+                    WorkoutExerciseRow(exercise = exercise, onClick = { onExerciseClick(exercise.exerciseId) })
                 }
             }
         }
     }
 }
 
-/** Rozwinięcie: serie jednego ćwiczenia; tap na nazwę → wykres progresu. */
+/** Jeden wiersz ćwiczenia w rozwinięciu treningu; tap → wykres progresu. */
 @Composable
-private fun WorkoutExerciseDetail(
-    exercise: WorkoutExerciseUi,
-    onClick: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-    ) {
-        Text(
-            text = exercise.name,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium,
-        )
-        exercise.sets.forEach { set ->
-            Text(
-                text = if (set.isWarmup) "rozgrzewka · ${set.label}" else set.label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+private fun WorkoutExerciseRow(exercise: WorkoutExerciseUi, onClick: () -> Unit) {
+    val setsSubtitle = exercise.sets.joinToString(" · ") { set ->
+        if (set.isWarmup) "rozgrzewka · ${set.label}" else set.label
     }
+    StronkListRow(
+        title = exercise.name,
+        icon = MuscleIcons.forMuscle(exercise.primaryMuscle),
+        iconLabel = MuscleIcons.groupLabel(exercise.primaryMuscle),
+        subtitle = setsSubtitle,
+        inset = true,
+        onClick = onClick,
+    )
 }
 
 // --- Zakładka: ćwiczenia z historią ---
@@ -261,82 +259,46 @@ private fun ExercisesTab(
     onExerciseClick: (exerciseId: String) -> Unit,
 ) {
     if (state.exercises.isEmpty()) {
-        EmptyState(
-            title = "Brak danych",
-            message = "Wykresy per ćwiczenie pojawią się po pierwszym zapisanym treningu.",
-        )
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            StronkEmptyState(
+                icon = StronkIcons.database,
+                title = "Brak danych",
+                description = "Wykresy per ćwiczenie pojawią się po pierwszym zapisanym treningu.",
+            )
+        }
         return
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 8.dp),
+        contentPadding = PaddingValues(
+            start = StronkSpacing.screen,
+            end = StronkSpacing.screen,
+            top = StronkSpacing.xs,
+            bottom = StronkSpacing.xxl,
+        ),
+        verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
     ) {
+        item(key = "kicker") {
+            StronkSectionHeader(
+                title = "Ćwiczenia z historią",
+                icon = StronkIcons.progress,
+                modifier = Modifier.padding(bottom = StronkSpacing.xxs),
+            )
+        }
         items(state.exercises, key = { it.exerciseId }) { item ->
-            ListItem(
-                modifier = Modifier.clickable { onExerciseClick(item.exerciseId) },
-                headlineContent = { Text(item.name) },
-                supportingContent = {
-                    Column {
-                        Text(item.subtitleLabel)
-                        item.bestLabel?.let {
-                            Text(
-                                text = it,
-                                color = MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                    }
+            val subtitle = listOfNotNull(item.subtitleLabel, item.bestLabel).joinToString(" · ")
+            StronkListRow(
+                title = item.name,
+                icon = MuscleIcons.forMuscle(item.primaryMuscle),
+                iconLabel = MuscleIcons.groupLabel(item.primaryMuscle),
+                subtitle = subtitle,
+                trailingContent = if (item.hasNewPr) {
+                    { StronkIconBadge(icon = StronkIcons.record, size = StronkIconBadgeSize.SMALL, tone = StronkTone.SUCCESS) }
+                } else {
+                    null
                 },
-                trailingContent = { if (item.hasNewPr) PrBadge() },
+                onClick = { onExerciseClick(item.exerciseId) },
             )
         }
-    }
-}
-
-/** Mały badge "PR" — sygnał nowego rekordu z ostatniego treningu. */
-@Composable
-private fun PrBadge() {
-    Surface(
-        shape = RoundedCornerShape(999.dp),
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.Filled.Star,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.size(14.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = "PR",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-            )
-        }
-    }
-}
-
-@Composable
-private fun EmptyState(title: String, message: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(text = title, style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
