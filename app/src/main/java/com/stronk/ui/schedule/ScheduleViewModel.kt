@@ -34,6 +34,8 @@ data class ScheduleExerciseRow(
     val name: String,
     /** Polska etykieta głównej partii; pusta gdy ćwiczenie nieznane. */
     val muscleLabel: String,
+    /** Surowy klucz partii z datasetu (np. "lats") pod dobór ikony; null gdy nieznane. */
+    val muscleKey: String?,
     /** Skrót celu, np. "3×8", "3×60 s", "3 km". */
     val targetLabel: String,
 )
@@ -292,11 +294,12 @@ class ScheduleViewModel(
             },
             exercises = day?.exercises.orEmpty().map { planExercise ->
                 val exercise = exercises[planExercise.exerciseId]
+                val muscleKey = exercise?.primaryMuscles?.firstOrNull()
                 ScheduleExerciseRow(
                     exerciseId = planExercise.exerciseId,
                     name = exercise?.namePl ?: planExercise.exerciseId,
-                    muscleLabel = exercise?.primaryMuscles?.firstOrNull()
-                        ?.let { PlLabels.muscle(it) }.orEmpty(),
+                    muscleLabel = muscleKey?.let { PlLabels.muscle(it) }.orEmpty(),
+                    muscleKey = muscleKey,
                     targetLabel = targetLabel(planExercise),
                 )
             },

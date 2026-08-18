@@ -2,17 +2,7 @@ package com.stronk.ui
 
 import android.net.Uri
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -27,6 +17,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.stronk.StronkApplication
 import com.stronk.ui.accesscode.AccessCodeScreen
+import com.stronk.ui.components.StronkIcons
+import com.stronk.ui.components.StronkNavigationBar
+import com.stronk.ui.components.StronkNavigationBarItem
 import com.stronk.ui.detail.ExerciseDetailScreen
 import com.stronk.ui.home.HomeScreen
 import com.stronk.ui.list.ExerciseListScreen
@@ -81,11 +74,11 @@ object Routes {
 private data class BottomTab(val route: String, val label: String, val icon: ImageVector)
 
 private val bottomTabs = listOf(
-    BottomTab(Routes.HOME, "Dziś", Icons.Filled.Home),
-    BottomTab(Routes.SCHEDULE, "Tydzień", Icons.Filled.DateRange),
-    BottomTab(Routes.PLANS, "Plany", Icons.AutoMirrored.Filled.List),
-    BottomTab(Routes.PROGRESS, "Progres", Icons.Filled.Star),
-    BottomTab(Routes.EXERCISE_LIST, "Baza", Icons.Filled.Search),
+    BottomTab(Routes.HOME, "Dziś", StronkIcons.today),
+    BottomTab(Routes.SCHEDULE, "Tydzień", StronkIcons.week),
+    BottomTab(Routes.PLANS, "Plany", StronkIcons.plans),
+    BottomTab(Routes.PROGRESS, "Progres", StronkIcons.progress),
+    BottomTab(Routes.EXERCISE_LIST, "Baza", StronkIcons.database),
 )
 
 @Composable
@@ -115,13 +108,13 @@ fun StronkNavHost() {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
+                StronkNavigationBar {
                     bottomTabs.forEach { tab ->
-                        NavigationBarItem(
+                        StronkNavigationBarItem(
                             selected = currentRoute == tab.route,
                             onClick = { navigateToTab(tab.route) },
-                            icon = { Icon(tab.icon, contentDescription = tab.label) },
-                            label = { Text(tab.label) },
+                            icon = tab.icon,
+                            label = tab.label,
                         )
                     }
                 }
@@ -152,6 +145,7 @@ fun StronkNavHost() {
                     onOpenPlans = { navigateToTab(Routes.PLANS) },
                     onNewPlan = { navController.navigate(Routes.planEditor(null)) },
                     onOpenProfile = { navController.navigate(Routes.PROFILE) },
+                    onExerciseClick = { id -> navController.navigate(Routes.exerciseDetail(id)) },
                 )
             }
 

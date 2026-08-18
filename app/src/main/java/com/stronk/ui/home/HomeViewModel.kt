@@ -39,6 +39,8 @@ data class HomeExerciseRow(
     val muscleLabel: String,
     /** Skrót celu, np. "3×8", "3×60 s", "3 km". */
     val targetLabel: String,
+    /** Pełne URI miniaturki (assets); pusta ścieżka gdy ćwiczenie nieznane/bez obrazka. */
+    val imageUri: String,
 )
 
 /** Zaplanowany trening przygotowany pod kartę na Home. */
@@ -192,6 +194,8 @@ class HomeViewModel(
                     muscleLabel = exercise?.primaryMuscles?.firstOrNull()
                         ?.let { PlLabels.muscle(it) }.orEmpty(),
                     targetLabel = targetLabel(planExercise),
+                    imageUri = ExerciseRepository.IMAGES_BASE_URI +
+                        exercise?.images?.firstOrNull().orEmpty(),
                 )
             },
         )

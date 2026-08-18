@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -218,7 +218,7 @@ private fun PlanDropdown(
                     .weight(1f)
                     .padding(vertical = 12.dp),
             )
-            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+            Icon(Icons.Rounded.ArrowDropDown, contentDescription = null)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             plans.forEach { plan ->
@@ -268,7 +268,7 @@ private fun WeekdayAssignmentRow(
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
-                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                Icon(Icons.Rounded.ArrowDropDown, contentDescription = null)
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 DropdownMenuItem(
