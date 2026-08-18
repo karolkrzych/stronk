@@ -114,11 +114,15 @@ object WorkoutLabels {
     const val CALIBRATION_LABEL = "Seria testowa"
 
     /**
-     * Jedno zdanie instrukcji do serii testowej. Widełki są węższe niż
-     * [Calibration.RELIABLE_REPS] celowo: to porada treningowa (w tym zakresie
-     * test jest i bezpieczny, i miarodajny), a nie granica działania wzoru.
+     * Dolna granica PORADY treningowej do serii testowej — poniżej tylu powtórzeń
+     * test robi się siłowy i mniej bezpieczny. Górną granicę bierzemy wprost z
+     * [Calibration.RELIABLE_REPS], żeby copy nie rozjechało się ze stałą.
      */
-    const val CALIBRATION_HINT = "Dobierz ciężar na maks. 5–12 powtórzeń"
+    private const val CALIBRATION_ADVICE_MIN_REPS = 5
+
+    /** Jedno zdanie instrukcji do serii testowej, np. "Dobierz ciężar na maks. 5–12 powtórzeń". */
+    val CALIBRATION_HINT: String =
+        "Dobierz ciężar na maks. $CALIBRATION_ADVICE_MIN_REPS–${Calibration.RELIABLE_REPS.last} powtórzeń"
 
     /** Zakres wiarygodności estymacji, np. "2–12" (półpauza, nie myślnik). */
     fun reliableRepsLabel(): String =

@@ -75,6 +75,12 @@ fun StronkChoiceChip(
     modifier: Modifier = Modifier,
     tone: StronkTone = StronkTone.ACCENT,
     icon: ImageVector? = null,
+    /**
+     * Rezerwuje z lewej stałe miejsce na ✓ (mocki: `.chip.on b`) — znaczek pojawia
+     * się po zaznaczeniu, ale szerokość chipa się nie zmienia, więc siatka chipów
+     * nie przeskakuje pod palcem.
+     */
+    checkMark: Boolean = false,
     enabled: Boolean = true,
 ) {
     val accent = tone.accentColor()
@@ -103,6 +109,18 @@ fun StronkChoiceChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            if (checkMark) {
+                Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
+                    if (selected) {
+                        Icon(
+                            imageVector = StronkIcons.done,
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
             if (icon != null) {
                 Icon(
                     imageVector = icon,

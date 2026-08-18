@@ -31,7 +31,10 @@ import com.stronk.ui.theme.StronkTheme
  * @param title tytuł ekranu, krótki (1–3 słowa), np. "Twój tydzień"
  * @param subtitle drugi wiersz, wygaszony — daty, licznik tygodnia itd.
  * @param meta tekst chipa po prawej, np. "tydzień 2/5"; null = brak chipa
- * @param actions slot na ikony akcji po prawej (zamiast/obok chipa meta)
+ * @param subtitleActions małe akcje W LINII podtytułu (np. strzałki tygodni) —
+ *   trzymają tytuł w jednym wierszu, zamiast tłoczyć się obok chipa meta
+ * @param actions slot na ikony akcji po prawej (zamiast/obok chipa meta); trzymaj
+ *   go na JEDNEJ ikonie — mock ma po prawej sam chip
  */
 @Composable
 fun StronkScreenHeader(
@@ -39,6 +42,7 @@ fun StronkScreenHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     meta: String? = null,
+    subtitleActions: (@Composable RowScope.() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
@@ -54,15 +58,26 @@ fun StronkScreenHeader(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
-                    color = StronkTheme.colors.textDim,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            if (subtitle != null || subtitleActions != null) {
+                Row(
                     modifier = Modifier.padding(top = 3.dp),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xxs),
+                ) {
+                    if (subtitle != null) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            color = StronkTheme.colors.textDim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    subtitleActions?.invoke(this)
+                }
             }
         }
         if (meta != null) {

@@ -8,10 +8,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -112,24 +112,34 @@ fun ScheduleScreen(
                 title = "Twój tydzień",
                 subtitle = state.weekLabel.ifEmpty { null },
                 meta = state.weekInBlock?.let { w -> state.blockLengthWeeks?.let { l -> "tydzień $w/$l" } },
-                actions = {
-                    WeekNavArrow(icon = Icons.AutoMirrored.Rounded.KeyboardArrowLeft, description = "Poprzedni tydzień", onClick = viewModel::onPreviousWeek)
-                    WeekNavArrow(icon = Icons.AutoMirrored.Rounded.KeyboardArrowRight, description = "Następny tydzień", onClick = viewModel::onNextWeek)
+                // Strzałki tygodni siedzą przy dacie, nie obok tytułu — inaczej
+                // „Twój tydzień” zawija się na dwa wiersze (mock: tytuł w jednej linii).
+                subtitleActions = {
+                    WeekNavArrow(
+                        icon = Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
+                        description = "Poprzedni tydzień",
+                        onClick = viewModel::onPreviousWeek,
+                    )
+                    WeekNavArrow(
+                        icon = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        description = "Następny tydzień",
+                        onClick = viewModel::onNextWeek,
+                    )
                     if (!state.isCurrentWeek) {
-                        IconButton(onClick = viewModel::onBackToToday) {
-                            Icon(
-                                StronkIcons.today,
-                                contentDescription = "Dziś",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        StronkTextAction(text = "dziś", onClick = viewModel::onBackToToday)
                     }
+                },
+                actions = {
                     if (state.planOptions.isNotEmpty()) {
-                        IconButton(onClick = { showAssignDialog = true }) {
+                        IconButton(
+                            onClick = { showAssignDialog = true },
+                            modifier = Modifier.size(32.dp),
+                        ) {
                             Icon(
                                 StronkIcons.add,
                                 contentDescription = "Zaplanuj tydzień",
                                 tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp),
                             )
                         }
                     }
@@ -203,38 +213,44 @@ fun ScheduleScreen(
     }
 }
 
-/** Mała strzałka nawigacji tygodni w akcjach nagłówka (16dp ikony). */
+/** Mała strzałka nawigacji tygodni w linii podtytułu (24dp pole, 18dp ikona). */
 @Composable
 private fun WeekNavArrow(
     icon: ImageVector,
     description: String,
     onClick: () -> Unit,
 ) {
-    IconButton(onClick = onClick) {
+    IconButton(onClick = onClick, modifier = Modifier.size(24.dp)) {
         Icon(
             icon,
             contentDescription = description,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp),
+            modifier = Modifier.size(18.dp),
         )
     }
 }
 
-/** Siatka 7 równych kolumn na pełną szerokość (jak week-grid z mocka), bez strzałek. */
+/**
+ * Poziomy pasek 7 równych kafli dnia (mock: `.week-grid`, min-height 82 px).
+ * Wysokość jest STAŁA — bez niej kafle rozciągają się na całą wolną wysokość
+ * ekranu i wypychają kartę dnia do zera.
+ */
+private val weekGridHeight = 84.dp
+
 @Composable
 private fun WeekGrid(
     days: List<ScheduleDayUi>,
     onSelectDay: (LocalDate) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().height(weekGridHeight),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         days.forEach { day ->
             WeekDayCell(
                 day = day,
                 onClick = { onSelectDay(day.date) },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
     }
@@ -255,7 +271,7 @@ private fun WeekDayCell(
     if (day.badge == DayBadge.NONE) {
         Surface(
             onClick = onClick,
-            modifier = modifier.heightIn(min = 82.dp).stronkDashedBorder(
+            modifier = modifier.stronkDashedBorder(
                 color = MaterialTheme.colorScheme.outlineVariant,
                 cornerRadius = 13.dp,
             ),
@@ -279,7 +295,7 @@ private fun WeekDayCell(
     }
     Surface(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 82.dp),
+        modifier = modifier,
         shape = dayCellShape,
         color = container,
         border = BorderStroke(borderWidth, borderColor),

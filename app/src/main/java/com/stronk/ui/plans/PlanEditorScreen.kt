@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -64,13 +63,11 @@ import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkCard
 import com.stronk.ui.components.StronkChoiceChip
 import com.stronk.ui.components.StronkEmptyState
-import com.stronk.ui.components.StronkFooterActions
 import com.stronk.ui.components.StronkGhostButton
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkInsetCard
 import com.stronk.ui.components.StronkListRow
 import com.stronk.ui.components.StronkNoteCard
-import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkSegmentedProgress
@@ -107,14 +104,37 @@ fun PlanEditorScreen(
         if (state.saved) onBack()
     }
 
+    // Systemowe „wstecz” w kreatorze cofa o krok, nie wyrzuca z całego kreatora.
+    val step = state.wizardStep
+    if (step != null && step != PlanWizardStep.START && state.pickerDayIndex == null) {
+        BackHandler(onBack = viewModel::previousStep)
+    }
+
     when {
         state.loading -> LoadingScreen(onBack)
 
-        state.showStartChooser -> StartChooser(
+        state.wizardStep == PlanWizardStep.START -> StartStep(
             presets = state.presets,
             onPreset = viewModel::applyPreset,
             onFromScratch = viewModel::startFromScratch,
             onBack = onBack,
+        )
+
+        state.wizardStep == PlanWizardStep.BASICS -> BasicsStep(
+            name = state.name,
+            blockLengthWeeks = state.blockLengthWeeks,
+            onNameChange = viewModel::onNameChange,
+            onBlockLengthChange = viewModel::onBlockLengthChange,
+            onBack = viewModel::previousStep,
+            onNext = viewModel::nextStep,
+        )
+
+        state.wizardStep == PlanWizardStep.LIMITS -> PlanWizardLimitsStep(
+            constraints = state.constraints,
+            onToggle = viewModel::toggleConstraint,
+            onSkip = viewModel::clearConstraintsAndSkip,
+            onBack = viewModel::previousStep,
+            onNext = viewModel::nextStep,
         )
 
         state.pickerDayIndex != null -> {
@@ -188,58 +208,103 @@ private fun LoadingScreen(onBack: () -> Unit) {
     }
 }
 
-/** Nowy plan: wybór presetu albo start od zera. */
+/** Krok 1/4 kreatora: gotowy preset albo pusty plan. */
 @Composable
-private fun StartChooser(
+private fun StartStep(
     presets: List<PlanPreset>,
     onPreset: (PlanPreset) -> Unit,
     onFromScratch: () -> Unit,
     onBack: () -> Unit,
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
-        verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
-    ) {
-        item { EditorHeader(title = "Nowy plan", onBack = onBack) }
-        item {
-            Text(
-                text = "Zacznij od gotowego szablonu — ćwiczenia dobiorą się pod Twój " +
-                    "sprzęt, ograniczenia i cel z profilu.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = StronkTheme.colors.textDim,
+    PlanWizardScaffold(
+        step = PlanWizardStep.START,
+        title = "Od czego zaczynamy?",
+        subtitle = "Wybierz szablon — ćwiczenia dobiorą się pod Twój sprzęt, ograniczenia i cel z profilu.",
+        nav = {
+            PlanWizardNav(
+                onBack = onBack,
+                backLabel = "Anuluj",
+                nextLabel = "Zacznij od zera",
+                onNext = onFromScratch,
             )
-        }
-        items(presets, key = { it.id }) { preset ->
-            StronkCard(onClick = { onPreset(preset) }) {
-                Text(
-                    text = preset.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = preset.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = StronkTheme.colors.textDim,
-                    modifier = Modifier.padding(top = StronkSpacing.xxs),
-                )
-                Row(
-                    modifier = Modifier.padding(top = StronkSpacing.sm),
-                    horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
-                ) {
-                    StronkBadge(text = "${preset.days.size} dni", icon = StronkIcons.week)
-                    StronkBadge(text = "${preset.slotCount} ćwiczeń", icon = StronkIcons.plans)
+        },
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = StronkSpacing.screen)
+                .padding(top = StronkSpacing.xl),
+            verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
+        ) {
+            presets.forEach { preset ->
+                StronkCard(onClick = { onPreset(preset) }) {
+                    Text(
+                        text = preset.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = preset.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = StronkTheme.colors.textDim,
+                        modifier = Modifier.padding(top = StronkSpacing.xxs),
+                    )
+                    Row(
+                        modifier = Modifier.padding(top = StronkSpacing.sm),
+                        horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
+                    ) {
+                        StronkBadge(text = "${preset.days.size} dni", icon = StronkIcons.week)
+                        StronkBadge(text = "${preset.slotCount} ćwiczeń", icon = StronkIcons.plans)
+                    }
                 }
             }
         }
-        item {
-            StronkGhostButton(
-                text = "Zacznij od zera",
-                onClick = onFromScratch,
-                icon = StronkIcons.add,
+    }
+}
+
+/** Krok 2/4 kreatora: nazwa planu i długość bloku progresji (ADR-004). */
+@Composable
+private fun BasicsStep(
+    name: String,
+    blockLengthWeeks: Int,
+    onNameChange: (String) -> Unit,
+    onBlockLengthChange: (Int) -> Unit,
+    onBack: () -> Unit,
+    onNext: () -> Unit,
+) {
+    PlanWizardScaffold(
+        step = PlanWizardStep.BASICS,
+        title = "Nazwa i rytm",
+        subtitle = "Blok to tygodnie pracy — po nich apka daje jeden tydzień lekki.",
+        nav = {
+            PlanWizardNav(
+                onBack = onBack,
+                nextLabel = "Dalej",
+                onNext = onNext,
+                nextEnabled = name.isNotBlank(),
+            )
+        },
+    ) {
+        StronkCard(
+            modifier = Modifier
+                .padding(horizontal = StronkSpacing.screen)
+                .padding(top = StronkSpacing.xl),
+        ) {
+            PlanTextField(
+                label = "Nazwa planu",
+                value = name,
+                onValueChange = onNameChange,
                 modifier = Modifier.fillMaxWidth(),
             )
+            Spacer(Modifier.height(StronkSpacing.sm))
+            BlockLengthRow(blockLengthWeeks = blockLengthWeeks, onChange = onBlockLengthChange)
         }
+        StronkNoteCard(
+            text = "Ćwiczenia kolidujące z ograniczeniami z profilu oznaczymy i " +
+                "zaproponujemy zamienniki.",
+            modifier = Modifier
+                .padding(horizontal = StronkSpacing.screen)
+                .padding(top = StronkSpacing.md),
+        )
     }
 }
 
@@ -253,6 +318,8 @@ private fun EditorContent(
     // Edytowane ćwiczenie: (indeks dnia, indeks ćwiczenia); null = dialog zamknięty.
     var editTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val totalExercises = state.days.sumOf { it.exercises.size }
+    // Nowy plan idzie kreatorem (krok 4/4); edycja istniejącego to sam edytor.
+    val inWizard = state.wizardStep != null
 
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -261,40 +328,51 @@ private fun EditorContent(
             verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
         ) {
             item {
-                PlanEditorTopBlock(
-                    isNew = state.isNew,
-                    dayCount = state.days.size,
-                    exerciseCount = totalExercises,
-                    planName = state.name,
-                )
+                if (inWizard) {
+                    PlanWizardIntro(
+                        step = PlanWizardStep.DAYS,
+                        title = "Dni i ćwiczenia",
+                        subtitle = "Dostosuj dni, ćwiczenia i ciężary startowe — plan zapiszesz " +
+                            "przyciskiem na dole.",
+                    )
+                } else {
+                    PlanEditorTopBlock(
+                        isNew = state.isNew,
+                        dayCount = state.days.size,
+                        exerciseCount = totalExercises,
+                        planName = state.name,
+                    )
+                }
             }
-            item {
-                Column {
-                    StronkCard {
-                        PlanTextField(
-                            label = "Nazwa planu",
-                            value = state.name,
-                            onValueChange = viewModel::onNameChange,
-                            modifier = Modifier.fillMaxWidth(),
+            if (!inWizard) {
+                item {
+                    Column {
+                        StronkCard {
+                            PlanTextField(
+                                label = "Nazwa planu",
+                                value = state.name,
+                                onValueChange = viewModel::onNameChange,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(StronkSpacing.sm))
+                            BlockLengthRow(
+                                blockLengthWeeks = state.blockLengthWeeks,
+                                onChange = viewModel::onBlockLengthChange,
+                            )
+                        }
+                        Text(
+                            text = "Tygodnie pracy — po nich 1 tydzień lekki.",
+                            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                            color = StronkTheme.colors.textDim,
+                            maxLines = 2,
+                            modifier = Modifier.padding(top = StronkSpacing.xs, start = StronkSpacing.xs),
                         )
-                        Spacer(Modifier.height(StronkSpacing.sm))
-                        BlockLengthRow(
-                            blockLengthWeeks = state.blockLengthWeeks,
-                            onChange = viewModel::onBlockLengthChange,
+                        Spacer(Modifier.height(16.dp))
+                        StronkNoteCard(
+                            text = "Ćwiczenia kolidujące z ograniczeniami z profilu oznaczymy i " +
+                                "zaproponujemy zamienniki.",
                         )
                     }
-                    Text(
-                        text = "Tygodnie pracy — po nich 1 tydzień lekki.",
-                        style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
-                        color = StronkTheme.colors.textDim,
-                        maxLines = 2,
-                        modifier = Modifier.padding(top = StronkSpacing.xs, start = StronkSpacing.xs),
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    StronkNoteCard(
-                        text = "Ćwiczenia kolidujące z ograniczeniami z profilu oznaczymy i " +
-                            "zaproponujemy zamienniki.",
-                    )
                 }
             }
             state.days.forEachIndexed { dayIndex, day ->
@@ -329,17 +407,13 @@ private fun EditorContent(
                 )
             }
         }
-        StronkFooterActions(
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 26.dp),
-        ) {
-            StronkGhostButton(text = "Anuluj", onClick = onBack, modifier = Modifier.weight(1f))
-            StronkPrimaryButton(
-                text = "Zapisz plan",
-                onClick = viewModel::save,
-                enabled = state.canSave,
-                modifier = Modifier.weight(1.7f),
-            )
-        }
+        PlanWizardNav(
+            onBack = if (inWizard) viewModel::previousStep else onBack,
+            backLabel = if (inWizard) "Wstecz" else "Anuluj",
+            nextLabel = "Zapisz plan",
+            onNext = viewModel::save,
+            nextEnabled = state.canSave,
+        )
     }
 
     editTarget?.let { (dayIndex, exerciseIndex) ->
@@ -839,7 +913,8 @@ private fun ExerciseEditDialog(
         )
     }
     var weightText by remember {
-        mutableStateOf(initial.startWeightKg?.toString().orEmpty())
+        // Przecinek, nie kropka z Double.toString() — reszta apki pisze "32,5".
+        mutableStateOf(initial.startWeightKg?.let(PlanTexts::kgValue).orEmpty())
     }
     var progressionEnabled by remember { mutableStateOf(initial.progressionEnabled) }
     var showCalibration by remember { mutableStateOf(false) }
