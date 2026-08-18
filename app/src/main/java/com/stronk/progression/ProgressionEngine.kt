@@ -380,7 +380,12 @@ object ProgressionEngine {
             seconds = roundSeconds(seconds * factor),
         )
 
-    private fun roundWeight(kg: Double): Double =
+    /**
+     * Zaokrąglenie ciężaru do typowego kroku talerzy (najbliższe 2,5 kg, minimum
+     * 2,5 kg). `internal`, bo kalibracja ([Calibration]) musi zaokrąglać dokładnie
+     * tak samo — jedno miejsce, zero duplikacji stałych.
+     */
+    internal fun roundWeight(kg: Double): Double =
         max(
             ProgressionConstants.WEIGHT_ROUNDING_KG,
             round(kg / ProgressionConstants.WEIGHT_ROUNDING_KG) * ProgressionConstants.WEIGHT_ROUNDING_KG,

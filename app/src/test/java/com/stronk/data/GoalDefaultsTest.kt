@@ -29,6 +29,25 @@ class GoalDefaultsTest {
     }
 
     @Test
+    fun `procenty kalibracji per cel`() {
+        assertEquals(0.80, GoalDefaults.calibrationPercentFor(TrainingGoal.STRENGTH), 1e-9)
+        assertEquals(0.725, GoalDefaults.calibrationPercentFor(TrainingGoal.MASS), 1e-9)
+        assertEquals(0.625, GoalDefaults.calibrationPercentFor(TrainingGoal.RETURN_TO_FORM), 1e-9)
+        assertEquals(GoalDefaults.FALLBACK.calibrationPercent, GoalDefaults.calibrationPercentFor(null), 1e-9)
+    }
+
+    @Test
+    fun `mniej powtorzen w celu to wyzszy procent 1RM`() {
+        val byPercent = TrainingGoal.entries.sortedBy { GoalDefaults.calibrationPercentFor(it) }
+        val byReps = TrainingGoal.entries.sortedByDescending { GoalDefaults.repsFor(it) }
+        assertEquals(byReps, byPercent)
+        TrainingGoal.entries.forEach { goal ->
+            val percent = GoalDefaults.calibrationPercentFor(goal)
+            assertTrue("$goal: $percent", percent > 0.0 && percent < 1.0)
+        }
+    }
+
+    @Test
     fun `cwiczenia akcesoryjne dostaja wiecej powtorzen niz zlozone`() {
         TrainingGoal.entries.forEach { goal ->
             assertTrue(
