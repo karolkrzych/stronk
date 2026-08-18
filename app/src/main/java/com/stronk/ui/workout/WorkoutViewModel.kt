@@ -1,5 +1,6 @@
 package com.stronk.ui.workout
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -78,6 +79,16 @@ data class SubstitutesState(
     val options: List<SubstituteUi>,
 )
 
+/**
+ * Inny trening z zalogowanymi seriami wciąż trwa w [WorkoutSessionManager] —
+ * decyzja (zapisz / porzuć / wróć) należy do usera, nic nie kasujemy po cichu.
+ */
+data class SessionConflictUi(
+    val planName: String,
+    val dayName: String,
+    val loggedSetCount: Int,
+)
+
 data class WorkoutUiState(
     val loading: Boolean = true,
     val error: String? = null,
@@ -97,6 +108,8 @@ data class WorkoutUiState(
     val finished: Boolean = false,
     val substitutes: SubstitutesState? = null,
     val hasLoggedSets: Boolean = false,
+    /** Niepusty = dialog "masz trening w toku" zamiast budowy nowej sesji. */
+    val sessionConflict: SessionConflictUi? = null,
 )
 
 /**
@@ -118,6 +131,7 @@ class WorkoutViewModel(
     private val saving = MutableStateFlow(false)
     private val finished = MutableStateFlow(false)
     private val substitutes = MutableStateFlow<SubstitutesState?>(null)
+    private val sessionConflict = MutableStateFlow<SessionConflictUi?>(null)
 
     // Dane pomocnicze załadowane raz przy starcie — pod prefille i zamienniki.
     private var allExercises: List<Exercise> = emptyList()
@@ -130,16 +144,23 @@ class WorkoutViewModel(
         val saving: Boolean,
         val finished: Boolean,
         val substitutes: SubstitutesState?,
+        val conflict: SessionConflictUi? = null,
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<WorkoutUiState> = combine(
-        manager.session, error, saving, finished, substitutes,
-    ) { session, err, sav, fin, subs ->
-        Snapshot(session, err, sav, fin, subs)
+        combine(
+            manager.session, error, saving, finished, substitutes,
+        ) { session, err, sav, fin, subs ->
+            Snapshot(session, err, sav, fin, subs)
+        },
+        sessionConflict,
+    ) { snap, conflict ->
+        snap.copy(conflict = conflict)
     }.flatMapLatest { snap ->
-        // Ticker tylko w trakcie przerwy — poza nią stan jest statyczny.
-        if (snap.session?.restEndsAtMillis != null && !snap.finished) {
+        // Ticker tylko w trakcie przerwy — poza nią stan jest statyczny
+        // (przy konflikcie też: dialog nie pokazuje zegara starej sesji).
+        if (snap.session?.restEndsAtMillis != null && !snap.finished && snap.conflict == null) {
             tick().map { buildUiState(snap, System.currentTimeMillis()) }
         } else {
             flowOf(buildUiState(snap, System.currentTimeMillis()))
@@ -153,12 +174,36 @@ class WorkoutViewModel(
                 ?: ProfileDetails()
             statesById = app.exerciseStateRepository.observeAll().first()
             if (!manager.isActiveFor(planId, dayIndex)) {
+                val existing = manager.session.value
+                if (existing != null && existing.hasLoggedSets) {
+                    // Trwa inny trening z zalogowanymi seriami — nie kasujemy go
+                    // po cichu; decyzję (zapisz / porzuć / wróć) podejmuje user.
+                    sessionConflict.value = SessionConflictUi(
+                        planName = existing.planName,
+                        dayName = existing.dayName,
+                        loggedSetCount = existing.completedSetCount,
+                    )
+                    return@launch
+                }
                 manager.clear()
                 buildSession()
             }
             // Serwis timera działa przez cały trening (notyfikacja + ✓ z lock screena).
-            if (manager.session.value != null) RestTimerService.start(app)
+            ensureRestTimerService()
         }
+    }
+
+    /**
+     * Start foreground serwisu timera — bezpiecznie: na API 31+ start z tła
+     * rzuca ForegroundServiceStartNotAllowedException (np. user zgasił ekran,
+     * zanim init skończył ładować dane), więc łapiemy i tylko logujemy.
+     * Ekran ponawia start przy każdym ON_RESUME, więc timer nie zostaje
+     * bez serwisu na dłużej niż do powrotu apki na wierzch.
+     */
+    fun ensureRestTimerService() {
+        if (manager.session.value == null) return
+        runCatching { RestTimerService.start(app) }
+            .onFailure { Log.w(TAG, "Start serwisu timera nieudany (apka w tle?)", it) }
     }
 
     private fun tick() = flow {
@@ -223,6 +268,11 @@ class WorkoutViewModel(
     private fun buildUiState(snap: Snapshot, now: Long): WorkoutUiState {
         if (snap.finished) return WorkoutUiState(loading = false, finished = true)
         snap.error?.let { return WorkoutUiState(loading = false, error = it) }
+        // Konflikt przed mapowaniem sesji — sesja w managerze należy wtedy
+        // do INNEGO treningu i nie wolno jej pokazać na tym ekranie.
+        snap.conflict?.let {
+            return WorkoutUiState(loading = false, sessionConflict = it, saving = snap.saving)
+        }
         val session = snap.session ?: return WorkoutUiState(loading = true)
 
         val rows = session.exercises.mapIndexed { index, se ->
@@ -425,44 +475,84 @@ class WorkoutViewModel(
         }
         saving.value = true
         viewModelScope.launch {
-            val finishedAt = System.currentTimeMillis()
-            app.workoutRepository.save(
-                Workout(
-                    id = session.workoutId,
-                    startedAt = session.startedAt,
-                    finishedAt = finishedAt,
-                    planId = session.planId,
-                    dayIndex = session.dayIndex,
-                    scheduleEntryId = session.scheduleEntryId,
-                    sets = session.exercises.flatMap { it.loggedSets },
-                ),
-            )
-            session.exercises.forEach { se ->
-                if (se.workingLogged.isNotEmpty()) {
-                    app.exerciseStateRepository.save(
-                        ProgressionEngine.updateStateAfterWorkout(
-                            oldState = se.oldState,
-                            plannedTargets = se.proposal,
-                            loggedSets = se.loggedSets,
-                            updatedAtMillis = finishedAt,
-                        ),
-                    )
-                }
-            }
-            session.scheduleEntryId?.let { entryId ->
-                val entry = app.scheduleRepository.observeSchedule().first()
-                    .firstOrNull { it.id == entryId }
-                if (entry != null) {
-                    app.scheduleRepository.save(
-                        entry.copy(status = ScheduleStatus.DONE, workoutId = session.workoutId),
-                    )
-                }
-            }
+            persistWorkout(session, System.currentTimeMillis())
             RestTimerService.stop(app)
             manager.clear()
             saving.value = false
             finished.value = true
         }
+    }
+
+    /**
+     * Zapis sesji do Firestore: Workout (serie embedded) + ExerciseState per
+     * ćwiczenie + oznaczenie wpisu harmonogramu jako DONE. Fire-and-forget
+     * (offline-first). Wspólne dla [finishWorkout] i zapisu starej sesji
+     * z dialogu konfliktu ([resolveConflictSaveOld]).
+     */
+    private suspend fun persistWorkout(session: WorkoutSession, finishedAt: Long) {
+        app.workoutRepository.save(
+            Workout(
+                id = session.workoutId,
+                startedAt = session.startedAt,
+                finishedAt = finishedAt,
+                planId = session.planId,
+                dayIndex = session.dayIndex,
+                scheduleEntryId = session.scheduleEntryId,
+                sets = session.exercises.flatMap { it.loggedSets },
+            ),
+        )
+        session.exercises.forEach { se ->
+            if (se.workingLogged.isNotEmpty()) {
+                app.exerciseStateRepository.save(
+                    ProgressionEngine.updateStateAfterWorkout(
+                        oldState = se.oldState,
+                        plannedTargets = se.proposal,
+                        loggedSets = se.loggedSets,
+                        updatedAtMillis = finishedAt,
+                    ),
+                )
+            }
+        }
+        session.scheduleEntryId?.let { entryId ->
+            val entry = app.scheduleRepository.observeSchedule().first()
+                .firstOrNull { it.id == entryId }
+            if (entry != null) {
+                app.scheduleRepository.save(
+                    entry.copy(status = ScheduleStatus.DONE, workoutId = session.workoutId),
+                )
+            }
+        }
+    }
+
+    // ------------------------------------------------- konflikt trwającej sesji
+
+    /** Decyzja z dialogu konfliktu: zapisz tamten trening, potem zacznij ten. */
+    fun resolveConflictSaveOld() {
+        if (saving.value) return
+        saving.value = true
+        viewModelScope.launch {
+            manager.session.value?.let { old ->
+                persistWorkout(old, System.currentTimeMillis())
+            }
+            startFreshAfterConflict()
+        }
+    }
+
+    /** Decyzja z dialogu konfliktu: porzuć tamten trening bez zapisu. */
+    fun resolveConflictDiscardOld() {
+        if (saving.value) return
+        saving.value = true
+        viewModelScope.launch { startFreshAfterConflict() }
+    }
+
+    private suspend fun startFreshAfterConflict() {
+        manager.clear()
+        buildSession()
+        // Konflikt gaśnie dopiero po zbudowaniu nowej sesji — inaczej ekran
+        // mignąłby stanem starego treningu.
+        sessionConflict.value = null
+        saving.value = false
+        ensureRestTimerService()
     }
 
     /** Porzucenie treningu (decyzja z dialogu) — NIC nie zapisujemy. */
@@ -476,6 +566,8 @@ class WorkoutViewModel(
     // ponowne wejście w ten trening podłącza się do niej z powrotem.
 
     companion object {
+        private const val TAG = "WorkoutViewModel"
+
         /** Fabryka z argumentami trasy — ręczna kompozycja z [StronkApplication]. */
         fun factory(
             planId: String,

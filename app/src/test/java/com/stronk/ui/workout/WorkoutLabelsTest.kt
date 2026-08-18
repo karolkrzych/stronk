@@ -97,6 +97,18 @@ class WorkoutLabelsTest {
     }
 
     @Test
+    fun `polska odmiana liczby serii`() {
+        assertEquals("1 seria", WorkoutLabels.setCount(1))
+        assertEquals("2 serie", WorkoutLabels.setCount(2))
+        assertEquals("4 serie", WorkoutLabels.setCount(4))
+        assertEquals("5 serii", WorkoutLabels.setCount(5))
+        assertEquals("12 serii", WorkoutLabels.setCount(12))
+        assertEquals("14 serii", WorkoutLabels.setCount(14))
+        assertEquals("22 serie", WorkoutLabels.setCount(22))
+        assertEquals("0 serii", WorkoutLabels.setCount(0))
+    }
+
+    @Test
     fun `plakietki modyfikatorow propozycji`() {
         val base = ExerciseProposal(exerciseId = "x", sets = 3, target = SetTarget.Reps(10))
         assertEquals(emptyList<String>(), WorkoutLabels.proposalBadges(base))

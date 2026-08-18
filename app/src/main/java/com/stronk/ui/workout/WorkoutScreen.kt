@@ -70,6 +70,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.stronk.data.ExerciseRepository
@@ -110,11 +112,20 @@ fun WorkoutScreen(
 
     NotificationPermissionRequest()
 
+    // Ponowienie startu serwisu timera przy każdym powrocie na wierzch —
+    // start z init ViewModelu mógł polec, gdy apka zdążyła zejść do tła
+    // (ForegroundServiceStartNotAllowedException na API 31+).
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.ensureRestTimerService()
+    }
+
     var showExitDialog by remember { mutableStateOf(false) }
     var showFinishDialog by remember { mutableStateOf(false) }
     var editorOpen by remember { mutableStateOf(false) }
 
-    val active = !state.loading && state.error == null && !state.finished
+    // Przy konflikcie sesji back wychodzi normalnie (stary trening zostaje).
+    val active = !state.loading && state.error == null && !state.finished &&
+        state.sessionConflict == null
     BackHandler(enabled = active) { showExitDialog = true }
 
     LaunchedEffect(state.finished) {
@@ -124,7 +135,7 @@ fun WorkoutScreen(
     when {
         state.error != null -> ErrorContent(message = state.error.orEmpty(), onExit = onExit)
 
-        state.loading || state.finished -> Box(
+        state.loading || state.finished || state.sessionConflict != null -> Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) { CircularProgressIndicator() }
@@ -215,6 +226,16 @@ fun WorkoutScreen(
     }
 
     // ------------------------------------------------------------- dialogi
+
+    state.sessionConflict?.let { conflict ->
+        SessionConflictDialog(
+            conflict = conflict,
+            saving = state.saving,
+            onSaveOld = viewModel::resolveConflictSaveOld,
+            onDiscardOld = viewModel::resolveConflictDiscardOld,
+            onCancel = onExit,
+        )
+    }
 
     val currentForEditor = state.current
     if (editorOpen && currentForEditor != null) {
@@ -668,6 +689,40 @@ private fun ExerciseRowItem(
 }
 
 // ---------------------------------------------------------------- dialogi
+
+/**
+ * Inny trening z zalogowanymi seriami wciąż trwa (np. po swipe z recents) —
+ * user decyduje: zapisać go, porzucić, czy wrócić i dokończyć tamten.
+ */
+@Composable
+private fun SessionConflictDialog(
+    conflict: SessionConflictUi,
+    saving: Boolean,
+    onSaveOld: () -> Unit,
+    onDiscardOld: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!saving) onCancel() },
+        title = { Text("Masz trening w toku") },
+        text = {
+            Text(
+                "Trwa \"${conflict.dayName}\" (${conflict.planName}) — " +
+                    "zalogowane: ${WorkoutLabels.setCount(conflict.loggedSetCount)}. " +
+                    "Co z nim zrobić przed rozpoczęciem nowego treningu?",
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onSaveOld, enabled = !saving) { Text("Zapisz tamten") }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onDiscardOld, enabled = !saving) { Text("Porzuć tamten") }
+                TextButton(onClick = onCancel, enabled = !saving) { Text("Wróć") }
+            }
+        },
+    )
+}
 
 @Composable
 private fun ExitDialog(

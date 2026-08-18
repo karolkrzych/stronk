@@ -1,5 +1,6 @@
 package com.stronk.ui.home
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,6 +78,17 @@ fun HomeScreen(
                 onOpenProfile = onOpenProfile,
             )
             Spacer(Modifier.height(16.dp))
+            // Trening w toku (sesja przeżyła ubicie aktywności) — powrót
+            // jednym tapnięciem, zanim user zacznie cokolwiek innego.
+            state.activeWorkout?.let { active ->
+                ActiveWorkoutBanner(
+                    active = active,
+                    onResume = {
+                        onStartWorkout(active.planId, active.dayIndex, active.scheduleEntryId)
+                    },
+                )
+                Spacer(Modifier.height(12.dp))
+            }
             if (state.todayDone) {
                 TodayDoneBanner()
                 Spacer(Modifier.height(12.dp))
@@ -179,6 +192,47 @@ private fun TodayDoneBanner() {
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
+        }
+    }
+}
+
+/** Baner "trening w toku" — tap wraca do trwającej sesji (nic nie przepada). */
+@Composable
+private fun ActiveWorkoutBanner(
+    active: ActiveWorkoutUi,
+    onResume: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onResume),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.PlayArrow,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Trening w toku: ${active.dayName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(
+                    text = "${active.completedSets} z ${active.totalSets} serii — " +
+                        "wróć do treningu",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
         }
     }
 }

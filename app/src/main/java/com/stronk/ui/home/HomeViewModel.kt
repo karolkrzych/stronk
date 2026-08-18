@@ -18,6 +18,8 @@ import com.stronk.data.SetTarget
 import com.stronk.data.UserProfile
 import com.stronk.data.UserProfileRepository
 import com.stronk.ui.PlLabels
+import com.stronk.ui.workout.WorkoutSession
+import com.stronk.ui.workout.WorkoutSessionManager
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -52,6 +54,19 @@ data class ScheduledWorkoutUi(
     val exercises: List<HomeExerciseRow>,
 )
 
+/**
+ * Trwająca sesja treningowa (singleton [WorkoutSessionManager] przeżywa
+ * ubicie aktywności przy żywym foreground service) — baner "wróć do treningu".
+ */
+data class ActiveWorkoutUi(
+    val planId: String,
+    val dayIndex: Int,
+    val scheduleEntryId: String?,
+    val dayName: String,
+    val completedSets: Int,
+    val totalSets: Int,
+)
+
 /** Główna zawartość ekranu Home — dokładnie jeden wariant naraz. */
 sealed interface HomeContent {
     /** Na dziś jest zaplanowany trening. */
@@ -75,6 +90,8 @@ data class HomeUiState(
     val todayLabel: String = "",
     /** true, gdy dzisiejszy trening jest już oznaczony jako zrobiony. */
     val todayDone: Boolean = false,
+    /** Niepusty = baner "trening w toku" z nawigacją z powrotem do sesji. */
+    val activeWorkout: ActiveWorkoutUi? = null,
     val content: HomeContent = HomeContent.NoPlans,
 )
 
@@ -93,9 +110,10 @@ class HomeViewModel(
         planRepository.observePlans(),
         userProfileRepository.observeProfile(),
         exercisesById,
-    ) { schedule, plans, profile, exercises ->
+        WorkoutSessionManager.session,
+    ) { schedule, plans, profile, exercises, session ->
         if (exercises == null) HomeUiState(loading = true)
-        else buildState(schedule, plans, profile, exercises)
+        else buildState(schedule, plans, profile, exercises, session)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     init {
@@ -109,6 +127,7 @@ class HomeViewModel(
         plans: List<Plan>,
         profile: UserProfile?,
         exercises: Map<String, Exercise>,
+        session: WorkoutSession?,
     ): HomeUiState {
         val today = LocalDate.now()
         val todayKey = today.toString()
@@ -130,6 +149,16 @@ class HomeViewModel(
             displayName = profile?.displayName,
             todayLabel = headerFormatter.format(today),
             todayDone = schedule.any { it.date == todayKey && it.status == ScheduleStatus.DONE },
+            activeWorkout = session?.let {
+                ActiveWorkoutUi(
+                    planId = it.planId,
+                    dayIndex = it.dayIndex,
+                    scheduleEntryId = it.scheduleEntryId,
+                    dayName = it.dayName,
+                    completedSets = it.completedSetCount,
+                    totalSets = it.totalSetCount,
+                )
+            },
             content = content,
         )
     }

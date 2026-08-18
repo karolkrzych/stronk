@@ -79,6 +79,17 @@ object WorkoutLabels {
         return "Ostatnio: $summary"
     }
 
+    /** "1 seria" / "3 serie" / "5 serii" — polska odmiana liczby serii. */
+    fun setCount(count: Int): String {
+        val units = count % 10
+        val teens = count % 100 in 12..14
+        return when {
+            count == 1 -> "1 seria"
+            units in 2..4 && !teens -> "$count serie"
+            else -> "$count serii"
+        }
+    }
+
     /** Plakietki modyfikatorów propozycji (silnik progresji, ADR-004). */
     fun proposalBadges(proposal: ExerciseProposal): List<String> = buildList {
         if (proposal.isLightWeek) add("tydzień lekki −40%")
