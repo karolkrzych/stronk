@@ -6,7 +6,12 @@ import com.stronk.data.MeasurementType
 import com.stronk.data.PlanExercise
 import com.stronk.data.SetLog
 import com.stronk.data.SetTarget
+import com.stronk.data.TrainingGoal
+import com.stronk.progression.Calibration
 import com.stronk.progression.ExerciseProposal
+import com.stronk.progression.ProgressionConstants
+import kotlin.math.max
+import kotlin.math.round
 
 /**
  * Czysty model trwającej sesji treningowej (ADR-005) — zero Androida,
@@ -14,6 +19,30 @@ import com.stronk.progression.ExerciseProposal
  * Stan żyje w [WorkoutSessionManager]; zapis do Firestore następuje dopiero
  * przy zakończeniu treningu (WorkoutViewModel).
  */
+
+/**
+ * Wynik kalibracji z serii testowej — pierwszej serii WEIGHT_REPS ćwiczenia,
+ * które nie ma ani ciężaru startowego w planie, ani historii. Estymację 1RM
+ * i ciężar roboczy liczy [Calibration]; [nextSetWeightKg] to gotowa wartość do
+ * prefillu kolejnych serii TEGO treningu — przy powrocie po przerwie obniżona
+ * o ramp-up dokładnie tak, jak zrobi to silnik w kolejnych treningach.
+ */
+data class CalibrationResult(
+    /** Ciężar z serii testowej (surowa próba, nie ciężar roboczy). */
+    val testWeightKg: Double,
+    val testReps: Int,
+    /** Epley na podstawie serii testowej. */
+    val estimatedOneRepMaxKg: Double,
+    /** Ciężar roboczy = % e1RM wg celu; ten trafia do planu jako startWeightKg. */
+    val workingWeightKg: Double,
+    /** Ciężar prefillowany w pozostałych seriach tego treningu. */
+    val nextSetWeightKg: Double,
+    /** Czy [nextSetWeightKg] jest obniżony ramp-upem po przerwie (ADR-004 reguła 4). */
+    val isRampUp: Boolean,
+) {
+    /** Powtórzenia poza zakresem wiarygodności Epleya — UI ostrzega, nie blokuje. */
+    val repsUnreliable: Boolean get() = testReps !in Calibration.RELIABLE_REPS
+}
 
 /** Jedno ćwiczenie w trwającej sesji treningowej. */
 data class SessionExercise(
@@ -36,12 +65,35 @@ data class SessionExercise(
     val skipped: Boolean = false,
     /** Id oryginału, gdy to ćwiczenie weszło jako zamiennik. */
     val substitutedFromId: String? = null,
+    /** Wynik serii testowej; null, dopóki kalibracji nie było (albo jej nie potrzeba). */
+    val calibration: CalibrationResult? = null,
 ) {
     val exerciseId: String get() = planExercise.exerciseId
     val name: String get() = exercise?.namePl ?: planExercise.exerciseId
 
     /** Zalogowane serie robocze (bez rozgrzewkowych). */
     val workingLogged: List<SetLog> get() = loggedSets.filterNot { it.isWarmup }
+
+    /**
+     * Czy następna seria jest SERIĄ TESTOWĄ: ćwiczenie na ciężar, którego apka
+     * nie zna z żadnej strony (brak startWeightKg w planie i brak historii),
+     * więc pierwsza seria służy do wyznaczenia ciężaru roboczego.
+     */
+    val needsCalibration: Boolean
+        get() = calibration == null &&
+            proposal.target is SetTarget.WeightReps &&
+            planExercise.startWeightKg == null &&
+            oldState == null &&
+            workingLogged.isEmpty()
+
+    /**
+     * Seria, z której „kleją się" wartości prefillu kolejnych serii. Seria
+     * testowa jest wyjątkiem: jej ciężar to próba, nie ciężar roboczy —
+     * po kalibracji prefill bierze wynik kalibracji, nie to, co user dźwignął
+     * w teście.
+     */
+    val prefillSource: SetLog?
+        get() = (if (calibration != null) workingLogged.drop(1) else workingLogged).lastOrNull()
 
     val isComplete: Boolean get() = workingLogged.size >= proposal.sets
 
@@ -67,6 +119,8 @@ data class WorkoutSession(
     val fullBlockLengthWeeks: Int,
     val returningFromBreak: Boolean,
     val exercises: List<SessionExercise>,
+    /** Cel z profilu — wyznacza udział e1RM przy kalibracji z serii testowej. */
+    val goal: TrainingGoal? = null,
     val currentExerciseIndex: Int = 0,
     /** Aktualna długość przerwy między seriami (edytowalna w UI). */
     val restSeconds: Int = WorkoutConstants.DEFAULT_REST_SECONDS,
@@ -88,15 +142,20 @@ data class WorkoutSession(
     /**
      * Czy ✓ jednym tapnięciem jest zablokowane: pierwsza seria WEIGHT_REPS bez
      * znanego ciężaru (brak startWeightKg i historii) wymaga wpisania kg —
-     * inaczej jedno tapnięcie zalogowałoby 0 kg.
+     * inaczej jedno tapnięcie zalogowałoby 0 kg. To jest dokładnie moment
+     * serii testowej ([SessionExercise.needsCalibration]).
      */
     val currentPrefillNeedsInput: Boolean
         get() {
             val se = currentExercise ?: return false
             return se.proposal.target is SetTarget.WeightReps &&
                 se.proposal.weightKg == null &&
+                se.calibration == null &&
                 se.workingLogged.filterIsInstance<SetLog.WeightReps>().isEmpty()
         }
+
+    /** Czy następna seria bieżącego ćwiczenia jest serią testową (kalibracja). */
+    val currentIsCalibrationSet: Boolean get() = currentExercise?.needsCalibration == true
 
     /** Prefill następnej serii bieżącego ćwiczenia; null, gdy nie ma bieżącego. */
     fun prefillForCurrentSet(nowMillis: Long): SetLog? =
@@ -109,13 +168,17 @@ data class WorkoutSession(
     /**
      * Zalogowanie serii bieżącego ćwiczenia: dokłada serię, po skompletowaniu
      * ćwiczenia przechodzi do następnego niedokończonego i startuje przerwę
-     * (chyba że to była ostatnia seria całego treningu).
+     * (chyba że to była ostatnia seria całego treningu). Jeśli to była seria
+     * testowa — z tej serii wyliczana jest kalibracja ciężaru roboczego.
      */
     fun logSet(set: SetLog, nowMillis: Long): WorkoutSession {
         val idx = currentExerciseIndex
         val se = exercises.getOrNull(idx) ?: return this
         if (se.isFinished) return this
-        val updated = se.copy(loggedSets = se.loggedSets + set)
+        val updated = se.copy(
+            loggedSets = se.loggedSets + set,
+            calibration = se.calibration ?: calibrationFrom(se, set),
+        )
         val list = exercises.toMutableList().also { it[idx] = updated }
         val newIdx = if (updated.isFinished) nextUnfinishedIndex(list, idx) ?: idx else idx
         val everythingDone = list.all { it.isFinished }
@@ -196,6 +259,31 @@ data class WorkoutSession(
         return remaining.takeIf { it > 0 }
     }
 
+    /**
+     * Kalibracja z właśnie zalogowanej serii — tylko gdy to była seria testowa
+     * i realnie da się z niej coś policzyć (ciężar > 0, powtórzenia >= 1).
+     * Poza tym null: zwykły flow 1-tap (ADR-005) nic tu nie zmienia.
+     */
+    private fun calibrationFrom(se: SessionExercise, set: SetLog): CalibrationResult? {
+        if (!se.needsCalibration) return null
+        if (set !is SetLog.WeightReps || set.isWarmup) return null
+        if (set.kg <= 0.0 || set.reps < 1) return null
+        val working = Calibration.workingWeightKg(set.kg, set.reps, goal)
+        return CalibrationResult(
+            testWeightKg = set.kg,
+            testReps = set.reps,
+            estimatedOneRepMaxKg = Calibration.estimateOneRepMax(set.kg, set.reps),
+            workingWeightKg = working,
+            nextSetWeightKg =
+                if (returningFromBreak) {
+                    roundWeightKg(working * ProgressionConstants.RAMP_UP_START_FACTOR)
+                } else {
+                    working
+                },
+            isRampUp = returningFromBreak,
+        )
+    }
+
     private fun nextUnfinishedIndex(list: List<SessionExercise>, from: Int): Int? {
         for (i in from + 1 until list.size) if (!list[i].isFinished) return i
         for (i in 0 until from) if (!list[i].isFinished) return i
@@ -204,13 +292,23 @@ data class WorkoutSession(
 }
 
 /**
+ * Zaokrąglenie ciężaru identyczne z silnikiem progresji (najbliższe 2,5 kg,
+ * nie mniej niż 2,5 kg) — prefill ramp-upu po kalibracji ma trafić w tę samą
+ * wartość, którą silnik zaproponuje w kolejnym treningu.
+ */
+private fun roundWeightKg(kg: Double): Double = max(
+    ProgressionConstants.WEIGHT_ROUNDING_KG,
+    round(kg / ProgressionConstants.WEIGHT_ROUNDING_KG) * ProgressionConstants.WEIGHT_ROUNDING_KG,
+)
+
+/**
  * Prefill serii (ADR-005: jedno tapnięcie = seria wg planu): wartości
  * z ostatniej zalogowanej serii roboczej tego ćwiczenia w tej sesji
- * (edycja usera "klei się" do kolejnych serii), a bez niej — z propozycji
- * silnika progresji.
+ * (edycja usera "klei się" do kolejnych serii), a bez niej — z kalibracji
+ * (seria testowa) albo z propozycji silnika progresji.
  */
 internal fun buildPrefill(se: SessionExercise, workoutId: String, nowMillis: Long): SetLog {
-    val last = se.workingLogged.lastOrNull()
+    val last = se.prefillSource
     val setNumber = se.nextSetNumber
     return when (val target = se.proposal.target) {
         is SetTarget.WeightReps -> {
@@ -218,7 +316,7 @@ internal fun buildPrefill(se: SessionExercise, workoutId: String, nowMillis: Lon
             SetLog.WeightReps(
                 exerciseId = se.exerciseId, workoutId = workoutId, setNumber = setNumber,
                 isWarmup = false, timestamp = nowMillis,
-                kg = lastWr?.kg ?: se.proposal.weightKg ?: 0.0,
+                kg = lastWr?.kg ?: se.calibration?.nextSetWeightKg ?: se.proposal.weightKg ?: 0.0,
                 reps = lastWr?.reps ?: target.reps,
             )
         }

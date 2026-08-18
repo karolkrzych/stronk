@@ -124,8 +124,10 @@ class WorkoutSessionTest {
 
         s = s.logSet(weightSet(kg = 40.0, reps = 8), 0L)
         assertFalse(s.currentPrefillNeedsInput)
+        // Ta pierwsza seria to seria testowa: kolejne idą ciężarem ROBOCZYM z kalibracji,
+        // nie ciężarem testu (40 × 8 → e1RM 50,67 → 72,5% → 36,73 → 37,5 kg).
         val prefill = s.prefillForCurrentSet(0L) as SetLog.WeightReps
-        assertEquals(40.0, prefill.kg, 1e-9)
+        assertEquals(37.5, prefill.kg, 1e-9)
     }
 
     @Test
@@ -240,5 +242,88 @@ class WorkoutSessionTest {
         assertTrue(s.allFinished)
         val after = s.logSet(weightSet(kg = 60.0, reps = 8, setNumber = 2), 0L)
         assertEquals(s, after)
+    }
+}
+
+/**
+ * Seria testowa (kalibracja ciężaru startowego): ćwiczenie WEIGHT_REPS bez
+ * ciężaru w planie i bez historii mierzy się pierwszą serią, a z niej lecą
+ * prefille pozostałych serii tego treningu.
+ */
+class WorkoutSessionCalibrationTest {
+
+    private fun uncalibrated(sets: Int = 3, reps: Int = 12) =
+        weightExercise(sets = sets, reps = reps, weightKg = null)
+
+    @Test
+    fun `bez ciezaru w planie i bez historii pierwsza seria jest testowa`() {
+        val s = session(uncalibrated())
+
+        assertTrue(s.currentIsCalibrationSet)
+        assertTrue(s.currentPrefillNeedsInput)
+        // ✓ jednym tapnięciem nie może zalogować 0 kg
+        assertEquals(s, s.completeCurrentSet(0L))
+    }
+
+    @Test
+    fun `cwiczenie z ciezarem startowym nie jest kalibrowane`() {
+        val s = session(weightExercise(weightKg = 60.0))
+
+        assertFalse(s.currentIsCalibrationSet)
+        assertFalse(s.currentPrefillNeedsInput)
+        assertNull(s.exercises[0].calibration)
+    }
+
+    @Test
+    fun `seria testowa wyznacza ciezar roboczy dla kolejnych serii`() {
+        // 40 kg × 10 → Epley e1RM = 53,33 kg; cel domyślny (masa) 72,5% → 38,67 → 37,5 kg
+        val s = session(uncalibrated()).logSet(weightSet(kg = 40.0, reps = 10), 0L)
+
+        val cal = s.exercises[0].calibration!!
+        assertEquals(53.33, cal.estimatedOneRepMaxKg, 0.01)
+        assertEquals(37.5, cal.workingWeightKg, 1e-9)
+        assertEquals(37.5, cal.nextSetWeightKg, 1e-9)
+        assertFalse(cal.isRampUp)
+
+        // kolejna seria: ciężar roboczy, powtórzenia z planu — NIE wartości z testu
+        val prefill = s.prefillForCurrentSet(0L) as SetLog.WeightReps
+        assertEquals(37.5, prefill.kg, 1e-9)
+        assertEquals(12, prefill.reps)
+        assertFalse(s.currentIsCalibrationSet)
+        assertFalse(s.currentPrefillNeedsInput)
+    }
+
+    @Test
+    fun `przy powrocie po przerwie kolejne serie ida ramp-upem`() {
+        // ciężar roboczy 37,5 kg × 0,55 = 20,6 → zaokrąglone jak w silniku: 20 kg
+        val s = session(uncalibrated())
+            .copy(returningFromBreak = true)
+            .logSet(weightSet(kg = 40.0, reps = 10), 0L)
+
+        val cal = s.exercises[0].calibration!!
+        assertTrue(cal.isRampUp)
+        assertEquals(37.5, cal.workingWeightKg, 1e-9)
+        assertEquals(20.0, cal.nextSetWeightKg, 1e-9)
+        assertEquals(20.0, (s.prefillForCurrentSet(0L) as SetLog.WeightReps).kg, 1e-9)
+    }
+
+    @Test
+    fun `edycja serii po kalibracji klei sie do nastepnych, test nie`() {
+        var s = session(uncalibrated()).logSet(weightSet(kg = 40.0, reps = 10), 0L)
+        s = s.logSet(weightSet(kg = 35.0, reps = 11, setNumber = 2), 0L)
+
+        val prefill = s.prefillForCurrentSet(0L) as SetLog.WeightReps
+        assertEquals(35.0, prefill.kg, 1e-9)
+        assertEquals(11, prefill.reps)
+    }
+
+    @Test
+    fun `powtorzenia poza zakresem wiarygodnosci sa flagowane, nie blokowane`() {
+        val s = session(uncalibrated()).logSet(weightSet(kg = 30.0, reps = 20), 0L)
+
+        val cal = s.exercises[0].calibration!!
+        assertTrue(cal.repsUnreliable)
+        assertNotNull(WorkoutLabels.calibrationRepsWarning(20))
+        assertNull(WorkoutLabels.calibrationRepsWarning(8))
     }
 }
