@@ -1,5 +1,6 @@
 package com.stronk.data
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -27,6 +28,16 @@ data class ProfileDetails(
      * z ograniczeniem; ćwiczenia powyżej progu są flagowane.
      */
     val constraints: Map<String, StressLevel> = emptyMap(),
+    /** Cel treningowy (moduł 2 CONCEPT); null = jeszcze nie wybrany. */
+    val goal: TrainingGoal? = null,
     /** Włącza ramp-up po przerwie (ADR-004). */
     val returningFromBreak: Boolean = false,
 )
+
+/** Cel treningowy użytkownika (wartości wire małymi literami, jak [ScheduleStatus]). */
+@Serializable
+enum class TrainingGoal {
+    @SerialName("strength") STRENGTH,
+    @SerialName("mass") MASS,
+    @SerialName("return_to_form") RETURN_TO_FORM,
+}

@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Tryb treningu (ADR-005): notyfikacja rest timera z akcją na lock screenie -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Odliczanie przerwy z wygaszonym ekranem + sygnał końca przerwy -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:name=".StronkApplication"
         android:allowBackup="true"
@@ -17,6 +25,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Rest timer treningu: żyje tylko w trakcie sesji (ADR-005).
+             API 34+ wymaga jawnego typu FGS; specialUse = długo żyjący timer
+             treningowy bez dodatkowych uprawnień runtime (apka prywatna, side-load). -->
+        <service
+            android:name="com.stronk.service.RestTimerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="workout_rest_timer" />
+        </service>
     </application>
 
 </manifest>

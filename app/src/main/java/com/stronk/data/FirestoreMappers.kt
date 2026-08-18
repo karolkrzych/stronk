@@ -1,5 +1,7 @@
 package com.stronk.data
 
+import com.stronk.progression.ProgressionConstants
+
 /**
  * Jawne konwertery model ↔ `Map<String, Any?>` dla Firestore — SDK nie rozumie
  * kotlinx-serialization, więc mapowanie żyje w jednym miejscu i jest symetryczne
@@ -135,6 +137,7 @@ object FirestoreMappers {
         "name" to plan.name,
         "createdAt" to plan.createdAt,
         "archived" to plan.archived,
+        "blockLengthWeeks" to plan.blockLengthWeeks,
         "days" to plan.days.map { day ->
             mapOf(
                 "name" to day.name,
@@ -148,6 +151,8 @@ object FirestoreMappers {
         name = map.stringOrNull("name").orEmpty(),
         createdAt = map.longOrNull("createdAt") ?: 0L,
         archived = map.boolOrNull("archived") ?: false,
+        blockLengthWeeks = map.intOrNull("blockLengthWeeks")
+            ?: ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
         days = map.mapList("days").map { day ->
             PlanDay(
                 name = day.stringOrNull("name").orEmpty(),
@@ -251,16 +256,19 @@ object FirestoreMappers {
         put("createdAt", profile.createdAt)
         put(
             "profile",
-            mapOf(
-                "equipment" to profile.profile.equipment,
-                "constraints" to profile.profile.constraints
-                    .mapValues { (_, level) -> level.name.lowercase() },
-                "returningFromBreak" to profile.profile.returningFromBreak,
-            ),
+            buildMap {
+                put("equipment", profile.profile.equipment)
+                put(
+                    "constraints",
+                    profile.profile.constraints.mapValues { (_, level) -> level.name.lowercase() },
+                )
+                profile.profile.goal?.let { put("goal", it.name.lowercase()) }
+                put("returningFromBreak", profile.profile.returningFromBreak)
+            },
         )
     }
 
-    /** Braki → defaulty; ograniczenie z nieznanym poziomem jest pomijane. */
+    /** Braki → defaulty; ograniczenie z nieznanym poziomem i nieznany cel są pomijane. */
     fun userProfileFromMap(map: Map<String, Any?>): UserProfile {
         val details = map.mapOrNull("profile")
         return UserProfile(
@@ -275,6 +283,8 @@ object FirestoreMappers {
                         level?.let { joint to it }
                     }
                     .toMap(),
+                goal = details?.stringOrNull("goal")
+                    ?.let { raw -> TrainingGoal.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } },
                 returningFromBreak = details?.boolOrNull("returningFromBreak") ?: false,
             ),
         )

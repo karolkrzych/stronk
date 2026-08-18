@@ -1,5 +1,6 @@
 package com.stronk.data
 
+import com.stronk.progression.ProgressionConstants
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -15,6 +16,12 @@ data class Plan(
     val name: String,
     val createdAt: Long,
     val archived: Boolean = false,
+    /**
+     * Liczba tygodni PRACY w bloku (ADR-004; konfigurowalna w kreatorze planu),
+     * bez tygodnia lekkiego. Do funkcji silnika progresji przekazuje się pełną
+     * długość bloku: `blockLengthWeeks + ProgressionConstants.BLOCK_LIGHT_WEEKS`.
+     */
+    val blockLengthWeeks: Int = ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
     val days: List<PlanDay> = emptyList(),
 )
 
