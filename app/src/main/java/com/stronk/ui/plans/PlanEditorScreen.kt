@@ -15,10 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,17 +43,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.stronk.data.Exercise
-import com.stronk.data.ExerciseRepository
+import com.stronk.data.GoalDefaults
 import com.stronk.data.MeasurementType
 import com.stronk.data.PlanExercise
 import com.stronk.data.SetTarget
+import com.stronk.data.TrainingGoal
+import com.stronk.progression.Calibration
 import com.stronk.ui.PlLabels
 import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkBadge
@@ -60,24 +64,27 @@ import com.stronk.ui.components.StronkCard
 import com.stronk.ui.components.StronkChoiceChip
 import com.stronk.ui.components.StronkEmptyState
 import com.stronk.ui.components.StronkGhostButton
-import com.stronk.ui.components.StronkIconBadge
-import com.stronk.ui.components.StronkIconBadgeSize
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkInsetCard
+import com.stronk.ui.components.StronkListRow
 import com.stronk.ui.components.StronkNoteCard
 import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.components.StronkSectionHeader
+import com.stronk.ui.components.StronkSegmentedProgress
+import com.stronk.ui.components.StronkStat
+import com.stronk.ui.components.StronkStatRow
 import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
 import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTheme
 
 /**
- * Edytor/kreator planu (moduł 3, lift czytelności rundy UI/UX): nazwa, długość
- * bloku, dni jako karty z czytelnymi wierszami ćwiczeń (miniaturka + duże
- * serie×powtórzenia), sugestie pokrycia partii, presety parametryzowane
- * profilem/celem i picker ćwiczeń. Nawigacja wewnętrzna (picker) jest stanem
- * ViewModelu — sygnatura trasy pozostaje nietknięta.
+ * Edytor/kreator planu (moduł 3, runda wierności mockom): pasek kontekstu
+ * kreatora + segmentowy postęp dni, panel nazwy/długości bloku, dni jako karty
+ * z czytelnymi wierszami ćwiczeń (piktogram + duże serie×powtórzenia), sugestie
+ * pokrycia partii, presety parametryzowane profilem/celem, picker ćwiczeń
+ * i dolny pasek nawigacji (Anuluj / Zapisz plan). Nawigacja wewnętrzna (picker)
+ * jest stanem ViewModelu — sygnatura trasy pozostaje nietknięta.
  *
  * @param planId id edytowanego planu; null = tworzenie nowego.
  * @param onBack powrót (także po zapisie).
@@ -97,14 +104,37 @@ fun PlanEditorScreen(
         if (state.saved) onBack()
     }
 
+    // Systemowe „wstecz” w kreatorze cofa o krok, nie wyrzuca z całego kreatora.
+    val step = state.wizardStep
+    if (step != null && step != PlanWizardStep.START && state.pickerDayIndex == null) {
+        BackHandler(onBack = viewModel::previousStep)
+    }
+
     when {
         state.loading -> LoadingScreen(onBack)
 
-        state.showStartChooser -> StartChooser(
+        state.wizardStep == PlanWizardStep.START -> StartStep(
             presets = state.presets,
             onPreset = viewModel::applyPreset,
             onFromScratch = viewModel::startFromScratch,
             onBack = onBack,
+        )
+
+        state.wizardStep == PlanWizardStep.BASICS -> BasicsStep(
+            name = state.name,
+            blockLengthWeeks = state.blockLengthWeeks,
+            onNameChange = viewModel::onNameChange,
+            onBlockLengthChange = viewModel::onBlockLengthChange,
+            onBack = viewModel::previousStep,
+            onNext = viewModel::nextStep,
+        )
+
+        state.wizardStep == PlanWizardStep.LIMITS -> PlanWizardLimitsStep(
+            constraints = state.constraints,
+            onToggle = viewModel::toggleConstraint,
+            onSkip = viewModel::clearConstraintsAndSkip,
+            onBack = viewModel::previousStep,
+            onNext = viewModel::nextStep,
         )
 
         state.pickerDayIndex != null -> {
@@ -178,58 +208,103 @@ private fun LoadingScreen(onBack: () -> Unit) {
     }
 }
 
-/** Nowy plan: wybór presetu albo start od zera. */
+/** Krok 1/4 kreatora: gotowy preset albo pusty plan. */
 @Composable
-private fun StartChooser(
+private fun StartStep(
     presets: List<PlanPreset>,
     onPreset: (PlanPreset) -> Unit,
     onFromScratch: () -> Unit,
     onBack: () -> Unit,
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
-        verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
-    ) {
-        item { EditorHeader(title = "Nowy plan", onBack = onBack) }
-        item {
-            Text(
-                text = "Zacznij od gotowego szablonu — ćwiczenia dobiorą się pod Twój " +
-                    "sprzęt, ograniczenia i cel z profilu.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = StronkTheme.colors.textDim,
+    PlanWizardScaffold(
+        step = PlanWizardStep.START,
+        title = "Od czego zaczynamy?",
+        subtitle = "Wybierz szablon — ćwiczenia dobiorą się pod Twój sprzęt, ograniczenia i cel z profilu.",
+        nav = {
+            PlanWizardNav(
+                onBack = onBack,
+                backLabel = "Anuluj",
+                nextLabel = "Zacznij od zera",
+                onNext = onFromScratch,
             )
-        }
-        items(presets, key = { it.id }) { preset ->
-            StronkCard(onClick = { onPreset(preset) }) {
-                Text(
-                    text = preset.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = preset.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = StronkTheme.colors.textDim,
-                    modifier = Modifier.padding(top = StronkSpacing.xxs),
-                )
-                Row(
-                    modifier = Modifier.padding(top = StronkSpacing.sm),
-                    horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
-                ) {
-                    StronkBadge(text = "${preset.days.size} dni", icon = StronkIcons.week)
-                    StronkBadge(text = "${preset.slotCount} ćwiczeń", icon = StronkIcons.plans)
+        },
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = StronkSpacing.screen)
+                .padding(top = StronkSpacing.xl),
+            verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
+        ) {
+            presets.forEach { preset ->
+                StronkCard(onClick = { onPreset(preset) }) {
+                    Text(
+                        text = preset.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = preset.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = StronkTheme.colors.textDim,
+                        modifier = Modifier.padding(top = StronkSpacing.xxs),
+                    )
+                    Row(
+                        modifier = Modifier.padding(top = StronkSpacing.sm),
+                        horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
+                    ) {
+                        StronkBadge(text = "${preset.days.size} dni", icon = StronkIcons.week)
+                        StronkBadge(text = "${preset.slotCount} ćwiczeń", icon = StronkIcons.plans)
+                    }
                 }
             }
         }
-        item {
-            StronkGhostButton(
-                text = "Zacznij od zera",
-                onClick = onFromScratch,
-                icon = StronkIcons.add,
+    }
+}
+
+/** Krok 2/4 kreatora: nazwa planu i długość bloku progresji (ADR-004). */
+@Composable
+private fun BasicsStep(
+    name: String,
+    blockLengthWeeks: Int,
+    onNameChange: (String) -> Unit,
+    onBlockLengthChange: (Int) -> Unit,
+    onBack: () -> Unit,
+    onNext: () -> Unit,
+) {
+    PlanWizardScaffold(
+        step = PlanWizardStep.BASICS,
+        title = "Nazwa i rytm",
+        subtitle = "Blok to tygodnie pracy — po nich apka daje jeden tydzień lekki.",
+        nav = {
+            PlanWizardNav(
+                onBack = onBack,
+                nextLabel = "Dalej",
+                onNext = onNext,
+                nextEnabled = name.isNotBlank(),
+            )
+        },
+    ) {
+        StronkCard(
+            modifier = Modifier
+                .padding(horizontal = StronkSpacing.screen)
+                .padding(top = StronkSpacing.xl),
+        ) {
+            PlanTextField(
+                label = "Nazwa planu",
+                value = name,
+                onValueChange = onNameChange,
                 modifier = Modifier.fillMaxWidth(),
             )
+            Spacer(Modifier.height(StronkSpacing.sm))
+            BlockLengthRow(blockLengthWeeks = blockLengthWeeks, onChange = onBlockLengthChange)
         }
+        StronkNoteCard(
+            text = "Ćwiczenia kolidujące z ograniczeniami z profilu oznaczymy i " +
+                "zaproponujemy zamienniki.",
+            modifier = Modifier
+                .padding(horizontal = StronkSpacing.screen)
+                .padding(top = StronkSpacing.md),
+        )
     }
 }
 
@@ -242,73 +317,103 @@ private fun EditorContent(
 ) {
     // Edytowane ćwiczenie: (indeks dnia, indeks ćwiczenia); null = dialog zamknięty.
     var editTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    val totalExercises = state.days.sumOf { it.exercises.size }
+    // Nowy plan idzie kreatorem (krok 4/4); edycja istniejącego to sam edytor.
+    val inWizard = state.wizardStep != null
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
-        verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
-    ) {
-        item {
-            EditorHeader(
-                title = if (state.isNew) "Nowy plan" else "Edycja planu",
-                onBack = onBack,
-                actions = {
-                    StronkTextAction(
-                        text = "Zapisz",
-                        onClick = viewModel::save,
-                        enabled = state.canSave,
-                        tone = StronkTone.ACCENT,
-                    )
-                },
-            )
-        }
-        item {
-            StronkCard {
-                OutlinedTextField(
-                    value = state.name,
-                    onValueChange = viewModel::onNameChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Nazwa planu") },
-                    singleLine = true,
-                )
-                Spacer(Modifier.height(StronkSpacing.sm))
-                BlockLengthRow(
-                    blockLengthWeeks = state.blockLengthWeeks,
-                    onChange = viewModel::onBlockLengthChange,
-                )
-            }
-        }
-        state.days.forEachIndexed { dayIndex, day ->
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
+            verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
+        ) {
             item {
-                DayCard(
-                    day = day,
-                    onRename = { viewModel.renameDay(dayIndex, it) },
-                    onRemoveDay = { viewModel.removeDay(dayIndex) },
-                    onExerciseClick = { exerciseIndex -> editTarget = dayIndex to exerciseIndex },
-                    onMoveUp = { exerciseIndex -> viewModel.moveExercise(dayIndex, exerciseIndex, -1) },
-                    onMoveDown = { exerciseIndex -> viewModel.moveExercise(dayIndex, exerciseIndex, +1) },
-                    onSubstitutes = { exerciseIndex ->
-                        viewModel.openSubstitutesForRow(dayIndex, exerciseIndex)
-                    },
-                    onDetails = { exerciseIndex ->
-                        val exercise = day.exercises.getOrNull(exerciseIndex)?.planExercise?.exerciseId
-                        if (exercise != null) onExerciseClick(exercise)
-                    },
-                    onRemoveExercise = { exerciseIndex -> viewModel.removeExercise(dayIndex, exerciseIndex) },
-                    onAddExercise = { viewModel.openPicker(dayIndex) },
-                    onSuggestion = { group -> viewModel.openSuggestions(dayIndex, group) },
+                if (inWizard) {
+                    PlanWizardIntro(
+                        step = PlanWizardStep.DAYS,
+                        title = "Dni i ćwiczenia",
+                        subtitle = "Dostosuj dni, ćwiczenia i ciężary startowe — plan zapiszesz " +
+                            "przyciskiem na dole.",
+                    )
+                } else {
+                    PlanEditorTopBlock(
+                        isNew = state.isNew,
+                        dayCount = state.days.size,
+                        exerciseCount = totalExercises,
+                        planName = state.name,
+                    )
+                }
+            }
+            if (!inWizard) {
+                item {
+                    Column {
+                        StronkCard {
+                            PlanTextField(
+                                label = "Nazwa planu",
+                                value = state.name,
+                                onValueChange = viewModel::onNameChange,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(StronkSpacing.sm))
+                            BlockLengthRow(
+                                blockLengthWeeks = state.blockLengthWeeks,
+                                onChange = viewModel::onBlockLengthChange,
+                            )
+                        }
+                        Text(
+                            text = "Tygodnie pracy — po nich 1 tydzień lekki.",
+                            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                            color = StronkTheme.colors.textDim,
+                            maxLines = 2,
+                            modifier = Modifier.padding(top = StronkSpacing.xs, start = StronkSpacing.xs),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        StronkNoteCard(
+                            text = "Ćwiczenia kolidujące z ograniczeniami z profilu oznaczymy i " +
+                                "zaproponujemy zamienniki.",
+                        )
+                    }
+                }
+            }
+            state.days.forEachIndexed { dayIndex, day ->
+                item {
+                    DayCard(
+                        dayIndex = dayIndex,
+                        day = day,
+                        onRename = { viewModel.renameDay(dayIndex, it) },
+                        onRemoveDay = { viewModel.removeDay(dayIndex) },
+                        onExerciseClick = { exerciseIndex -> editTarget = dayIndex to exerciseIndex },
+                        onMoveUp = { exerciseIndex -> viewModel.moveExercise(dayIndex, exerciseIndex, -1) },
+                        onMoveDown = { exerciseIndex -> viewModel.moveExercise(dayIndex, exerciseIndex, +1) },
+                        onSubstitutes = { exerciseIndex ->
+                            viewModel.openSubstitutesForRow(dayIndex, exerciseIndex)
+                        },
+                        onDetails = { exerciseIndex ->
+                            val exercise = day.exercises.getOrNull(exerciseIndex)?.planExercise?.exerciseId
+                            if (exercise != null) onExerciseClick(exercise)
+                        },
+                        onRemoveExercise = { exerciseIndex -> viewModel.removeExercise(dayIndex, exerciseIndex) },
+                        onAddExercise = { viewModel.openPicker(dayIndex) },
+                        onSuggestion = { group -> viewModel.openSuggestions(dayIndex, group) },
+                    )
+                }
+            }
+            item {
+                StronkGhostButton(
+                    text = "Dodaj dzień",
+                    onClick = viewModel::addDay,
+                    icon = StronkIcons.add,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
-        item {
-            StronkGhostButton(
-                text = "Dodaj dzień",
-                onClick = viewModel::addDay,
-                icon = StronkIcons.add,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        item { Spacer(Modifier.height(StronkSpacing.xxl)) }
+        PlanWizardNav(
+            onBack = if (inWizard) viewModel::previousStep else onBack,
+            backLabel = if (inWizard) "Wstecz" else "Anuluj",
+            nextLabel = "Zapisz plan",
+            onNext = viewModel::save,
+            nextEnabled = state.canSave,
+        )
     }
 
     editTarget?.let { (dayIndex, exerciseIndex) ->
@@ -319,6 +424,7 @@ private fun EditorContent(
                 measurementType = exercise.exercise?.measurementType
                     ?: measurementTypeOf(exercise.planExercise.target),
                 initial = exercise.planExercise,
+                goal = state.profile.goal,
                 onConfirm = { updated ->
                     viewModel.updateExercise(dayIndex, exerciseIndex, updated)
                     editTarget = null
@@ -329,50 +435,199 @@ private fun EditorContent(
     }
 }
 
-// ---------- karta dnia ----------
-
-/** Długość bloku progresji: tygodnie pracy − / + (ADR-004). */
+/**
+ * Pasek kontekstu kreatora (mocki: `.wiz-head`) + tytuł kroku: kicker trybu
+ * edytora po lewej, licznik dni/ćwiczeń po prawej, pod spodem segmentowy
+ * postęp dni i tytuł/podtytuł opisujące ekran.
+ */
 @Composable
-private fun BlockLengthRow(blockLengthWeeks: Int, onChange: (Int) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
+private fun PlanEditorTopBlock(
+    isNew: Boolean,
+    dayCount: Int,
+    exerciseCount: Int,
+    planName: String,
+) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "Długość bloku",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "tygodnie pracy — po nich 1 tydzień lekki",
-                style = MaterialTheme.typography.bodySmall,
+                text = if (isNew) "NOWY PLAN" else "EDYCJA PLANU",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.7.sp,
+                ),
                 color = StronkTheme.colors.textDim,
             )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "$dayCount dni · $exerciseCount ćw.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-        IconButton(
-            onClick = { onChange(blockLengthWeeks - 1) },
-            enabled = blockLengthWeeks > PlanDefaults.BLOCK_WEEKS_MIN,
-        ) {
-            Text("−", style = MaterialTheme.typography.titleLarge)
-        }
+        Spacer(Modifier.height(11.dp))
+        StronkSegmentedProgress(total = dayCount.coerceAtLeast(1), currentIndex = dayCount)
+        Spacer(Modifier.height(28.dp))
         Text(
-            text = "$blockLengthWeeks tyg.",
-            style = MaterialTheme.typography.titleMedium,
+            text = planName.ifBlank { "Nowy plan" },
+            style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        IconButton(
-            onClick = { onChange(blockLengthWeeks + 1) },
-            enabled = blockLengthWeeks < PlanDefaults.BLOCK_WEEKS_MAX,
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Dostosuj dni, ćwiczenia i ciężary startowe — zmiany zapiszesz na dole ekranu.",
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * Własne pole tekstowe kreatora (mocki: bez pływającej etykiety M3) — kicker
+ * WERSALIKAMI nad polem, pod nim wartość jako grube [BasicTextField].
+ */
+@Composable
+internal fun PlanTextField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    StronkInsetCard(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 1.0.sp),
+            color = StronkTheme.colors.textDim,
+        )
+        Spacer(Modifier.height(6.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            textStyle = MaterialTheme.typography.titleLarge.copy(
+                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        )
+    }
+}
+
+/**
+ * Pole wyszukiwarki kreatora (mocki: lupa 18dp + placeholder wygaszony) — ten
+ * sam wzorzec kafelka co [PlanTextField], współdzielony przez [ExercisePicker].
+ */
+@Composable
+internal fun PlanSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+) {
+    StronkInsetCard(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
         ) {
-            Text("+", style = MaterialTheme.typography.titleLarge)
+            Icon(
+                StronkIcons.database,
+                contentDescription = null,
+                tint = StronkTheme.colors.textDim,
+                modifier = Modifier.size(18.dp),
+            )
+            Box(Modifier.weight(1f)) {
+                if (value.isEmpty()) {
+                    Text(
+                        text = placeholder,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+                        color = StronkTheme.colors.textDim,
+                    )
+                }
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                )
+            }
+            if (value.isNotEmpty()) {
+                IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        StronkIcons.close,
+                        contentDescription = "Wyczyść",
+                        tint = StronkTheme.colors.textDim,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
         }
     }
 }
 
-/** Dzień planu jako jedna karta: nazwa, ćwiczenia, sugestie pokrycia, dodaj ćwiczenie. */
+// ---------- karta dnia ----------
+
+/** Długość bloku progresji: kafelek z dużą liczbą + stepper (ADR-004). */
+@Composable
+private fun BlockLengthRow(blockLengthWeeks: Int, onChange: (Int) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
+    ) {
+        StronkStat(
+            label = "długość bloku",
+            value = "$blockLengthWeeks",
+            unit = "tyg.",
+            modifier = Modifier.weight(1f),
+        )
+        BlockLengthStepButton(
+            symbol = "−",
+            onClick = { onChange(blockLengthWeeks - 1) },
+            enabled = blockLengthWeeks > PlanDefaults.BLOCK_WEEKS_MIN,
+        )
+        BlockLengthStepButton(
+            symbol = "+",
+            onClick = { onChange(blockLengthWeeks + 1) },
+            enabled = blockLengthWeeks < PlanDefaults.BLOCK_WEEKS_MAX,
+        )
+    }
+}
+
+@Composable
+private fun BlockLengthStepButton(symbol: String, onClick: () -> Unit, enabled: Boolean) {
+    StronkInsetCard(
+        modifier = Modifier.size(44.dp),
+        onClick = if (enabled) onClick else null,
+        shape = MaterialTheme.shapes.medium,
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = symbol,
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.ExtraBold),
+                color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else StronkTheme.colors.textDim,
+            )
+        }
+    }
+}
+
+/** Dzień planu jako jedna karta: kicker + licznik + kosz, nazwa, ćwiczenia, sugestie pokrycia. */
 @Composable
 private fun DayCard(
+    dayIndex: Int,
     day: EditorDayUi,
     onRename: (String) -> Unit,
     onRemoveDay: () -> Unit,
@@ -385,19 +640,41 @@ private fun DayCard(
     onAddExercise: () -> Unit,
     onSuggestion: (MuscleGroup) -> Unit,
 ) {
-    StronkCard {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm)) {
-            OutlinedTextField(
-                value = day.name,
-                onValueChange = onRename,
-                modifier = Modifier.weight(1f),
-                label = { Text("Nazwa dnia") },
-                singleLine = true,
-            )
-            IconButton(onClick = onRemoveDay) {
-                Icon(StronkIcons.delete, contentDescription = "Usuń dzień", tint = StronkTheme.colors.textDim)
-            }
-        }
+    val setsSum = day.exercises.sumOf { it.planExercise.sets }
+
+    StronkCard(shape = MaterialTheme.shapes.large, contentPadding = PaddingValues(18.dp)) {
+        StronkSectionHeader(
+            title = "Dzień ${dayIndex + 1}",
+            modifier = Modifier.fillMaxWidth(),
+            trailing = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
+                ) {
+                    Text(
+                        text = "${day.exercises.size} ćw. · $setsSum serii",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                    IconButton(onClick = onRemoveDay, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            StronkIcons.delete,
+                            contentDescription = "Usuń dzień",
+                            tint = StronkTheme.colors.textDim,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            },
+        )
+
+        PlanTextField(
+            label = "Nazwa dnia",
+            value = day.name,
+            onValueChange = onRename,
+            modifier = Modifier.fillMaxWidth().padding(top = StronkSpacing.sm),
+        )
 
         if (day.exercises.isEmpty()) {
             StronkNoteCard(
@@ -408,7 +685,7 @@ private fun DayCard(
         } else {
             Column(
                 modifier = Modifier.padding(top = StronkSpacing.sm),
-                verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 day.exercises.forEachIndexed { exerciseIndex, exercise ->
                     ExercisePlanRow(
@@ -427,11 +704,18 @@ private fun DayCard(
         if (day.missingGroups.isNotEmpty()) {
             StronkSectionHeader(
                 title = "Sugestie",
-                modifier = Modifier.padding(top = StronkSpacing.md),
+                modifier = Modifier.fillMaxWidth().padding(top = StronkSpacing.md),
+                trailing = {
+                    Text(
+                        text = "${day.missingGroups.size} braki",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
             )
             FlowRow(
-                modifier = Modifier.padding(top = StronkSpacing.xs),
-                horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
+                modifier = Modifier.padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 day.missingGroups.forEach { group ->
                     StronkChoiceChip(
@@ -444,16 +728,23 @@ private fun DayCard(
             }
         }
 
+        Text(
+            text = "Kolejność ćwiczeń = kolejność w treningu.",
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+            color = StronkTheme.colors.textDim,
+            modifier = Modifier.padding(top = StronkSpacing.md),
+        )
+
         StronkGhostButton(
             text = "Dodaj ćwiczenie",
             onClick = onAddExercise,
             icon = StronkIcons.add,
-            modifier = Modifier.fillMaxWidth().padding(top = StronkSpacing.md),
+            modifier = Modifier.fillMaxWidth().padding(top = StronkSpacing.sm),
         )
     }
 }
 
-/** Wiersz ćwiczenia w dniu: miniaturka, nazwa + partia, duże serie×powtórzenia, menu akcji. */
+/** Wiersz ćwiczenia w dniu: piktogram + partia, nazwa, duże serie×powtórzenia, menu akcji. */
 @Composable
 private fun ExercisePlanRow(
     exercise: EditorExerciseUi,
@@ -465,59 +756,24 @@ private fun ExercisePlanRow(
     onRemove: () -> Unit,
 ) {
     val warning = !exercise.compliance.isFullyCompliant
-    val thumbnailPath = exercise.exercise?.images?.firstOrNull()
 
-    StronkInsetCard(onClick = onClick, contentPadding = PaddingValues(StronkSpacing.xs)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
-        ) {
-            if (thumbnailPath != null) {
-                AsyncImage(
-                    model = ExerciseRepository.IMAGES_BASE_URI + thumbnailPath,
-                    contentDescription = null,
-                    modifier = Modifier.size(52.dp).clip(MaterialTheme.shapes.medium),
-                )
-            } else {
-                StronkIconBadge(
-                    icon = exercise.exercise?.let(MuscleIcons::forExercise) ?: MuscleIcons.forMuscle(null),
-                    size = StronkIconBadgeSize.MEDIUM,
-                )
-            }
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = exercise.name,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (warning) {
-                        Icon(
-                            StronkIcons.injury,
-                            contentDescription = "Niezgodne z profilem",
-                            tint = StronkTheme.colors.warning,
-                            modifier = Modifier.size(14.dp),
-                        )
-                    }
-                }
-                Text(
-                    text = exercise.exercise?.primaryMuscles?.firstOrNull()?.let(PlLabels::muscle)
-                        ?: "ćwiczenie spoza bazy",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = StronkTheme.colors.textDim,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+    StronkListRow(
+        title = exercise.name,
+        icon = exercise.exercise?.let(MuscleIcons::forExercise) ?: MuscleIcons.forMuscle(null),
+        iconLabel = MuscleIcons.groupLabel(exercise.exercise?.primaryMuscles?.firstOrNull()),
+        trailing = PlanTexts.targetLabel(exercise.planExercise),
+        tone = if (warning) StronkTone.WARNING else null,
+        inset = true,
+        onClick = onClick,
+        trailingContent = {
+            if (warning) {
+                Icon(
+                    StronkIcons.injury,
+                    contentDescription = "Niezgodne z profilem",
+                    tint = StronkTheme.colors.warning,
+                    modifier = Modifier.size(16.dp).padding(end = 2.dp),
                 )
             }
-            Text(
-                text = PlanTexts.targetLabel(exercise.planExercise),
-                style = MaterialTheme.typography.titleLarge,
-                color = if (warning) StronkTheme.colors.warning else MaterialTheme.colorScheme.onSurface,
-            )
             ExerciseRowMenu(
                 onMoveUp = onMoveUp,
                 onMoveDown = onMoveDown,
@@ -525,8 +781,8 @@ private fun ExercisePlanRow(
                 onDetails = onDetails,
                 onRemove = onRemove,
             )
-        }
-    }
+        },
+    )
 }
 
 @Composable
@@ -607,12 +863,19 @@ private fun measurementTypeOf(target: SetTarget): MeasurementType = when (target
 /**
  * Edycja parametrów ćwiczenia w planie: serie + cel zależny od typu pomiaru,
  * ciężar startowy (tylko WEIGHT_REPS) i włącznik progresji (ADR-004).
+ *
+ * Ciężar startowy = ciężar ROBOCZY. Można go policzyć z serii testowej
+ * ([CalibrationDialog]), ale ręczny wpis zawsze wygrywa — kalibracja tylko
+ * wypełnia pole, nie blokuje go.
+ *
+ * @param goal cel treningowy z profilu — udział e1RM dla ciężaru roboczego.
  */
 @Composable
 private fun ExerciseEditDialog(
     exerciseName: String,
     measurementType: MeasurementType,
     initial: PlanExercise,
+    goal: TrainingGoal?,
     onConfirm: (PlanExercise) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -650,9 +913,11 @@ private fun ExerciseEditDialog(
         )
     }
     var weightText by remember {
-        mutableStateOf(initial.startWeightKg?.toString().orEmpty())
+        // Przecinek, nie kropka z Double.toString() — reszta apki pisze "32,5".
+        mutableStateOf(initial.startWeightKg?.let(PlanTexts::kgValue).orEmpty())
     }
     var progressionEnabled by remember { mutableStateOf(initial.progressionEnabled) }
+    var showCalibration by remember { mutableStateOf(false) }
 
     val sets = setsText.toIntOrNull()
         ?.takeIf { it in PlanDefaults.SETS_MIN..PlanDefaults.SETS_MAX }
@@ -696,6 +961,12 @@ private fun ExerciseEditDialog(
                             onValueChange = { weightText = it },
                             label = "Ciężar startowy (kg, opcjonalnie)",
                             decimal = true,
+                        )
+                        StronkTextAction(
+                            text = "Policz z testu",
+                            onClick = { showCalibration = true },
+                            icon = Icons.Rounded.Calculate,
+                            tone = StronkTone.ACCENT,
                         )
                     }
                     MeasurementType.REPS -> NumberField(
@@ -766,6 +1037,108 @@ private fun ExerciseEditDialog(
             TextButton(onClick = onDismiss) { Text("Anuluj") }
         },
     )
+
+    if (showCalibration) {
+        CalibrationDialog(
+            goal = goal,
+            onConfirm = { workingKg ->
+                weightText = PlanTexts.kgValue(workingKg)
+                showCalibration = false
+            },
+            onDismiss = { showCalibration = false },
+        )
+    }
+}
+
+// ---------- kalibracja ciężaru roboczego z serii testowej ----------
+
+/**
+ * „Policz z testu”: z jednej serii testowej (ciężar × powtórzenia) liczy
+ * szacowane 1RM (Epley) i proponowany ciężar ROBOCZY jako udział e1RM wg celu
+ * z profilu ([Calibration]). Zatwierdzenie tylko wypełnia pole ciężaru
+ * startowego — dalej można je nadpisać ręcznie.
+ *
+ * Powtórzenia spoza [Calibration.RELIABLE_REPS] nie blokują wyniku, jedynie
+ * dostają ostrzeżenie: estymacja Epleya robi się wtedy mniej wiarygodna.
+ */
+@Composable
+private fun CalibrationDialog(
+    goal: TrainingGoal?,
+    onConfirm: (Double) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var testWeightText by remember { mutableStateOf("") }
+    var testRepsText by remember { mutableStateOf(GoalDefaults.repsFor(goal).toString()) }
+
+    val testWeightKg = testWeightText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
+    val testReps = testRepsText.toIntOrNull()?.takeIf { it >= 1 }
+    val oneRepMax = if (testWeightKg != null && testReps != null) {
+        Calibration.estimateOneRepMax(testWeightKg, testReps)
+    } else {
+        null
+    }
+    val workingKg = if (testWeightKg != null && testReps != null) {
+        Calibration.workingWeightKg(testWeightKg, testReps, goal)
+    } else {
+        null
+    }
+    val goalLabel = goal?.let { GoalDefaults.label(it).lowercase() } ?: "cel domyślny"
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Policz z testu") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(StronkSpacing.sm)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs)) {
+                    NumberField(
+                        value = testWeightText,
+                        onValueChange = { testWeightText = it },
+                        label = "Ciężar (kg)",
+                        decimal = true,
+                        modifier = Modifier.weight(1.4f),
+                    )
+                    NumberField(
+                        value = testRepsText,
+                        onValueChange = { testRepsText = it },
+                        label = "Powt.",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                StronkStatRow {
+                    StronkStat(
+                        label = "szac. 1RM",
+                        value = oneRepMax?.let { PlanTexts.kgValue(it) } ?: "—",
+                        unit = "kg",
+                        modifier = Modifier.weight(1f),
+                    )
+                    StronkStat(
+                        label = "roboczy · $goalLabel",
+                        value = workingKg?.let { PlanTexts.kgValue(it) } ?: "—",
+                        unit = "kg",
+                        valueColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1.2f),
+                    )
+                }
+                if (testReps != null && testReps !in Calibration.RELIABLE_REPS) {
+                    StronkNoteCard(
+                        text = "Przy $testReps powt. szacowanie jest mniej dokładne — " +
+                            "najlepiej ${Calibration.RELIABLE_REPS.first}–" +
+                            "${Calibration.RELIABLE_REPS.last}.",
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = workingKg != null,
+                onClick = { workingKg?.let(onConfirm) },
+            ) { Text("Wstaw") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Anuluj") }
+        },
+    )
 }
 
 @Composable
@@ -773,12 +1146,13 @@ private fun NumberField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
+    modifier: Modifier = Modifier,
     decimal: Boolean = false,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         label = { Text(label) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(

@@ -16,11 +16,14 @@ import com.stronk.data.PlanDay
 import com.stronk.data.PlanExercise
 import com.stronk.data.PlanRepository
 import com.stronk.data.ProfileDetails
+import com.stronk.data.StressLevel
 import com.stronk.data.SubstituteMatch
+import com.stronk.data.UserProfile
 import com.stronk.data.UserProfileRepository
 import com.stronk.data.findSubstitutes
 import com.stronk.data.isCompliant
 import com.stronk.progression.ProgressionConstants
+import com.stronk.ui.profile.ProfileDefaults
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -70,8 +73,8 @@ data class SubstitutesUi(
 data class PlanEditorUiState(
     val loading: Boolean = true,
     val isNew: Boolean = false,
-    /** Nowy plan przed wyborem trybu startu (preset / od zera). */
-    val showStartChooser: Boolean = false,
+    /** Krok kreatora nowego planu; null = edycja istniejącego planu (bez kreatora). */
+    val wizardStep: PlanWizardStep? = null,
     val presets: List<PlanPreset> = emptyList(),
     val name: String = "",
     /** Tygodnie PRACY w bloku (ADR-004), bez tygodnia lekkiego. */
@@ -80,6 +83,8 @@ data class PlanEditorUiState(
     /** Cały dataset — dla pickera ćwiczeń. */
     val allExercises: List<Exercise> = emptyList(),
     val profile: ProfileDetails = ProfileDetails(),
+    /** Realne ograniczenia z profilu (bez kodowania „brak limitu”) — krok 3 kreatora. */
+    val constraints: Map<String, StressLevel> = emptyMap(),
     /** Dzień, dla którego otwarty jest picker; null = picker zamknięty. */
     val pickerDayIndex: Int? = null,
     val substitutes: SubstitutesUi? = null,
@@ -103,8 +108,8 @@ class PlanEditorViewModel(
         val days: List<PlanDay> = emptyList(),
         /** Edytowany istniejący plan (id/createdAt/archived); null = nowy. */
         val base: Plan? = null,
-        /** Nowy plan: czy wybrano już start (preset / od zera). */
-        val started: Boolean = false,
+        /** Krok kreatora nowego planu; przy edycji istniejącego zawsze [PlanWizardStep.DAYS]. */
+        val step: PlanWizardStep = PlanWizardStep.START,
     )
 
     /** Warstwy UI ponad edytorem (picker, arkusz zamienników, arkusz sugestii). */
@@ -120,6 +125,12 @@ class PlanEditorViewModel(
     private val overlay = MutableStateFlow(Overlay())
     private val saved = MutableStateFlow(false)
 
+    /** Ostatni dokument profilu — zapis ograniczeń nie może zgubić imienia i createdAt. */
+    private var profileDocument: UserProfile? = null
+
+    /** true po pierwszej zmianie ograniczeń w kreatorze (patrz kolektor profilu). */
+    private var constraintsDirty = false
+
     val uiState: StateFlow<PlanEditorUiState> = combine(
         draft, allExercises, profile, overlay, saved,
     ) { d, all, currentProfile, ov, isSaved ->
@@ -130,7 +141,7 @@ class PlanEditorViewModel(
             PlanEditorUiState(
                 loading = false,
                 isNew = planId == null,
-                showStartChooser = !d.started,
+                wizardStep = d.step.takeIf { planId == null },
                 presets = PlanPresets.all,
                 name = d.name,
                 blockLengthWeeks = d.blockLengthWeeks,
@@ -152,10 +163,11 @@ class PlanEditorViewModel(
                 },
                 allExercises = all,
                 profile = currentProfile,
+                constraints = realConstraints(currentProfile),
                 pickerDayIndex = ov.pickerDayIndex,
                 substitutes = ov.substitutes,
                 suggestions = ov.suggestions,
-                canSave = d.started && d.name.isNotBlank() &&
+                canSave = d.step == PlanWizardStep.DAYS && d.name.isNotBlank() &&
                     d.days.any { it.exercises.isNotEmpty() },
                 saved = isSaved,
             )
@@ -166,7 +178,10 @@ class PlanEditorViewModel(
         viewModelScope.launch { allExercises.value = exerciseRepository.getAll() }
         viewModelScope.launch {
             userProfileRepository.observeProfile().collect { userProfile ->
-                profile.value = userProfile?.profile ?: ProfileDetails()
+                profileDocument = userProfile
+                // Po własnej edycji ograniczeń lokalny stan jest prawdą — echo
+                // własnego zapisu nie może cofać zaznaczonych chipów.
+                if (!constraintsDirty) profile.value = userProfile?.profile ?: ProfileDetails()
             }
         }
         viewModelScope.launch {
@@ -180,22 +195,75 @@ class PlanEditorViewModel(
                     blockLengthWeeks = plan.blockLengthWeeks,
                     days = plan.days,
                     base = plan,
-                    started = true,
+                    step = PlanWizardStep.DAYS,
                 )
             }
         }
     }
 
-    // ---------- start nowego planu ----------
+    // ---------- kreator nowego planu ----------
 
     fun startFromScratch() {
-        updateDraft { it.copy(started = true, days = listOf(PlanDay(name = dayName(0)))) }
+        updateDraft {
+            it.copy(step = PlanWizardStep.BASICS, days = listOf(PlanDay(name = dayName(0))))
+        }
     }
 
     fun applyPreset(preset: PlanPreset) {
         val all = allExercises.value ?: return
         val days = generatePresetDays(preset, all, profile.value)
-        updateDraft { it.copy(started = true, name = preset.name, days = days) }
+        updateDraft { it.copy(step = PlanWizardStep.BASICS, name = preset.name, days = days) }
+    }
+
+    /** Krok dalej w kreatorze; z ostatniego kroku już nie ma dokąd iść. */
+    fun nextStep() = updateDraft { d ->
+        val next = PlanWizardStep.entries.getOrNull(d.step.ordinal + 1) ?: return@updateDraft d
+        d.copy(step = next)
+    }
+
+    /** Krok wstecz w kreatorze; ze [PlanWizardStep.START] wychodzi się przez „Wstecz” ekranu. */
+    fun previousStep() = updateDraft { d ->
+        val previous = PlanWizardStep.entries.getOrNull(d.step.ordinal - 1) ?: return@updateDraft d
+        d.copy(step = previous)
+    }
+
+    // ---------- ograniczenia (krok 3 kreatora) ----------
+
+    /** Włącza/wyłącza ograniczenie stawu; zapis profilu fire-and-forget (ADR-002). */
+    fun toggleConstraint(joint: String) {
+        val details = profile.value
+        val level = if (isConstrained(details, joint)) {
+            ProfileDefaults.NO_LIMIT_WIRE_LEVEL
+        } else {
+            PlanDefaults.WIZARD_CONSTRAINT_LEVEL
+        }
+        persistConstraints(
+            ProfileDefaults.JOINT_KEYS.associateWith { key ->
+                if (key == joint) level else details.constraints[key] ?: ProfileDefaults.NO_LIMIT_WIRE_LEVEL
+            },
+        )
+    }
+
+    /** „Nie mam ograniczeń” — czyści wszystkie limity i przechodzi dalej. */
+    fun clearConstraintsAndSkip() {
+        persistConstraints(
+            ProfileDefaults.JOINT_KEYS.associateWith { ProfileDefaults.NO_LIMIT_WIRE_LEVEL },
+        )
+        nextStep()
+    }
+
+    private fun persistConstraints(constraints: Map<String, StressLevel>) {
+        constraintsDirty = true
+        val details = profile.value.copy(constraints = constraints)
+        profile.value = details
+        val document = profileDocument
+        userProfileRepository.save(
+            UserProfile(
+                displayName = document?.displayName,
+                createdAt = document?.createdAt ?: System.currentTimeMillis(),
+                profile = details,
+            ),
+        )
     }
 
     // ---------- pola planu ----------
@@ -363,7 +431,9 @@ class PlanEditorViewModel(
     /** Buduje dokument planu i zapisuje w całości (fire-and-forget, ADR-002). */
     fun save() {
         val d = draft.value ?: return
-        if (!(d.started && d.name.isNotBlank() && d.days.any { it.exercises.isNotEmpty() })) return
+        val complete = d.step == PlanWizardStep.DAYS && d.name.isNotBlank() &&
+            d.days.any { it.exercises.isNotEmpty() }
+        if (!complete) return
         val plan = Plan(
             id = d.base?.id ?: planRepository.newId(),
             name = d.name.trim(),
@@ -405,6 +475,16 @@ class PlanEditorViewModel(
     }
 
     companion object {
+        /**
+         * Realne ograniczenia z profilu: bez „brak limitu” (HIGH) — dokładnie to,
+         * co chipy kroku 3 mają pokazywać jako zaznaczone.
+         */
+        fun realConstraints(details: ProfileDetails): Map<String, StressLevel> =
+            details.constraints.filterValues { it != StressLevel.HIGH }
+
+        private fun isConstrained(details: ProfileDetails, joint: String): Boolean =
+            details.constraints[joint]?.let { it != StressLevel.HIGH } ?: false
+
         /** Domyślna nazwa dnia: "Dzień A", "Dzień B", … */
         private fun dayName(index: Int): String =
             if (index < 26) "Dzień ${'A' + index}" else "Dzień ${index + 1}"

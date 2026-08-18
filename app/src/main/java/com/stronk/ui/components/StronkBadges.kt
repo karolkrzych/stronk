@@ -1,6 +1,7 @@
 package com.stronk.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -16,8 +17,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTheme
 
@@ -72,18 +75,30 @@ fun StronkChoiceChip(
     modifier: Modifier = Modifier,
     tone: StronkTone = StronkTone.ACCENT,
     icon: ImageVector? = null,
+    /**
+     * Rezerwuje z lewej stałe miejsce na ✓ (mocki: `.chip.on b`) — znaczek pojawia
+     * się po zaznaczeniu, ale szerokość chipa się nie zmienia, więc siatka chipów
+     * nie przeskakuje pod palcem.
+     */
+    checkMark: Boolean = false,
     enabled: Boolean = true,
 ) {
-    val border = if (selected) tone.accentColor() else MaterialTheme.colorScheme.outline
-    val background = if (selected) tone.containerColor() else MaterialTheme.colorScheme.surfaceVariant
+    val accent = tone.accentColor()
+    val border = if (selected) accent else MaterialTheme.colorScheme.outline
+    val background = if (selected) accent.copy(alpha = 0.13f) else MaterialTheme.colorScheme.surfaceVariant
     val content = when {
         !enabled -> StronkTheme.colors.textDim
         selected -> tone.onContainerColor()
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    val ringModifier = if (selected) {
+        Modifier.border(2.dp, accent.copy(alpha = 0.35f), CircleShape)
+    } else {
+        Modifier
+    }
     Surface(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.then(ringModifier),
         enabled = enabled,
         shape = CircleShape,
         color = background,
@@ -94,15 +109,35 @@ fun StronkChoiceChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            if (checkMark) {
+                Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
+                    if (selected) {
+                        Icon(
+                            imageVector = StronkIcons.done,
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
             if (icon != null) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (selected) tone.accentColor() else content,
+                    tint = if (selected) accent else content,
                     modifier = Modifier.size(16.dp),
                 )
             }
-            Text(text = label, style = MaterialTheme.typography.titleSmall, color = content, maxLines = 1)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontSize = 13.5.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                ),
+                color = content,
+                maxLines = 1,
+            )
         }
     }
 }

@@ -10,7 +10,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +28,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,11 +53,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -70,11 +78,15 @@ import com.stronk.ui.components.StronkBigActionButton
 import com.stronk.ui.components.StronkCard
 import com.stronk.ui.components.StronkFooterActions
 import com.stronk.ui.components.StronkGhostButton
-import com.stronk.ui.components.StronkHeroNumber
 import com.stronk.ui.components.StronkIconBadge
 import com.stronk.ui.components.StronkIconBadgeSize
 import com.stronk.ui.components.StronkIcons
+import com.stronk.ui.components.StronkInsetCard
+import com.stronk.ui.components.StronkListRow
+import com.stronk.ui.components.StronkNoteCard
+import com.stronk.ui.components.StronkPillButton
 import com.stronk.ui.components.StronkPrimaryButton
+import com.stronk.ui.components.StronkRingTimer
 import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkSegmentedProgress
@@ -281,8 +293,8 @@ fun WorkoutScreen(
 
 /**
  * Szkielet ekranu: nagłówek + segmenty ćwiczeń u góry, JEDEN zamienny stan
- * centralny (seria / przerwa / koniec), strefa akcji i cienka linijka
- * bieżącego ćwiczenia na dole.
+ * centralny (seria / przerwa / koniec) i strefa akcji na dole. Tożsamość
+ * ćwiczenia i kolejka żyją teraz w karcie stanu SERIA — bez osobnej linijki.
  */
 @Composable
 private fun WorkoutContent(
@@ -307,18 +319,16 @@ private fun WorkoutContent(
             Spacer(Modifier.height(StronkSpacing.md))
             StronkScreenHeader(
                 title = state.dayName,
-                subtitle = state.planName,
+                // Mock: "tydzień X/Y" — pozycja w bloku progresji, nie ucięta nazwa
+                // planu; brak danych (sesja jeszcze nie zbudowana) → fallback do nazwy
+                // planu (nagłówek i tak trzyma ją w jednej linii z ellipsis).
+                subtitle = state.weekInBlock?.let { w ->
+                    state.blockLengthWeeks?.let { l -> "tydzień $w/$l" }
+                } ?: state.planName,
                 meta = current?.let {
                     "ćwiczenie ${it.exerciseIndex + 1}/${state.exercises.size}"
                 },
                 actions = {
-                    IconButton(onClick = onOpenUpcoming) {
-                        Icon(
-                            StronkIcons.plans,
-                            contentDescription = "Nadchodzące ćwiczenia",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                     WorkoutMenu(
                         hasCurrent = current != null,
                         canFinishEarly = state.hasLoggedSets && !state.allFinished,
@@ -350,12 +360,21 @@ private fun WorkoutContent(
                     totalSeconds = state.restSeconds,
                     next = current,
                 )
-                current != null -> SetPane(current = current, onEdit = onEditSet)
+                current != null -> SetPane(
+                    current = current,
+                    upcoming = state.exercises.filter { !it.isComplete && !it.isCurrent },
+                    restSeconds = state.restSeconds,
+                    onEdit = onEditSet,
+                    onSubstitute = onSubstitute,
+                    onOpenCurrentSheet = onOpenCurrentSheet,
+                    onOpenUpcoming = onOpenUpcoming,
+                )
             }
         }
 
-        // Strefa akcji — w przerwie NIE MA zaliczania serii.
+        // Strefa akcji — w przerwie NIE MA zaliczania serii (mocki: `.thumb`).
         Column(Modifier.padding(horizontal = StronkSpacing.screen)) {
+            Spacer(Modifier.height(20.dp))
             when {
                 state.allFinished -> StronkPrimaryButton(
                     text = if (state.saving) "Zapisywanie…" else "Zakończ i zapisz",
@@ -379,21 +398,16 @@ private fun WorkoutContent(
 
                 current != null -> StronkBigActionButton(
                     mark = if (current.needsInput) StronkIcons.edit else StronkIcons.done,
-                    label = if (current.needsInput) "wpisz ciężar" else "zalicz serię",
+                    label = when {
+                        current.isCalibrationSet -> "wpisz serię testową"
+                        current.needsInput -> "wpisz ciężar"
+                        else -> "zalicz serię"
+                    },
                     onClick = onCompleteSet,
                 )
             }
         }
-        Spacer(Modifier.height(StronkSpacing.md))
-
-        if (current != null) {
-            CurrentExerciseBar(
-                row = state.exercises.getOrNull(current.exerciseIndex),
-                setNumber = current.setNumber,
-                totalSets = current.totalSets,
-                onClick = onOpenCurrentSheet,
-            )
-        }
+        Spacer(Modifier.height(26.dp))
     }
 }
 
@@ -459,85 +473,149 @@ private fun WorkoutMenu(
 
 // ------------------------------------------------------------- stan: SERIA
 
-/** Stan SERIA: kontekst ćwiczenia + hero-prefill + (niżej) wielki przycisk. */
+/**
+ * Stan SERIA (mocki: `.ex-card`) — cała tożsamość ćwiczenia w jednej karcie:
+ * badge + nazwa + "zamień", wiersz serii, hero-liczba edytowalna, "ostatnio",
+ * hint. Pod kartą kolejka najbliższych dwóch ćwiczeń, niżej wielki przycisk
+ * (w strefie akcji ekranu).
+ */
 @Composable
-private fun SetPane(current: CurrentSetUi, onEdit: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(Modifier.weight(0.7f))
+private fun SetPane(
+    current: CurrentSetUi,
+    upcoming: List<WorkoutExerciseUi>,
+    restSeconds: Int,
+    onEdit: () -> Unit,
+    onSubstitute: () -> Unit,
+    onOpenCurrentSheet: () -> Unit,
+    onOpenUpcoming: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Spacer(Modifier.height(StronkSpacing.lg))
 
-        StronkIconBadge(
-            icon = MuscleIcons.forMuscle(current.muscle),
-            size = StronkIconBadgeSize.MEDIUM,
-        )
-        Spacer(Modifier.height(StronkSpacing.xs))
-        Text(
-            text = MuscleIcons.groupLabel(current.muscle).uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = StronkTheme.colors.textDim,
-        )
-        Text(
-            text = current.exerciseName,
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-
-        Spacer(Modifier.height(StronkSpacing.md))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+        StronkCard(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(20.dp),
         ) {
-            Text(
-                text = "SERIA ${current.setNumber} Z ${current.totalSets}",
-                style = MaterialTheme.typography.labelSmall,
-                color = StronkTheme.colors.textDim,
-            )
-            StronkSeriesDots(total = current.totalSets, currentIndex = current.setNumber - 1)
-        }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                StronkIconBadge(
+                    icon = MuscleIcons.forMuscle(current.muscle),
+                    size = StronkIconBadgeSize.MEDIUM,
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onOpenCurrentSheet),
+                ) {
+                    Text(
+                        text = MuscleIcons.groupLabel(current.muscle).uppercase(),
+                        style = TextStyle(fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp),
+                        color = StronkTheme.colors.textDim,
+                    )
+                    Text(
+                        text = current.exerciseName,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                StronkPillButton(text = "zamień", icon = StronkIcons.swap, onClick = onSubstitute)
+            }
 
-        if (current.badges.isNotEmpty()) {
-            Spacer(Modifier.height(StronkSpacing.sm))
-            Row(horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs)) {
-                current.badges.forEach { StronkBadge(text = it, tone = StronkTone.ACCENT) }
+            // Seria testowa/inne plakietki dostają swój wiersz — rzadki przypadek,
+            // nie wpływa na rytm normalnej serii.
+            if (current.isCalibrationSet || current.badges.isNotEmpty()) {
+                Spacer(Modifier.height(StronkSpacing.xs))
+                Row(horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs)) {
+                    if (current.isCalibrationSet) {
+                        StronkBadge(
+                            text = WorkoutLabels.CALIBRATION_LABEL,
+                            tone = StronkTone.ACCENT,
+                            icon = StronkIcons.progress,
+                        )
+                    }
+                    current.badges.forEach { StronkBadge(text = it, tone = StronkTone.ACCENT) }
+                }
+            }
+
+            Spacer(Modifier.height(18.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = "Seria ${current.setNumber}/${current.totalSets}".uppercase(),
+                    style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                StronkSeriesDots(total = current.totalSets, currentIndex = current.setNumber - 1)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = "przerwa ${WorkoutLabels.countdown(restSeconds)}",
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                    color = StronkTheme.colors.textDim,
+                )
+            }
+
+            Spacer(Modifier.height(26.dp))
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                PrefillHero(current = current, onEdit = onEdit)
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = (current.lastLabel?.replaceFirstChar { it.lowercase() }) ?: "ostatnio: brak zapisu",
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                color = StronkTheme.colors.textDim,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "dotknij liczbę, aby ją zmienić",
+                style = TextStyle(fontSize = 11.sp),
+                color = StronkTheme.colors.textDim,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            current.calibration?.let {
+                Spacer(Modifier.height(StronkSpacing.md))
+                CalibrationCard(calibration = it, modifier = Modifier.fillMaxWidth())
+            }
+            if (current.isCalibrationSet) {
+                Spacer(Modifier.height(StronkSpacing.sm))
+                StronkNoteCard(
+                    text = WorkoutLabels.CALIBRATION_HINT,
+                    tone = StronkTone.ACCENT,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
 
-        Spacer(Modifier.weight(1f))
-
-        // Hero-prefill: tap = edycja odstępstwa (stepper/klawiatura).
-        Column(
-            modifier = Modifier
-                .clip(MaterialTheme.shapes.large)
-                .clickable(onClick = onEdit)
-                .padding(horizontal = StronkSpacing.lg, vertical = StronkSpacing.sm),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (current.needsInput) {
-                StronkHeroNumber(
-                    value = "?",
-                    unit = "kg",
-                    caption = "pierwsza seria — dotknij i wpisz ciężar",
-                )
+        Spacer(Modifier.height(24.dp))
+        StronkSectionHeader(
+            title = "Następne w kolejce",
+            trailing = if (upcoming.size > 2) {
+                { StronkTextAction(text = "wszystkie", onClick = onOpenUpcoming, tone = StronkTone.ACCENT) }
             } else {
-                PrefillHero(prefill = current.prefill)
-                current.lastLabel?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StronkTheme.colors.textDim,
-                        modifier = Modifier.padding(top = StronkSpacing.sm),
-                    )
-                }
-                Text(
-                    text = "dotknij, aby zmienić",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = StronkTheme.colors.textDim,
-                    modifier = Modifier.padding(top = StronkSpacing.xxs),
+                null
+            },
+        )
+        Spacer(Modifier.height(10.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            upcoming.take(2).forEach { row ->
+                StronkListRow(
+                    title = row.name,
+                    icon = MuscleIcons.forMuscle(row.muscle),
+                    iconLabel = row.muscleLabel,
+                    trailing = row.targetLabel,
+                    inset = false,
                 )
             }
         }
@@ -546,61 +624,141 @@ private fun SetPane(current: CurrentSetUi, onEdit: () -> Unit) {
     }
 }
 
-/** Hero-liczby prefillu: wielkie wartości, jednostki i "×" małe (mocki: `.value`). */
+/**
+ * Wynik serii testowej — dwie liczby zamiast zdania: co apka oszacowała
+ * i z czym idziemy dalej. Pokazywany tylko przy pierwszej serii PO teście.
+ */
 @Composable
-private fun PrefillHero(prefill: SetLog) {
+private fun CalibrationCard(calibration: CalibrationUi, modifier: Modifier = Modifier) {
+    StronkInsetCard(modifier) {
+        StronkSectionHeader(title = "Kalibracja", icon = StronkIcons.progress)
+        StronkStatRow(Modifier.padding(top = StronkSpacing.sm)) {
+            StronkStat(
+                label = "szac. 1RM",
+                value = calibration.oneRepMaxValue,
+                unit = "kg",
+                valueStyle = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.weight(1f),
+            )
+            StronkStat(
+                label = "ciężar roboczy",
+                value = calibration.workingWeightValue,
+                unit = "kg",
+                valueStyle = MaterialTheme.typography.headlineMedium,
+                valueColor = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Text(
+            text = calibration.testLabel,
+            style = MaterialTheme.typography.bodySmall,
+            color = StronkTheme.colors.textDim,
+            modifier = Modifier.padding(top = StronkSpacing.xs),
+        )
+        if (calibration.isRampUp) {
+            Text(
+                text = "Powrót po przerwie — w tym treningu startujemy niżej.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = StronkSpacing.xxs),
+            )
+        }
+        calibration.unreliableNote?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = StronkTheme.colors.warning,
+                modifier = Modifier.padding(top = StronkSpacing.xxs),
+            )
+        }
+    }
+}
+
+/** Kreskowana linia pod edytowalną wartością (mocki: `.value .edit`). */
+private fun Modifier.dashedUnderline(): Modifier = drawBehind {
+    val color = Color.hsl(224f, 0.14f, 0.36f)
+    val strokeWidth = 2.dp.toPx()
+    val y = size.height - strokeWidth / 2f
+    drawLine(
+        color = color,
+        start = Offset(0f, y),
+        end = Offset(size.width, y),
+        strokeWidth = strokeWidth,
+        pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx())),
+    )
+}
+
+/**
+ * Hero-liczby prefillu z afordancją edycji (mocki: `.value`) — każdy edytowalny
+ * segment ma kreskowane podkreślenie; "×" między nimi jest bez podkreślenia.
+ * Stan "brak danych" (needsInput) pokazuje "?" w tej samej stylistyce.
+ */
+@Composable
+private fun PrefillHero(current: CurrentSetUi, onEdit: () -> Unit) {
     val big = MaterialTheme.typography.displayMedium
-    val small = MaterialTheme.typography.headlineSmall
     val bigColor = MaterialTheme.colorScheme.onSurface
-    val smallColor = MaterialTheme.colorScheme.onSurfaceVariant
-    Row(verticalAlignment = Alignment.Bottom) {
-        when (prefill) {
+    val unitStyle = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold)
+    val unitColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val xStyle = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+
+    @Composable
+    fun Segment(content: @Composable RowScope.() -> Unit) {
+        Row(
+            modifier = Modifier
+                .dashedUnderline()
+                .padding(bottom = 5.dp),
+            verticalAlignment = Alignment.Bottom,
+            content = content,
+        )
+    }
+
+    Row(
+        modifier = Modifier
+            .clip(MaterialTheme.shapes.large)
+            .clickable(onClick = onEdit)
+            .padding(horizontal = StronkSpacing.md, vertical = StronkSpacing.xs),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        if (current.needsInput) {
+            Segment {
+                Text("?", style = big, color = bigColor, maxLines = 1)
+                Text("kg", style = unitStyle, color = unitColor, modifier = Modifier.padding(start = 4.dp))
+            }
+            return@Row
+        }
+        when (val prefill = current.prefill) {
             is SetLog.WeightReps -> {
-                Text(WorkoutLabels.kg(prefill.kg), style = big, color = bigColor, maxLines = 1)
-                Text(
-                    "kg",
-                    style = small,
-                    color = smallColor,
-                    modifier = Modifier.padding(start = StronkSpacing.xxs, bottom = 6.dp),
-                )
-                Text(
-                    "×",
-                    style = small,
-                    color = StronkTheme.colors.textDim,
-                    modifier = Modifier.padding(horizontal = StronkSpacing.xs, vertical = 6.dp),
-                )
-                Text("${prefill.reps}", style = big, color = bigColor, maxLines = 1)
+                Segment {
+                    Text(WorkoutLabels.kg(prefill.kg), style = big, color = bigColor, maxLines = 1)
+                    Text("kg", style = unitStyle, color = unitColor, modifier = Modifier.padding(start = 4.dp))
+                }
+                Text("×", style = xStyle, color = StronkTheme.colors.textDim, modifier = Modifier.padding(horizontal = 12.dp))
+                Segment { Text("${prefill.reps}", style = big, color = bigColor, maxLines = 1) }
             }
 
             is SetLog.Reps -> {
-                Text("${prefill.reps}", style = big, color = bigColor, maxLines = 1)
+                Segment { Text("${prefill.reps}", style = big, color = bigColor, maxLines = 1) }
                 Text(
                     text = prefill.extraKg?.let { "powt. +${WorkoutLabels.kg(it)} kg" } ?: "powt.",
-                    style = small,
-                    color = smallColor,
-                    modifier = Modifier.padding(start = StronkSpacing.xs, bottom = 6.dp),
+                    style = unitStyle,
+                    color = unitColor,
+                    modifier = Modifier.padding(start = StronkSpacing.xs),
                 )
             }
 
-            is SetLog.Time -> Text(
-                WorkoutLabels.seconds(prefill.seconds),
-                style = big,
-                color = bigColor,
-                maxLines = 1,
-            )
+            is SetLog.Time -> Segment {
+                Text(WorkoutLabels.seconds(prefill.seconds), style = big, color = bigColor, maxLines = 1)
+            }
 
             is SetLog.DistanceTime -> {
-                Text(
-                    WorkoutLabels.meters(prefill.meters),
-                    style = big,
-                    color = bigColor,
-                    maxLines = 1,
-                )
+                Segment {
+                    Text(WorkoutLabels.meters(prefill.meters), style = big, color = bigColor, maxLines = 1)
+                }
                 Text(
                     "· ${WorkoutLabels.countdown(prefill.seconds)}",
-                    style = small,
-                    color = smallColor,
-                    modifier = Modifier.padding(start = StronkSpacing.xs, bottom = 6.dp),
+                    style = unitStyle,
+                    color = unitColor,
+                    modifier = Modifier.padding(start = StronkSpacing.xs),
                 )
             }
         }
@@ -609,7 +767,10 @@ private fun PrefillHero(prefill: SetLog) {
 
 // ----------------------------------------------------------- stan: PRZERWA
 
-/** Stan PRZERWA: pełny zegar + karta "Następnie"; zero zaliczania serii. */
+/**
+ * Stan PRZERWA (mocki: `.ring` + `.next-big`) — pierścień postępu jako jedyny
+ * focal point, pod nim karta "Następnie". Zero zaliczania serii.
+ */
 @Composable
 private fun RestPane(
     remainingSeconds: Int,
@@ -620,28 +781,42 @@ private fun RestPane(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(32.dp))
 
-        Text(
-            text = "PRZERWA",
-            style = MaterialTheme.typography.labelSmall,
-            color = StronkTheme.colors.textDim,
-        )
-        Spacer(Modifier.height(StronkSpacing.xs))
-        StronkHeroNumber(
-            value = WorkoutLabels.countdown(remainingSeconds),
-            caption = "z ${WorkoutLabels.countdown(totalSeconds)}",
-            valueStyle = MaterialTheme.typography.displayLarge,
-        )
+        StronkRingTimer(
+            progress = if (totalSeconds > 0) {
+                (totalSeconds - remainingSeconds).toFloat() / totalSeconds
+            } else {
+                0f
+            },
+        ) {
+            Text(
+                text = "PRZERWA",
+                style = TextStyle(fontSize = 11.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.0.sp),
+                color = StronkTheme.colors.textDim,
+            )
+            Text(
+                text = WorkoutLabels.clock(remainingSeconds),
+                style = MaterialTheme.typography.displayLarge.copy(fontSize = 60.sp, fontWeight = FontWeight.ExtraBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "z ${WorkoutLabels.clock(totalSeconds)}",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
+                color = StronkTheme.colors.textDim,
+            )
+        }
 
-        Spacer(Modifier.weight(1f))
-
-        StronkSectionHeader(title = "Następnie", modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(StronkSpacing.sm))
-        StronkCard(Modifier.fillMaxWidth()) {
+        Spacer(Modifier.height(28.dp))
+        StronkCard(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(20.dp),
+        ) {
+            StronkSectionHeader(title = "Następnie", modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(14.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 StronkIconBadge(
                     icon = MuscleIcons.forMuscle(next.muscle),
@@ -650,33 +825,96 @@ private fun RestPane(
                 Column {
                     Text(
                         text = MuscleIcons.groupLabel(next.muscle).uppercase(),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = TextStyle(fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp),
                         color = StronkTheme.colors.textDim,
                     )
                     Text(
                         text = next.exerciseName,
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.headlineSmall.copy(fontSize = 22.sp, lineHeight = 25.sp),
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 3.dp),
                     )
                 }
             }
             Spacer(Modifier.height(StronkSpacing.sm))
             StronkStatRow {
-                StronkStat(
-                    label = "seria",
-                    value = "${next.setNumber}/${next.totalSets}",
-                    modifier = Modifier.weight(1f),
-                )
-                StronkStat(
-                    label = prefillStatLabel(next.prefill),
-                    value = if (next.needsInput) "wpisz" else next.prefillLabel,
-                    modifier = Modifier.weight(1.7f),
+                NextStatTile(label = "seria", modifier = Modifier.weight(1f)) {
+                    val numStyle = MaterialTheme.typography.displaySmall
+                    Text(text = "${next.setNumber}", style = numStyle, color = MaterialTheme.colorScheme.onSurface)
+                    Text(
+                        text = "/",
+                        style = numStyle.copy(fontWeight = FontWeight.SemiBold),
+                        color = StronkTheme.colors.textDim,
+                        modifier = Modifier.padding(horizontal = 2.dp),
+                    )
+                    Text(text = "${next.totalSets}", style = numStyle, color = MaterialTheme.colorScheme.onSurface)
+                }
+                NextStatTile(label = prefillStatLabel(next.prefill), modifier = Modifier.weight(1.7f)) {
+                    NextStatValue(next)
+                }
+            }
+            // Świeży wynik kalibracji — user właśnie zalogował serię testową
+            // i tu pierwszy raz widzi, skąd wziął się ciężar na kolejne serie.
+            next.calibration?.let {
+                Text(
+                    text = it.summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = StronkSpacing.sm),
                 )
             }
         }
+
+        Spacer(Modifier.weight(1f))
     }
+}
+
+/** Kafelek statystyki w karcie "Następnie" (mocki: `.nb-stat`) — wartość rysowana ręcznie. */
+@Composable
+private fun NextStatTile(label: String, modifier: Modifier = Modifier, value: @Composable RowScope.() -> Unit) {
+    StronkInsetCard(
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = StronkSpacing.sm),
+    ) {
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 1.0.sp),
+            color = StronkTheme.colors.textDim,
+        )
+        Row(modifier = Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Bottom, content = value)
+    }
+}
+
+/** Wartość kafelka "ciężar × powt." (mocki: `.nb-stat .v`) — liczby duże, jednostka/× małe. */
+@Composable
+private fun NextStatValue(next: CurrentSetUi) {
+    val numStyle = MaterialTheme.typography.displaySmall
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val prefill = next.prefill
+    if (next.needsInput || prefill !is SetLog.WeightReps) {
+        Text(
+            text = if (next.needsInput) "wpisz" else next.prefillLabel,
+            style = numStyle,
+            color = onSurface,
+        )
+        return
+    }
+    Text(text = WorkoutLabels.kg(prefill.kg), style = numStyle, color = onSurface)
+    Text(
+        text = "kg",
+        style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 3.dp),
+    )
+    Text(
+        text = "×",
+        style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
+        color = StronkTheme.colors.textDim,
+        modifier = Modifier.padding(horizontal = 5.dp),
+    )
+    Text(text = "${prefill.reps}", style = numStyle, color = onSurface)
 }
 
 /** Etykieta kafelka z prefillem w karcie "Następnie" — zależna od typu pomiaru. */
@@ -716,57 +954,6 @@ private fun FinishedPane() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-    }
-}
-
-// -------------------------------------------------- linijka bieżącego ćwiczenia
-
-/** Cienka linijka na dole: miniaturka + nazwa; tap = sheet z podglądem. */
-@Composable
-private fun CurrentExerciseBar(
-    row: WorkoutExerciseUi?,
-    setNumber: Int,
-    totalSets: Int,
-    onClick: () -> Unit,
-) {
-    if (row == null) return
-    Column {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
-        ) {
-            AsyncImage(
-                model = ExerciseRepository.IMAGES_BASE_URI + row.imagePath.orEmpty(),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(MaterialTheme.shapes.extraSmall),
-            )
-            Text(
-                text = row.name,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = "seria $setNumber/$totalSets",
-                style = MaterialTheme.typography.labelMedium,
-                color = StronkTheme.colors.textDim,
-            )
-            Icon(
-                Icons.Rounded.KeyboardArrowUp,
-                contentDescription = "Podgląd ćwiczenia",
-                tint = StronkTheme.colors.textDim,
-                modifier = Modifier.size(18.dp),
-            )
-        }
     }
 }
 
@@ -1263,10 +1450,25 @@ private fun SetEditorDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("${current.exerciseName} — seria ${current.setNumber} z ${current.totalSets}")
+            Text(
+                if (current.isCalibrationSet) {
+                    "${current.exerciseName} — ${WorkoutLabels.CALIBRATION_LABEL.lowercase()}"
+                } else {
+                    "${current.exerciseName} — seria ${current.setNumber} z ${current.totalSets}"
+                },
+            )
         },
         text = {
             Column {
+                if (current.isCalibrationSet) {
+                    StronkNoteCard(
+                        text = WorkoutLabels.CALIBRATION_HINT,
+                        tone = StronkTone.ACCENT,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = StronkSpacing.xs),
+                    )
+                }
                 when (prefill) {
                     is SetLog.WeightReps -> {
                         StepperField(
@@ -1283,7 +1485,7 @@ private fun SetEditorDialog(
                             keyboardType = KeyboardType.Decimal,
                         )
                         StepperField(
-                            label = "Powtórzenia",
+                            label = "Powt.",
                             value = repsText,
                             onValueChange = { repsText = it },
                             onStep = { direction ->
@@ -1296,7 +1498,7 @@ private fun SetEditorDialog(
 
                     is SetLog.Reps -> {
                         StepperField(
-                            label = "Powtórzenia",
+                            label = "Powt.",
                             value = repsText,
                             onValueChange = { repsText = it },
                             onStep = { direction ->
@@ -1360,13 +1562,25 @@ private fun SetEditorDialog(
                         )
                     }
                 }
+                // Poza wiarygodnym zakresem Epleya tylko ostrzegamy — nic nie blokujemy.
+                val repsWarning = repsText.trim().toIntOrNull()
+                    ?.takeIf { current.isCalibrationSet }
+                    ?.let(WorkoutLabels::calibrationRepsWarning)
+                repsWarning?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StronkTheme.colors.warning,
+                        modifier = Modifier.padding(top = StronkSpacing.xs),
+                    )
+                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = { result?.let(onConfirm) },
                 enabled = result != null,
-            ) { Text("Zalicz serię") }
+            ) { Text(if (current.isCalibrationSet) "Zapisz test" else "Zalicz serię") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Anuluj") }

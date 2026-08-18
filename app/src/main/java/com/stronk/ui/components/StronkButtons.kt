@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -21,8 +22,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.stronk.ui.theme.StronkButtonShape
 import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkTheme
 
@@ -43,9 +51,16 @@ fun StronkPrimaryButton(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .height(StronkSizes.button),
+            .height(StronkSizes.button)
+            .shadow(
+                elevation = 12.dp,
+                shape = StronkButtonShape,
+                ambientColor = MaterialTheme.colorScheme.primary,
+                spotColor = MaterialTheme.colorScheme.primary,
+                clip = false,
+            ),
         enabled = enabled,
-        shape = MaterialTheme.shapes.large,
+        shape = StronkButtonShape,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -77,7 +92,7 @@ fun StronkGhostButton(
         onClick = onClick,
         modifier = modifier.height(StronkSizes.button),
         enabled = enabled,
-        shape = MaterialTheme.shapes.large,
+        shape = StronkButtonShape,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -124,6 +139,31 @@ fun StronkTextAction(
 }
 
 /**
+ * [StronkTextAction] z podkreśleniem (mocki: `.sec-actions u`, `.wiz-skip` —
+ * `border-bottom`). Dla akcji trzeciorzędnych, które w mocku mają widoczną
+ * kreskę pod tekstem: „przesuń” / „odwołaj” w harmonogramie, „pomiń ten krok”
+ * w kreatorze planu.
+ */
+@Composable
+fun StronkUnderlinedTextAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val lineColor = MaterialTheme.colorScheme.outline
+    StronkTextAction(
+        text = text,
+        onClick = onClick,
+        tone = StronkTone.NEUTRAL,
+        modifier = modifier.drawBehind {
+            val strokeWidth = 1.dp.toPx()
+            val y = size.height - strokeWidth
+            drawLine(lineColor, Offset(0f, y), Offset(size.width, y), strokeWidth)
+        },
+    )
+}
+
+/**
  * Wielki przycisk kciukowy treningu (mocki: `.cta-big`) — 108 dp wysokości,
  * ogromny znak + mały podpis WERSALIKAMI. Zasada nr 1 apki: jeden tap na serię,
  * trafialny bez patrzenia.
@@ -143,7 +183,14 @@ fun StronkBigActionButton(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .height(StronkSizes.bigButton),
+            .height(StronkSizes.bigButton)
+            .shadow(
+                elevation = 18.dp,
+                shape = MaterialTheme.shapes.extraLarge,
+                ambientColor = MaterialTheme.colorScheme.primary,
+                spotColor = MaterialTheme.colorScheme.primary,
+                clip = false,
+            ),
         enabled = enabled,
         shape = MaterialTheme.shapes.extraLarge,
         color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
@@ -176,4 +223,45 @@ fun StronkFooterActions(
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )
+}
+
+/**
+ * Mała pigułkowa akcja (mocki: `.swap`) — tło przezroczyste, cienki obrys, tekst
+ * wygaszony. Dla drugorzędnych akcji WEWNĄTRZ karty (np. „zamień” przy ćwiczeniu),
+ * nie na stopce ekranu — tam jest [StronkGhostButton]/[StronkPrimaryButton].
+ */
+@Composable
+fun StronkPillButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = CircleShape,
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = StronkTheme.colors.textDim,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                color = StronkTheme.colors.textDim,
+            )
+        }
+    }
 }
