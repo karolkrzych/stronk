@@ -22,7 +22,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -134,6 +136,31 @@ fun StronkTextAction(
             modifier = if (icon != null) Modifier.padding(start = 6.dp) else Modifier,
         )
     }
+}
+
+/**
+ * [StronkTextAction] z podkreśleniem (mocki: `.sec-actions u`, `.wiz-skip` —
+ * `border-bottom`). Dla akcji trzeciorzędnych, które w mocku mają widoczną
+ * kreskę pod tekstem: „przesuń” / „odwołaj” w harmonogramie, „pomiń ten krok”
+ * w kreatorze planu.
+ */
+@Composable
+fun StronkUnderlinedTextAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val lineColor = MaterialTheme.colorScheme.outline
+    StronkTextAction(
+        text = text,
+        onClick = onClick,
+        tone = StronkTone.NEUTRAL,
+        modifier = modifier.drawBehind {
+            val strokeWidth = 1.dp.toPx()
+            val y = size.height - strokeWidth
+            drawLine(lineColor, Offset(0f, y), Offset(size.width, y), strokeWidth)
+        },
+    )
 }
 
 /**

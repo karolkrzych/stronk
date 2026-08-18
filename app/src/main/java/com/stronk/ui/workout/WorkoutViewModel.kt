@@ -128,6 +128,10 @@ data class WorkoutUiState(
     val planName: String = "",
     val exercises: List<WorkoutExerciseUi> = emptyList(),
     val current: CurrentSetUi? = null,
+    /** Pozycja w bloku (1-based); null, dopóki sesja nie jest zbudowana — nagłówek wtedy pokazuje nazwę planu. */
+    val weekInBlock: Int? = null,
+    /** Pełna długość bloku (praca + tydzień lekki); null = jak wyżej. */
+    val blockLengthWeeks: Int? = null,
     /** Podgląd tego, co po bieżącej serii ("seria 3 z 3", "następne: Wiosła…"). */
     val nextUp: String? = null,
     val allFinished: Boolean = false,
@@ -374,6 +378,8 @@ class WorkoutViewModel(
             planName = session.planName,
             exercises = rows,
             current = currentUi,
+            weekInBlock = session.weekIndexInBlock + 1,
+            blockLengthWeeks = session.fullBlockLengthWeeks,
             nextUp = nextUp,
             allFinished = session.allFinished,
             completedSets = session.completedSetCount,

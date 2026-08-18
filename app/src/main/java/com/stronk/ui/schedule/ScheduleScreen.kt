@@ -35,8 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.SpanStyle
@@ -61,6 +59,7 @@ import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
+import com.stronk.ui.components.StronkUnderlinedTextAction
 import com.stronk.ui.components.stronkDashedBorder
 import com.stronk.ui.progress.ProgressFormat
 import com.stronk.ui.theme.StronkSpacing
@@ -599,30 +598,15 @@ private fun SecondaryActionsRow(
             horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            UnderlinedTextAction(text = "przesuń", onClick = onMove)
+            StronkUnderlinedTextAction(text = "przesuń", onClick = onMove)
             Text(
                 text = "·",
                 style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
                 color = StronkTheme.colors.textDim,
             )
-            UnderlinedTextAction(text = "odwołaj", onClick = onCancel)
+            StronkUnderlinedTextAction(text = "odwołaj", onClick = onCancel)
         }
     }
-}
-
-@Composable
-private fun UnderlinedTextAction(text: String, onClick: () -> Unit) {
-    val lineColor = MaterialTheme.colorScheme.outline
-    StronkTextAction(
-        text = text,
-        onClick = onClick,
-        tone = StronkTone.NEUTRAL,
-        modifier = Modifier.drawBehind {
-            val strokeWidth = 1.dp.toPx()
-            val y = size.height - strokeWidth
-            drawLine(lineColor, Offset(0f, y), Offset(size.width, y), strokeWidth)
-        },
-    )
 }
 
 /** Status wpisu jako badge (ikona + kolor semantyczny) — wyłącznie DONE/SKIPPED/MOVED. */

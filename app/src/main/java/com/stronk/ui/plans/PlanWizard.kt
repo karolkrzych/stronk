@@ -32,8 +32,8 @@ import com.stronk.ui.components.StronkNoteCard
 import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkSegmentedProgress
-import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
+import com.stronk.ui.components.StronkUnderlinedTextAction
 import com.stronk.ui.profile.ProfileDefaults
 import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTheme
@@ -207,6 +207,7 @@ internal fun PlanWizardLimitsStep(
     ) {
         StronkCard(
             modifier = Modifier
+                .fillMaxWidth()
                 .padding(horizontal = StronkSpacing.screen)
                 .padding(top = StronkSpacing.xl),
             contentPadding = PaddingValues(18.dp),
@@ -251,7 +252,9 @@ internal fun PlanWizardLimitsStep(
                 .padding(top = StronkSpacing.md),
         )
 
-        StronkTextAction(
+        // Podkreślenie jak `.wiz-skip`/`.sec-actions u` w mocku — spójnie z
+        // "przesuń"/"odwołaj" w ScheduleScreen (ten sam komponent).
+        StronkUnderlinedTextAction(
             text = "Nie mam ograniczeń — pomiń ten krok",
             onClick = onSkip,
             modifier = Modifier

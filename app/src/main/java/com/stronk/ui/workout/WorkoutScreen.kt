@@ -319,7 +319,12 @@ private fun WorkoutContent(
             Spacer(Modifier.height(StronkSpacing.md))
             StronkScreenHeader(
                 title = state.dayName,
-                subtitle = state.planName,
+                // Mock: "tydzień X/Y" — pozycja w bloku progresji, nie ucięta nazwa
+                // planu; brak danych (sesja jeszcze nie zbudowana) → fallback do nazwy
+                // planu (nagłówek i tak trzyma ją w jednej linii z ellipsis).
+                subtitle = state.weekInBlock?.let { w ->
+                    state.blockLengthWeeks?.let { l -> "tydzień $w/$l" }
+                } ?: state.planName,
                 meta = current?.let {
                     "ćwiczenie ${it.exerciseIndex + 1}/${state.exercises.size}"
                 },
@@ -544,7 +549,7 @@ private fun SetPane(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    text = "Seria ${current.setNumber}/${current.totalSets}",
+                    text = "Seria ${current.setNumber}/${current.totalSets}".uppercase(),
                     style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1480,7 +1485,7 @@ private fun SetEditorDialog(
                             keyboardType = KeyboardType.Decimal,
                         )
                         StepperField(
-                            label = "Powtórzenia",
+                            label = "Powt.",
                             value = repsText,
                             onValueChange = { repsText = it },
                             onStep = { direction ->
@@ -1493,7 +1498,7 @@ private fun SetEditorDialog(
 
                     is SetLog.Reps -> {
                         StepperField(
-                            label = "Powtórzenia",
+                            label = "Powt.",
                             value = repsText,
                             onValueChange = { repsText = it },
                             onStep = { direction ->
