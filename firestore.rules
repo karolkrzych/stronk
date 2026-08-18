@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Tożsamość danych = tajny kod dostępu (users/{code}), nie konto.
+    // Sesja anonimowa wymagana — odcina niezalogowany internet (docs/firestore-data-model.md).
+    match /users/{code}/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
