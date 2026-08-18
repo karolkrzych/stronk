@@ -1,5 +1,6 @@
 package com.stronk.data
 
+import com.stronk.progression.ProgressionConstants
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -211,6 +212,23 @@ class FirestoreMappersTest {
         assertEquals(Plan(id = "p2", name = "", createdAt = 0L), decoded)
     }
 
+    @Test
+    fun `Plan zapisuje blockLengthWeeks i wraca z round-tripu (też na Long)`() {
+        val custom = plan.copy(blockLengthWeeks = 3)
+        val map = FirestoreMappers.planToMap(custom)
+        assertEquals(3, map["blockLengthWeeks"])
+        assertEquals(custom, FirestoreMappers.planFromMap("p1", map))
+        assertEquals(custom, FirestoreMappers.planFromMap("p1", simulateFirestoreRead(map)))
+    }
+
+    @Test
+    fun `Plan bez blockLengthWeeks dostaje domyślną długość bloku pracy`() {
+        val map = FirestoreMappers.planToMap(plan) - "blockLengthWeeks"
+        val decoded = FirestoreMappers.planFromMap("p1", map)
+        assertEquals(ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT, decoded.blockLengthWeeks)
+        assertEquals(plan, decoded)
+    }
+
     // ---------- ScheduleEntry ----------
 
     @Test
@@ -335,6 +353,7 @@ class FirestoreMappersTest {
             profile = ProfileDetails(
                 equipment = listOf("barbell", "dumbbell"),
                 constraints = mapOf("knee" to StressLevel.LOW, "lowBack" to StressLevel.MEDIUM),
+                goal = TrainingGoal.RETURN_TO_FORM,
                 returningFromBreak = true,
             ),
         )
@@ -354,6 +373,39 @@ class FirestoreMappersTest {
         val details = map["profile"] as Map<String, Any?>
         assertEquals(mapOf("knee" to "medium"), details["constraints"])
         assertFalse("displayName" in map)
+    }
+
+    @Test
+    fun `goal zapisuje się małymi literami i wraca z round-tripu dla każdej wartości`() {
+        for (goal in TrainingGoal.entries) {
+            val profile = UserProfile(createdAt = 1L, profile = ProfileDetails(goal = goal))
+            val map = FirestoreMappers.userProfileToMap(profile)
+            @Suppress("UNCHECKED_CAST")
+            val details = map["profile"] as Map<String, Any?>
+            assertEquals(goal.name.lowercase(), details["goal"])
+            assertEquals(profile, FirestoreMappers.userProfileFromMap(simulateFirestoreRead(map)))
+        }
+    }
+
+    @Test
+    fun `goal null nie jest zapisywany, brak i nieznana wartość dają null`() {
+        // null → pole nie istnieje w mapie
+        val map = FirestoreMappers.userProfileToMap(UserProfile(createdAt = 1L))
+        @Suppress("UNCHECKED_CAST")
+        val details = map["profile"] as Map<String, Any?>
+        assertFalse("goal" in details)
+
+        // brak pola → null
+        assertNull(FirestoreMappers.userProfileFromMap(map).profile.goal)
+
+        // nieznana wartość → null, reszta profilu zostaje
+        val unknown = mapOf(
+            "createdAt" to 1L,
+            "profile" to mapOf("goal" to "cardio", "returningFromBreak" to true),
+        )
+        val decoded = FirestoreMappers.userProfileFromMap(unknown)
+        assertNull(decoded.profile.goal)
+        assertTrue(decoded.profile.returningFromBreak)
     }
 
     @Test
