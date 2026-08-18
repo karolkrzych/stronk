@@ -24,10 +24,15 @@ createdAt: millis
 profile: {
   equipment: string[]          // wartości jak w datasecie: "barbell", "dumbbell", …
   constraints: {               // limity per staw — ćwiczenia powyżej progu są flagowane
-    knee: "none"|"low"|"medium",     // = maksymalny akceptowany jointStress
-    lowBack: "none"|"low"|"medium",
-    …(7 stawów, wpis tylko dla stawów z ograniczeniem)
+    knee: "none"|"low"|"medium"|"high",  // = maksymalny akceptowany jointStress
+    lowBack: "none"|"low"|"medium"|"high",
+    …(7 stawów)
   }
+  // Uwaga (Faza 3, ekran Profil): zapis ZAWSZE zawiera wszystkie 7 stawów,
+  // a "high" oznacza brak ograniczenia. Powód: profil zapisuje się przez
+  // SetOptions.merge(), a merge nie usuwa kluczy zagnieżdżonej mapy — usunięcie
+  // wpisu nigdy by się nie propagowało. Wpis "high" jest semantycznie neutralny
+  // (żadne ćwiczenie nie przekracza high, więc nic nie jest flagowane).
   returningFromBreak: bool     // włącza ramp-up (ADR-004)
 }
 ```
