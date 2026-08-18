@@ -14,8 +14,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTheme
 
@@ -49,7 +51,7 @@ fun StronkStat(
         Column(Modifier.fillMaxWidth(), horizontalAlignment = align) {
             Text(
                 text = label.uppercase(),
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 1.0.sp),
                 color = StronkTheme.colors.textDim,
                 textAlign = if (align == Alignment.CenterHorizontally) TextAlign.Center else TextAlign.Start,
             )
@@ -61,9 +63,9 @@ fun StronkStat(
                 if (unit != null) {
                     Text(
                         text = unit,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = StronkSpacing.xxs, bottom = 2.dp),
+                        modifier = Modifier.padding(start = 3.dp, bottom = 2.dp),
                     )
                 }
             }

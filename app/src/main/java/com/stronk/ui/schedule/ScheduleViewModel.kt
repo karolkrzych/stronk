@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.stronk.StronkApplication
 import com.stronk.data.Exercise
 import com.stronk.data.ExerciseRepository
+import com.stronk.data.GoalDefaults
 import com.stronk.data.Plan
 import com.stronk.data.PlanExercise
 import com.stronk.data.PlanRepository
@@ -15,6 +16,9 @@ import com.stronk.data.ScheduleEntry
 import com.stronk.data.ScheduleRepository
 import com.stronk.data.ScheduleStatus
 import com.stronk.data.SetTarget
+import com.stronk.data.UserProfileRepository
+import com.stronk.progression.ProgressionConstants
+import com.stronk.progression.ProgressionEngine
 import com.stronk.ui.PlLabels
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -53,6 +57,8 @@ data class ScheduleEntryUi(
     /** Przy status=MOVED: etykieta docelowej daty, np. "piątek 22 sierpnia". */
     val movedToLabel: String?,
     val exercises: List<ScheduleExerciseRow>,
+    /** Zaokrąglony do 5 min szacunek czasu treningu (sumaSerii × (przerwa + 40 s)). */
+    val estimatedMinutes: Int,
 ) {
     /** Start treningu tylko z zaplanowanego wpisu wskazującego istniejący dzień planu. */
     val canStart: Boolean
@@ -89,6 +95,10 @@ data class ScheduleUiState(
     /** Np. "10–16 sierpnia". */
     val weekLabel: String = "",
     val isCurrentWeek: Boolean = true,
+    /** Pozycja w bloku (1-based) wg planu bieżącego wpisu tygodnia; null = brak planu w tygodniu. */
+    val weekInBlock: Int? = null,
+    /** Pełna długość bloku (praca + tydzień lekki); null = brak planu w tygodniu. */
+    val blockLengthWeeks: Int? = null,
     /** Zawsze 7 komórek (poniedziałek–niedziela). */
     val days: List<ScheduleDayUi> = emptyList(),
     /** "Dziś" albo np. "Piątek 22 sierpnia". */
@@ -104,6 +114,7 @@ class ScheduleViewModel(
     private val scheduleRepository: ScheduleRepository,
     planRepository: PlanRepository,
     exerciseRepository: ExerciseRepository,
+    userProfileRepository: UserProfileRepository,
 ) : ViewModel() {
 
     /** Dataset z assets — null do końca pierwszego ładowania. */
@@ -120,10 +131,11 @@ class ScheduleViewModel(
         planRepository.observePlans(),
         exercisesById,
         selectedDate,
-    ) { schedule, plans, exercises, selected ->
+        userProfileRepository.observeProfile(),
+    ) { schedule, plans, exercises, selected, profile ->
         latestEntries = schedule
         if (exercises == null) ScheduleUiState(loading = true)
-        else buildState(schedule, plans, exercises, selected)
+        else buildState(schedule, plans, exercises, selected, GoalDefaults.forProfile(profile).restSeconds)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScheduleUiState())
 
     init {
@@ -217,16 +229,21 @@ class ScheduleViewModel(
         plans: List<Plan>,
         exercises: Map<String, Exercise>,
         selected: LocalDate,
+        restSeconds: Int,
     ): ScheduleUiState {
         val today = LocalDate.now()
         val weekStart = weekStartOf(selected)
         val entriesByDate = schedule.groupBy { it.date }
         val plansById = plans.associateBy { it.id }
 
+        var blockPlan: Plan? = null
         val days = (0 until ScheduleConstants.DAYS_IN_WEEK).map { offset ->
             val date = weekStart.plusDays(offset.toLong())
             val dayEntries = entriesByDate[date.toString()].orEmpty()
             val badgeEntry = pickBadgeEntry(dayEntries)
+            if (blockPlan == null) {
+                blockPlan = badgeEntry?.let { plansById[it.planId] }
+            }
             ScheduleDayUi(
                 date = date,
                 abbrev = ScheduleConstants.DAY_ABBREVIATIONS.getValue(date.dayOfWeek),
@@ -240,15 +257,22 @@ class ScheduleViewModel(
             )
         }
 
+        val fullBlockLength = blockPlan?.let { it.blockLengthWeeks + ProgressionConstants.BLOCK_LIGHT_WEEKS }
+        val weekInBlock = blockPlan?.let {
+            ProgressionEngine.weekIndexInBlock(it.createdAt, System.currentTimeMillis(), fullBlockLength!!) + 1
+        }
+
         return ScheduleUiState(
             loading = false,
             weekLabel = weekLabel(weekStart, today),
             isCurrentWeek = weekStart == weekStartOf(today),
+            weekInBlock = weekInBlock,
+            blockLengthWeeks = fullBlockLength,
             days = days,
             selectedDayLabel = selectedDayLabel(selected, today),
             selectedDate = selected,
             selectedEntries = entriesByDate[selected.toString()].orEmpty()
-                .map { entryUi(it, plansById, exercises) },
+                .map { entryUi(it, plansById, exercises, restSeconds) },
             planOptions = plans
                 .filter { !it.archived && it.days.isNotEmpty() }
                 .map { plan -> PlanOption(plan.id, plan.name, plan.days.map { it.name }) },
@@ -279,6 +303,7 @@ class ScheduleViewModel(
         entry: ScheduleEntry,
         plansById: Map<String, Plan>,
         exercises: Map<String, Exercise>,
+        restSeconds: Int,
     ): ScheduleEntryUi {
         val plan = plansById[entry.planId]
         val day = plan?.days?.getOrNull(entry.dayIndex)
@@ -303,7 +328,16 @@ class ScheduleViewModel(
                     targetLabel = targetLabel(planExercise),
                 )
             },
+            estimatedMinutes = estimateMinutes(day?.exercises.orEmpty(), restSeconds),
         )
+    }
+
+    /** Szacunek czasu treningu: sumaSerii × (przerwa + 40 s), zaokrąglone do 5 min. */
+    private fun estimateMinutes(exercises: List<PlanExercise>, restSeconds: Int): Int {
+        val totalSets = exercises.sumOf { it.sets }
+        val totalSeconds = totalSets * (restSeconds + 40)
+        val minutes = totalSeconds / 60.0
+        return (minutes / 5).roundToInt() * 5
     }
 
     private fun targetLabel(exercise: PlanExercise): String = when (val target = exercise.target) {
@@ -334,6 +368,7 @@ class ScheduleViewModel(
                     scheduleRepository = app.scheduleRepository,
                     planRepository = app.planRepository,
                     exerciseRepository = app.exerciseRepository,
+                    userProfileRepository = app.userProfileRepository,
                 )
             }
         }

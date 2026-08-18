@@ -37,10 +37,16 @@ object StronkSpacing {
 internal val StronkShapes = Shapes(
     extraSmall = RoundedCornerShape(9.dp),
     small = RoundedCornerShape(13.dp),
-    medium = RoundedCornerShape(16.dp),
+    medium = RoundedCornerShape(14.dp),
     large = RoundedCornerShape(20.dp),
     extraLarge = RoundedCornerShape(28.dp),
 )
+
+/** Promień karty ekranowej (mocki: `.ex-card`/`.next-big`) — domyślny `shape` [StronkCard]. */
+val StronkCardShape = RoundedCornerShape(22.dp)
+
+/** Promień głównego CTA (mocki: `.cta`). */
+val StronkButtonShape = RoundedCornerShape(18.dp)
 
 /** Wysokości elementów interaktywnych — spójne w całej apce. */
 object StronkSizes {

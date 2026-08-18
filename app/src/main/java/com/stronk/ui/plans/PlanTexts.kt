@@ -7,13 +7,30 @@ import com.stronk.data.SetTarget
 import com.stronk.data.StressLevel
 import com.stronk.progression.ProgressionConstants
 import com.stronk.ui.PlLabels
+import java.util.Locale
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 /**
  * Etykiety i formatowanie tekstów modułu planów. PlLabels jest read-only —
  * brakujące tam etykiety (poziomy obciążenia stawów) żyją lokalnie tutaj.
  */
 internal object PlanTexts {
+
+    private val polish = Locale.forLanguageTag("pl")
+
+    /**
+     * Sama liczba kilogramów, bez jednostki — do dużych liczb w kafelkach statystyk,
+     * gdzie „kg” jest osobnym elementem. Np. "80", "82,5" (bez zbędnego ",0").
+     */
+    fun kgValue(kg: Double): String {
+        val rounded = (kg * 10).roundToLong() / 10.0
+        return if (rounded % 1.0 == 0.0) {
+            rounded.toLong().toString()
+        } else {
+            "%.1f".format(polish, rounded)
+        }
+    }
 
     fun stressLevel(level: StressLevel): String = when (level) {
         StressLevel.HIGH -> "wysokie"
