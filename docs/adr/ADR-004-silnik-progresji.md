@@ -24,3 +24,17 @@ Zasady wspólne: silnik zawsze **proponuje**, nigdy nie wymusza — prefillowana
 - (+) Silnik to czysta funkcja (historia logów + plan → propozycja) — trywialnie testowalna jednostkowo.
 - (−) Reguły są proste, nie optymalne treningowo — świadomy trade-off; pełna periodyzacja poza zakresem na zawsze albo do odwołania.
 - (−) Progresja dla typów TIME/DISTANCE_TIME wymaga doprecyzowania stałych (ile sekund/metrów przyrostu) w fazie implementacji.
+
+## Aktualizacja 2026-08-19: blok jest OPCJONALNY
+
+Reguła 3 dostaje wariant „bez bloku". `Plan.blockLengthWeeks` jest nullowalne:
+`null` = plan BEZ bloku — progresja leci ciągiem, **tydzień lekki nie wypada
+nigdy**, a numer tygodnia rośnie liniowo (bez modulo), więc plan może biec
+w nieskończoność. Nowe plany ręczne startują bez bloku; szablony (w tym
+powrotowy) włączają blok domyślnie na 5 tygodni pracy + 1 lekki.
+
+Zachowanie silnika dla planów Z blokiem jest nietknięte — nullowalna ścieżka
+weszła jako osobne funkcje obok istniejących (`fullBlockWeeks`, `weeksSince`,
+`weekIndexForBlock`, `isLightWeekForBlock`, `proposeTargetsForBlock`), a plan
+bez bloku wchodzi do starego API jako długość `NO_BLOCK_WEEKS = 0`, którą
+`isLightWeek` już wcześniej traktował jako „brak tygodnia lekkiego".

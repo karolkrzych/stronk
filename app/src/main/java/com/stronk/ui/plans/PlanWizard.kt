@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -125,7 +126,11 @@ internal fun PlanWizard(
         ) {
             when (wizard.step) {
                 PlanWizardStep.TEMPLATE -> TemplateStep(wizard, viewModel::wizardChooseTemplate)
-                PlanWizardStep.BLOCK -> BlockStep(wizard, viewModel::onBlockLengthChange)
+                PlanWizardStep.BLOCK -> BlockStep(
+                    wizard = wizard,
+                    onChange = viewModel::onBlockLengthChange,
+                    onEnabledChange = viewModel::onBlockEnabledChange,
+                )
                 PlanWizardStep.CONSTRAINTS -> ConstraintsStep(
                     wizard = wizard,
                     onToggle = viewModel::wizardToggleJoint,
@@ -240,39 +245,57 @@ private fun TemplateOption(
 // ---------- krok 2: długość bloku ----------
 
 @Composable
-private fun BlockStep(wizard: PlanWizardUi, onChange: (Int) -> Unit) {
+private fun BlockStep(
+    wizard: PlanWizardUi,
+    onChange: (Int) -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
+) {
+    val weeks = wizard.blockLengthWeeks
     StronkCard(modifier = Modifier.padding(top = StronkSpacing.section)) {
-        StronkSectionHeader(title = "Tygodnie pracy", modifier = Modifier.fillMaxWidth())
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = StronkSpacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            StepperButton(
-                icon = Icons.Rounded.Remove,
-                description = "Mniej tygodni",
-                enabled = wizard.blockLengthWeeks > PlanDefaults.BLOCK_WEEKS_MIN,
-                onClick = { onChange(wizard.blockLengthWeeks - 1) },
-            )
-            Text(
-                text = wizard.blockLengthWeeks.toString(),
-                style = StronkTextStyles.big,
-                color = MaterialTheme.colorScheme.onSurface,
+        StronkSectionHeader(
+            title = "Blok treningowy",
+            modifier = Modifier.fillMaxWidth(),
+            trailing = {
+                Switch(checked = weeks != null, onCheckedChange = onEnabledChange)
+            },
+        )
+        if (weeks != null) {
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = StronkSpacing.md),
-            )
-            StepperButton(
-                icon = Icons.Rounded.Add,
-                description = "Więcej tygodni",
-                enabled = wizard.blockLengthWeeks < PlanDefaults.BLOCK_WEEKS_MAX,
-                onClick = { onChange(wizard.blockLengthWeeks + 1) },
-            )
+                    .fillMaxWidth()
+                    .padding(top = StronkSpacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StepperButton(
+                    icon = Icons.Rounded.Remove,
+                    description = "Mniej tygodni",
+                    enabled = weeks > PlanDefaults.BLOCK_WEEKS_MIN,
+                    onClick = { onChange(weeks - 1) },
+                )
+                Text(
+                    text = weeks.toString(),
+                    style = StronkTextStyles.big,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = StronkSpacing.md),
+                )
+                StepperButton(
+                    icon = Icons.Rounded.Add,
+                    description = "Więcej tygodni",
+                    enabled = weeks < PlanDefaults.BLOCK_WEEKS_MAX,
+                    onClick = { onChange(weeks + 1) },
+                )
+            }
         }
         WizardNote(
-            text = "Po tygodniach pracy dokładamy jeden tydzień lekki — ciężary spadają, " +
-                "żeby ciało nadążyło.",
+            text = if (weeks == null) {
+                "Bez bloku plan biegnie w nieskończoność: progresja idzie ciągiem, " +
+                    "a tydzień lekki nie wypada nigdy."
+            } else {
+                "Po tygodniach pracy dokładamy jeden tydzień lekki — ciężary spadają, " +
+                    "żeby ciało nadążyło."
+            },
             modifier = Modifier.padding(top = StronkSpacing.md),
         )
     }
@@ -333,7 +356,8 @@ private fun ConstraintsStep(
         ) {
             wizard.jointKeys.forEach { joint ->
                 JointChip(
-                    label = PlLabels.joint(joint),
+                    // Mocki kapitalizują etykiety chipów — „Kolano", nie „kolano".
+                    label = PlanTexts.chipLabel(PlLabels.joint(joint)),
                     selected = joint in wizard.selectedJoints,
                     onClick = { onToggle(joint) },
                 )
@@ -413,17 +437,22 @@ private fun NameStep(wizard: PlanWizardUi, onNameChange: (String) -> Unit) {
             singleLine = true,
         )
         StronkStatRow(modifier = Modifier.padding(top = StronkSpacing.lg)) {
-            WizardStat("Dni", wizard.summaryDays, Modifier.weight(1f))
+            WizardStat("Dni", wizard.summaryDays.toString(), Modifier.weight(1f))
             StronkStatDivider(horizontalMargin = 14.dp)
-            WizardStat("Tygodnie", wizard.blockLengthWeeks, Modifier.weight(1f))
+            // Plan bez bloku nie ma liczby tygodni — biegnie bez końca.
+            WizardStat(
+                label = "Tygodnie",
+                value = PlanTexts.blockWeeksStat(wizard.blockLengthWeeks),
+                modifier = Modifier.weight(1f),
+            )
             StronkStatDivider(horizontalMargin = 14.dp)
-            WizardStat("Ćwiczenia", wizard.summaryExercises, Modifier.weight(1f))
+            WizardStat("Ćwiczenia", wizard.summaryExercises.toString(), Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun WizardStat(label: String, value: Int, modifier: Modifier = Modifier) {
+private fun WizardStat(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(
             text = label.uppercase(),
@@ -432,7 +461,7 @@ private fun WizardStat(label: String, value: Int, modifier: Modifier = Modifier)
             maxLines = 1,
         )
         Text(
-            text = value.toString(),
+            text = value,
             style = StronkTextStyles.h1,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,

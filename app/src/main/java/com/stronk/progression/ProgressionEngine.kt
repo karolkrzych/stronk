@@ -57,6 +57,65 @@ object ProgressionEngine {
     fun isLightWeek(weekIndexInBlock: Int, blockLengthWeeks: Int): Boolean =
         blockLengthWeeks >= 2 && weekIndexInBlock == blockLengthWeeks - 1
 
+    // ------------------------------------------------- plan BEZ bloku (null)
+
+    /**
+     * Pełna długość bloku (tygodnie pracy + tydzień lekki) z liczby tygodni
+     * PRACY zapisanej w planie ([com.stronk.data.Plan.blockLengthWeeks]).
+     * `null` przechodzi przez tę funkcję nietknięty: plan bez bloku nie ma
+     * żadnej długości, a nie „długość zero".
+     */
+    fun fullBlockWeeks(workWeeks: Int?): Int? =
+        workWeeks?.plus(ProgressionConstants.BLOCK_LIGHT_WEEKS)
+
+    /**
+     * Ile PEŁNYCH tygodni minęło od [startMillis] — liniowo, bez modulo
+     * (plan bez bloku biegnie w nieskończoność). Czas sprzed startu = tydzień 0,
+     * dokładnie jak w [weekIndexInBlock].
+     */
+    fun weeksSince(startMillis: Long, nowMillis: Long): Int {
+        val elapsed = nowMillis - startMillis
+        if (elapsed < 0) return 0
+        return (elapsed / ProgressionConstants.WEEK_MILLIS).toInt()
+    }
+
+    /**
+     * Pozycja tygodnia dla planu z blokiem ALBO bez niego:
+     * - [fullBlockWeeks] != null → jak [weekIndexInBlock] (modulo długość bloku),
+     * - [fullBlockWeeks] == null → licznik liniowy z [weeksSince] (0, 1, 2, …).
+     */
+    fun weekIndexForBlock(blockStartMillis: Long, nowMillis: Long, fullBlockWeeks: Int?): Int =
+        if (fullBlockWeeks == null) {
+            weeksSince(blockStartMillis, nowMillis)
+        } else {
+            weekIndexInBlock(blockStartMillis, nowMillis, fullBlockWeeks)
+        }
+
+    /** Tydzień lekki istnieje tylko w planie z blokiem — bez bloku NIGDY. */
+    fun isLightWeekForBlock(weekIndex: Int, fullBlockWeeks: Int?): Boolean =
+        fullBlockWeeks != null && isLightWeek(weekIndex, fullBlockWeeks)
+
+    /**
+     * [proposeTargets] dla planu, który może NIE mieć bloku ([fullBlockWeeks]
+     * == null). Bez bloku propozycja nigdy nie jest tygodniem lekkim — reszta
+     * reguł (overload, deload reaktywny, ramp-up) działa identycznie.
+     */
+    fun proposeTargetsForBlock(
+        planExercise: PlanExercise,
+        state: ExerciseState?,
+        returningFromBreak: Boolean,
+        isCompoundLeg: Boolean,
+        weekIndex: Int,
+        fullBlockWeeks: Int?,
+    ): ExerciseProposal = proposeTargets(
+        planExercise = planExercise,
+        state = state,
+        returningFromBreak = returningFromBreak,
+        isCompoundLeg = isCompoundLeg,
+        weekIndexInBlock = weekIndex,
+        blockLengthWeeks = fullBlockWeeks ?: ProgressionConstants.NO_BLOCK_WEEKS,
+    )
+
     // ------------------------------------------------------- heurystyka nóg
 
     /**

@@ -69,6 +69,13 @@ object ProgressionConstants {
     /** Zejście w tygodniu lekkim: −40%. */
     const val LIGHT_WEEK_REDUCTION = 0.40
 
+    /**
+     * Plan BEZ bloku (`Plan.blockLengthWeeks == null`) wchodzi do silnika jako
+     * ta długość: 0 tygodni znaczy „nie ma bloku" — progresja leci ciągiem,
+     * tydzień lekki nigdy nie wypada (patrz [ProgressionEngine.isLightWeek]).
+     */
+    const val NO_BLOCK_WEEKS = 0
+
     // --- Reguła 4: ramp-up po przerwie ---
 
     /** Start ramp-upu: ~55% poziomu docelowego (środek widełek 50–60% z ADR-004). */

@@ -5,8 +5,9 @@ import com.stronk.data.Plan
 import com.stronk.data.PlanExercise
 import com.stronk.data.SetTarget
 import com.stronk.data.StressLevel
-import com.stronk.progression.ProgressionConstants
+import com.stronk.progression.ProgressionEngine
 import com.stronk.ui.PlLabels
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -14,6 +15,11 @@ import kotlin.math.roundToInt
  * brakujące tam etykiety (poziomy obciążenia stawów) żyją lokalnie tutaj.
  */
 internal object PlanTexts {
+
+    /** Znak planu bez końca — stat TYGODNIE planu bez bloku. */
+    const val INFINITY = "∞"
+
+    private val polishLocale: Locale = Locale.forLanguageTag("pl")
 
     fun stressLevel(level: StressLevel): String = when (level) {
         StressLevel.HIGH -> "wysokie"
@@ -69,9 +75,25 @@ internal object PlanTexts {
         else -> "$sets serii"
     }
 
-    /** Pełna długość bloku razem z tygodniem lekkim (ADR-004) — do statu TYGODNIE. */
-    fun fullBlockWeeks(plan: Plan): Int =
-        plan.blockLengthWeeks + ProgressionConstants.BLOCK_LIGHT_WEEKS
+    /**
+     * Pełna długość bloku razem z tygodniem lekkim (ADR-004) albo null —
+     * plan bez bloku nie ma żadnej długości, biegnie w nieskończoność.
+     */
+    fun fullBlockWeeksOrNull(plan: Plan): Int? =
+        ProgressionEngine.fullBlockWeeks(plan.blockLengthWeeks)
+
+    /**
+     * Wariant liczbowy tego samego: 0 = plan bez bloku. Wołający, który pokazuje
+     * „tydzień X/Y", ma wtedy po prostu nie rysować chipa.
+     */
+    fun fullBlockWeeks(plan: Plan): Int = fullBlockWeeksOrNull(plan) ?: 0
+
+    /** Stat TYGODNIE na karcie planu: liczba albo „∞" dla planu bez bloku. */
+    fun blockWeeksStat(weeks: Int?): String = weeks?.toString() ?: INFINITY
+
+    /** Etykieta chipa z wielkiej litery (mocki kapitalizują etykiety w kreatorze). */
+    fun chipLabel(text: String): String =
+        text.replaceFirstChar { it.titlecase(polishLocale) }
 
     /** Liczba ćwiczeń we wszystkich dniach planu — do statu ĆWICZENIA. */
     fun exerciseCount(plan: Plan): Int = plan.days.sumOf { it.exercises.size }

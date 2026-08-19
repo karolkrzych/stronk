@@ -208,11 +208,11 @@ private fun PlanCard(
                     )
                 }
                 StronkStatRow(modifier = Modifier.padding(top = StronkSpacing.md)) {
-                    PlanMiniStat("Dni", plan.days, dimmed, Modifier.weight(1f))
+                    PlanMiniStat("Dni", plan.days.toString(), dimmed, Modifier.weight(1f))
                     StronkStatDivider(horizontalMargin = 14.dp)
                     PlanMiniStat("Tygodnie", plan.weeks, dimmed, Modifier.weight(1f))
                     StronkStatDivider(horizontalMargin = 14.dp)
-                    PlanMiniStat("Ćwiczenia", plan.exercises, dimmed, Modifier.weight(1f))
+                    PlanMiniStat("Ćwiczenia", plan.exercises.toString(), dimmed, Modifier.weight(1f))
                 }
             }
             if (plan.active) {
@@ -244,7 +244,7 @@ private fun PlanCard(
 @Composable
 private fun PlanMiniStat(
     label: String,
-    value: Int,
+    value: String,
     dimmed: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -256,7 +256,7 @@ private fun PlanMiniStat(
             maxLines = 1,
         )
         Text(
-            text = value.toString(),
+            text = value,
             style = StronkTextStyles.h1,
             color = if (dimmed) {
                 MaterialTheme.colorScheme.onSurfaceVariant

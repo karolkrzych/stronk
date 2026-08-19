@@ -23,8 +23,11 @@ data class PlanCardUi(
     val name: String,
     /** Liczba dni w planie — stat DNI. */
     val days: Int,
-    /** Pełna długość bloku razem z tygodniem lekkim (ADR-004) — stat TYGODNIE. */
-    val weeks: Int,
+    /**
+     * Stat TYGODNIE: pełna długość bloku razem z tygodniem lekkim (ADR-004)
+     * albo „∞" — plan bez bloku biegnie bez końca.
+     */
+    val weeks: String,
     /** Suma ćwiczeń we wszystkich dniach — stat ĆWICZENIA. */
     val exercises: Int,
     /** Plan, po którym akurat trenujemy — limonkowy pasek, obwódka i pigułka. */
@@ -66,7 +69,7 @@ class PlansViewModel(
             id = id,
             name = name,
             days = days.size,
-            weeks = PlanTexts.fullBlockWeeks(this),
+            weeks = PlanTexts.blockWeeksStat(PlanTexts.fullBlockWeeksOrNull(this)),
             exercises = PlanTexts.exerciseCount(this),
             active = active,
         )

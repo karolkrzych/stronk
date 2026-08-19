@@ -35,6 +35,20 @@ internal object ScheduleTexts {
     fun blockWeekLabel(weekNumber: Int, weekCount: Int): String = "Tydzień $weekNumber/$weekCount"
 
     /**
+     * Nagłówek dla planu BEZ bloku: sam numer tygodnia, bez „/Y" — plan nie ma
+     * końca, więc mianownik nie istnieje.
+     */
+    fun continuousWeekLabel(weekNumber: Int): String = "Tydzień $weekNumber"
+
+    /** Nagłówek dla planu z blokiem albo bez ([weekCount] null = bez bloku). */
+    fun weekHeaderLabel(weekNumber: Int, weekCount: Int?): String =
+        if (weekCount == null) {
+            continuousWeekLabel(weekNumber)
+        } else {
+            blockWeekLabel(weekNumber, weekCount)
+        }
+
+    /**
      * Podtytuł nagłówka: miesiąc (albo dwa) objęte siatką bloku, np. „Sierpień"
      * lub „Sierpień – wrzesień". Rok dopisywany tylko wtedy, gdy siatka wychodzi
      * poza rok [today] — bez szumu w typowym widoku.

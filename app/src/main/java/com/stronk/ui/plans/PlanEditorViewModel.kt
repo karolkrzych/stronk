@@ -76,7 +76,7 @@ data class SubstitutesUi(
  */
 enum class PlanWizardStep(val title: String, val subtitle: String) {
     TEMPLATE("Od czego zaczynamy", "Wybierz szablon albo złóż plan od zera."),
-    BLOCK("Długość bloku", "Po tygodniach pracy przychodzi jeden tydzień lekki."),
+    BLOCK("Blok treningowy", "Możesz go wyłączyć — wtedy plan biegnie bez końca."),
     CONSTRAINTS("Twoje ograniczenia", "Zaznacz miejsca, które oszczędzamy."),
     NAME("Nazwa planu", "Tak zobaczysz go na liście i w harmonogramie."),
 }
@@ -91,7 +91,8 @@ data class PlanWizardUi(
     val selectedPresetId: String? = null,
     /** Kroki 1 i 4 wymagają wyboru/nazwy; reszta zawsze przepuszcza dalej. */
     val canGoNext: Boolean = false,
-    val blockLengthWeeks: Int = ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
+    /** Tygodnie PRACY w bloku; null = plan bez bloku (ciągła progresja). */
+    val blockLengthWeeks: Int? = null,
     /** Klucze stawów w kolejności prezentacji (jak w profilu). */
     val jointKeys: List<String> = emptyList(),
     val selectedJoints: Set<String> = emptySet(),
@@ -110,8 +111,11 @@ data class PlanEditorUiState(
     /** Niepusty = zamiast edytora rysujemy kreator nowego planu. */
     val wizard: PlanWizardUi? = null,
     val name: String = "",
-    /** Tygodnie PRACY w bloku (ADR-004), bez tygodnia lekkiego. */
-    val blockLengthWeeks: Int = ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
+    /**
+     * Tygodnie PRACY w bloku (ADR-004), bez tygodnia lekkiego;
+     * null = plan bez bloku — nigdy nie ma tygodnia lekkiego.
+     */
+    val blockLengthWeeks: Int? = null,
     val days: List<EditorDayUi> = emptyList(),
     /** Cały dataset — dla pickera ćwiczeń. */
     val allExercises: List<Exercise> = emptyList(),
@@ -139,7 +143,13 @@ class PlanEditorViewModel(
     /** Roboczy stan edycji — zapis do Firestore dopiero przy [save]. */
     private data class Draft(
         val name: String = "",
-        val blockLengthWeeks: Int = ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
+        /** null = plan bez bloku; nowy plan ręczny startuje właśnie tak. */
+        val blockLengthWeeks: Int? = null,
+        /**
+         * Ostatnio wybrana długość bloku — żeby wyłączenie i ponowne włączenie
+         * przełącznika nie kasowało tego, co user ustawił.
+         */
+        val blockWeeksMemo: Int = ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
         val days: List<PlanDay> = emptyList(),
         /** Edytowany istniejący plan (id/createdAt/archived); null = nowy. */
         val base: Plan? = null,
@@ -171,6 +181,13 @@ class PlanEditorViewModel(
     /** Pola profilu spoza [ProfileDetails] — potrzebne przy zapisie z kreatora. */
     private var profileCreatedAt: Long? = null
     private var profileDisplayName: String = ""
+
+    /**
+     * Czy przyszedł już PIERWSZY snapshot profilu. Bez tego prefill ograniczeń
+     * odpalałby się na pustym [ProfileDetails] i zamykał się (jointsPrefilled),
+     * zanim kontuzje z profilu w ogóle dotarły — krok kreatora stał wtedy pusty.
+     */
+    private var profileLoaded: Boolean = false
 
     private val overlay = MutableStateFlow(Overlay())
     private val saved = MutableStateFlow(false)
@@ -226,6 +243,7 @@ class PlanEditorViewModel(
                 profile.value = details
                 profileCreatedAt = userProfile?.createdAt
                 profileDisplayName = userProfile?.displayName.orEmpty()
+                profileLoaded = true
                 prefillJoints(details)
             }
         }
@@ -233,13 +251,15 @@ class PlanEditorViewModel(
             if (planId == null) {
                 draft.value = Draft()
                 // Profil mógł dojść przed draftem — wtedy prefill czekał na ten moment.
-                prefillJoints(profile.value)
+                if (profileLoaded) prefillJoints(profile.value)
             } else {
                 // Cache-first: plan otwierany z listy jest już w cache Firestore.
                 val plan = planRepository.observePlan(planId).filterNotNull().first()
                 draft.value = Draft(
                     name = plan.name,
                     blockLengthWeeks = plan.blockLengthWeeks,
+                    blockWeeksMemo = plan.blockLengthWeeks
+                        ?: ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
                     days = plan.days,
                     base = plan,
                     started = true,
@@ -292,11 +312,18 @@ class PlanEditorViewModel(
         }
     }
 
-    /** [preset] null = „zacznij od zera": jeden pusty dzień, ćwiczenia dobiera user. */
+    /**
+     * [preset] null = „zacznij od zera": jeden pusty dzień, ćwiczenia dobiera user.
+     *
+     * Szablon przynosi ze sobą blok treningowy (domyślnie 5 tygodni pracy —
+     * tak działają presety od zawsze, w tym powrotowy), plan od zera startuje
+     * BEZ bloku. W kroku „Długość bloku" user i tak może to odwrócić.
+     */
     fun wizardChooseTemplate(preset: PlanPreset?) = updateDraft { d ->
         d.copy(
             preset = preset,
             templateChosen = true,
+            blockLengthWeeks = if (preset == null) null else (d.blockLengthWeeks ?: d.blockWeeksMemo),
             // Nazwa z szablonu tylko dopóki user jej nie tknął.
             name = if (d.name.isBlank() || d.name == d.preset?.name) preset?.name.orEmpty() else d.name,
         )
@@ -382,12 +409,20 @@ class PlanEditorViewModel(
     fun onNameChange(name: String) = updateDraft { it.copy(name = name) }
 
     fun onBlockLengthChange(weeks: Int) = updateDraft {
-        it.copy(
-            blockLengthWeeks = weeks.coerceIn(
-                PlanDefaults.BLOCK_WEEKS_MIN,
-                PlanDefaults.BLOCK_WEEKS_MAX,
-            ),
-        )
+        val clamped = weeks.coerceIn(PlanDefaults.BLOCK_WEEKS_MIN, PlanDefaults.BLOCK_WEEKS_MAX)
+        it.copy(blockLengthWeeks = clamped, blockWeeksMemo = clamped)
+    }
+
+    /**
+     * Przełącznik „Blok treningowy". Wyłączony = plan bez bloku: progresja leci
+     * ciągiem, tydzień lekki nie wypada nigdy, plan może trwać w nieskończoność.
+     */
+    fun onBlockEnabledChange(enabled: Boolean) = updateDraft {
+        if (enabled) {
+            it.copy(blockLengthWeeks = it.blockLengthWeeks ?: it.blockWeeksMemo)
+        } else {
+            it.copy(blockLengthWeeks = null)
+        }
     }
 
     // ---------- dni ----------
@@ -434,18 +469,15 @@ class PlanEditorViewModel(
         day.copy(exercises = day.exercises.filterIndexed { index, _ -> index != exerciseIndex })
     }
 
-    /** Przesuwa ćwiczenie w ramach dnia o [delta] pozycji (np. −1 / +1). */
-    fun moveExercise(dayIndex: Int, exerciseIndex: Int, delta: Int) = updateDay(dayIndex) { day ->
-        val target = exerciseIndex + delta
-        if (target !in day.exercises.indices || exerciseIndex !in day.exercises.indices) {
-            day
-        } else {
-            val reordered = day.exercises.toMutableList()
-            reordered[exerciseIndex] = reordered[target].also {
-                reordered[target] = reordered[exerciseIndex]
-            }
-            day.copy(exercises = reordered)
-        }
+    /**
+     * Przenosi ćwiczenie w ramach dnia z pozycji [fromIndex] na [toIndex]
+     * (drag & drop w edytorze). To PRZESUNIĘCIE, nie zamiana miejscami:
+     * pozostałe ćwiczenia zsuwają się o jeden, więc kolejność dnia zmienia się
+     * dokładnie tak, jak user widzi ją pod palcem. Indeksy spoza zakresu albo
+     * ruch „w to samo miejsce" nie zmieniają nic.
+     */
+    fun reorderExercise(dayIndex: Int, fromIndex: Int, toIndex: Int) = updateDay(dayIndex) { day ->
+        day.copy(exercises = day.exercises.movedItem(fromIndex, toIndex))
     }
 
     // ---------- zamienniki ----------

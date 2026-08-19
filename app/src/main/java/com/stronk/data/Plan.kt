@@ -1,6 +1,5 @@
 package com.stronk.data
 
-import com.stronk.progression.ProgressionConstants
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -18,10 +17,14 @@ data class Plan(
     val archived: Boolean = false,
     /**
      * Liczba tygodni PRACY w bloku (ADR-004; konfigurowalna w kreatorze planu),
-     * bez tygodnia lekkiego. Do funkcji silnika progresji przekazuje się pełną
-     * długość bloku: `blockLengthWeeks + ProgressionConstants.BLOCK_LIGHT_WEEKS`.
+     * bez tygodnia lekkiego — albo **null = plan BEZ bloku**: progresja leci
+     * ciągiem, NIGDY nie ma tygodnia lekkiego, plan może biec w nieskończoność.
+     *
+     * Do silnika progresji przekazuje się pełną długość bloku, czyli
+     * `ProgressionEngine.fullBlockWeeks(blockLengthWeeks)` (null zostaje nullem).
+     * Nowe plany ręczne startują bez bloku; presety włączają go jawnie.
      */
-    val blockLengthWeeks: Int = ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
+    val blockLengthWeeks: Int? = null,
     val days: List<PlanDay> = emptyList(),
 )
 

@@ -1,6 +1,5 @@
 package com.stronk.data
 
-import com.stronk.progression.ProgressionConstants
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -222,11 +221,18 @@ class FirestoreMappersTest {
     }
 
     @Test
-    fun `Plan bez blockLengthWeeks dostaje domyślną długość bloku pracy`() {
+    fun `Plan bez blockLengthWeeks to plan BEZ bloku, nie plan z domyślnym blokiem`() {
         val map = FirestoreMappers.planToMap(plan) - "blockLengthWeeks"
         val decoded = FirestoreMappers.planFromMap("p1", map)
-        assertEquals(ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT, decoded.blockLengthWeeks)
+        assertNull(decoded.blockLengthWeeks)
         assertEquals(plan, decoded)
+    }
+
+    @Test
+    fun `Plan bez bloku nie zapisuje pola blockLengthWeeks`() {
+        val map = FirestoreMappers.planToMap(plan.copy(blockLengthWeeks = null))
+        assertFalse(map.containsKey("blockLengthWeeks"))
+        assertNull(FirestoreMappers.planFromMap("p1", simulateFirestoreRead(map)).blockLengthWeeks)
     }
 
     // ---------- ScheduleEntry ----------

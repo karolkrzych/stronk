@@ -115,8 +115,8 @@ data class WorkoutSession(
     val startedAt: Long,
     /** Kontekst progresji ustalony przy starcie sesji (spójny też dla podmian). */
     val weekIndexInBlock: Int,
-    /** Pełna długość bloku = tygodnie pracy + tydzień lekki. */
-    val fullBlockLengthWeeks: Int,
+    /** Pełna długość bloku = tygodnie pracy + tydzień lekki; null = plan bez bloku. */
+    val fullBlockLengthWeeks: Int?,
     val returningFromBreak: Boolean,
     val exercises: List<SessionExercise>,
     /** Cel z profilu — wyznacza udział e1RM przy kalibracji z serii testowej. */

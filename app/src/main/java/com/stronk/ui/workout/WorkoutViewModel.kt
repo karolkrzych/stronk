@@ -16,7 +16,6 @@ import com.stronk.data.SetLog
 import com.stronk.data.SetTarget
 import com.stronk.data.Workout
 import com.stronk.data.findSubstitutes
-import com.stronk.progression.ProgressionConstants
 import com.stronk.progression.ProgressionEngine
 import com.stronk.service.RestTimerService
 import com.stronk.ui.PlLabels
@@ -258,9 +257,10 @@ class WorkoutViewModel(
             return
         }
         val now = System.currentTimeMillis()
-        // Kontrakt silnika: pełna długość bloku = tygodnie pracy + tydzień lekki.
-        val fullBlock = plan.blockLengthWeeks + ProgressionConstants.BLOCK_LIGHT_WEEKS
-        val weekIdx = ProgressionEngine.weekIndexInBlock(plan.createdAt, now, fullBlock)
+        // Kontrakt silnika: pełna długość bloku = tygodnie pracy + tydzień lekki;
+        // plan bez bloku (null) leci ciągiem, bez tygodnia lekkiego.
+        val fullBlock = ProgressionEngine.fullBlockWeeks(plan.blockLengthWeeks)
+        val weekIdx = ProgressionEngine.weekIndexForBlock(plan.createdAt, now, fullBlock)
         val returning = profileDetails.returningFromBreak
         val byId = allExercises.associateBy { it.id }
         val sessionExercises = day.exercises.mapIndexed { index, planExercise ->
@@ -269,13 +269,13 @@ class WorkoutViewModel(
             SessionExercise(
                 exercise = exercise,
                 planExercise = planExercise,
-                proposal = ProgressionEngine.proposeTargets(
+                proposal = ProgressionEngine.proposeTargetsForBlock(
                     planExercise = planExercise,
                     state = state,
                     returningFromBreak = returning,
                     isCompoundLeg = exercise?.let(ProgressionEngine::isCompoundLeg) ?: false,
-                    weekIndexInBlock = weekIdx,
-                    blockLengthWeeks = fullBlock,
+                    weekIndex = weekIdx,
+                    fullBlockWeeks = fullBlock,
                 ),
                 oldState = state,
                 planExerciseIndex = index,
@@ -519,13 +519,13 @@ class WorkoutViewModel(
         val replacement = SessionExercise(
             exercise = substitute,
             planExercise = newPlanExercise,
-            proposal = ProgressionEngine.proposeTargets(
+            proposal = ProgressionEngine.proposeTargetsForBlock(
                 planExercise = newPlanExercise,
                 state = newState,
                 returningFromBreak = session.returningFromBreak,
                 isCompoundLeg = ProgressionEngine.isCompoundLeg(substitute),
-                weekIndexInBlock = session.weekIndexInBlock,
-                blockLengthWeeks = session.fullBlockLengthWeeks,
+                weekIndex = session.weekIndexInBlock,
+                fullBlockWeeks = session.fullBlockLengthWeeks,
             ),
             oldState = newState,
             planExerciseIndex = se.planExerciseIndex,

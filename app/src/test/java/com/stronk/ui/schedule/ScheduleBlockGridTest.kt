@@ -36,6 +36,37 @@ class ScheduleBlockGridTest {
         assertEquals(BlockWindow(startWeek = 7, rows = 6), blockGridWindow(12, 13))
     }
 
+    // ---------- plan bez bloku: continuousGridWindow / gridWindow ----------
+
+    @Test
+    fun `plan bez bloku dostaje okno wokol biezacego tygodnia`() {
+        // 5 rzędów, jeden tydzień przeszłości dla kontekstu.
+        assertEquals(BlockWindow(startWeek = 6, rows = 5), continuousGridWindow(7))
+        assertEquals(BlockWindow(startWeek = 40, rows = 5), continuousGridWindow(41))
+    }
+
+    @Test
+    fun `okno planu bez bloku nie schodzi przed pierwszy tydzien`() {
+        assertEquals(BlockWindow(startWeek = 0, rows = 5), continuousGridWindow(0))
+        assertEquals(BlockWindow(startWeek = 0, rows = 5), continuousGridWindow(1))
+    }
+
+    @Test
+    fun `gridWindow rozdziela plan z blokiem od planu bez bloku`() {
+        assertEquals(blockGridWindow(5, 6), gridWindow(5, 6))
+        assertEquals(continuousGridWindow(5), gridWindow(5, null))
+    }
+
+    @Test
+    fun `siatka planu bez bloku trzyma biezacy tydzien w oknie`() {
+        val window = continuousGridWindow(9)
+        val mondays = blockWeekMondays(today, weekIndexInBlock = 9, window = window)
+        assertEquals(5, mondays.size)
+        // Tydzień 8 (jeden wstecz) otwiera okno, bieżący stoi na drugiej pozycji.
+        assertEquals(monday.minusWeeks(1), mondays.first())
+        assertEquals(monday, mondays[1])
+    }
+
     // ---------- blockWeekMondays ----------
 
     @Test
@@ -75,6 +106,13 @@ class ScheduleBlockGridTest {
     @Test
     fun `naglowek bloku sklada pozycje tygodnia`() {
         assertEquals("Tydzień 1/6", ScheduleTexts.blockWeekLabel(1, 6))
+    }
+
+    @Test
+    fun `plan bez bloku ma naglowek bez mianownika`() {
+        assertEquals("Tydzień 7", ScheduleTexts.continuousWeekLabel(7))
+        assertEquals("Tydzień 7", ScheduleTexts.weekHeaderLabel(7, null))
+        assertEquals("Tydzień 2/6", ScheduleTexts.weekHeaderLabel(2, 6))
     }
 
     @Test

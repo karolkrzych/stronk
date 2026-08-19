@@ -1,6 +1,8 @@
 package com.stronk.ui.plans
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Archive
-import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -30,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,21 +40,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.stronk.data.Exercise
-import com.stronk.data.ExerciseRepository
 import com.stronk.data.MeasurementType
 import com.stronk.data.PlanExercise
 import com.stronk.data.SetTarget
@@ -60,11 +68,9 @@ import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkCard
 import com.stronk.ui.components.StronkChoiceChip
 import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkExerciseThumb
 import com.stronk.ui.components.StronkGhostButton
-import com.stronk.ui.components.StronkIconBadge
-import com.stronk.ui.components.StronkIconBadgeSize
 import com.stronk.ui.components.StronkIcons
-import com.stronk.ui.components.StronkInsetCard
 import com.stronk.ui.components.StronkNoteCard
 import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.components.StronkSectionHeader
@@ -75,6 +81,7 @@ import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
+import kotlin.math.roundToInt
 
 /**
  * Plan w trzech warstwach jednej trasy (nawigacja wewnętrzna to stan ViewModelu,
@@ -241,6 +248,7 @@ private fun EditorContent(
                 BlockLengthRow(
                     blockLengthWeeks = state.blockLengthWeeks,
                     onChange = viewModel::onBlockLengthChange,
+                    onEnabledChange = viewModel::onBlockEnabledChange,
                 )
             }
         }
@@ -251,8 +259,7 @@ private fun EditorContent(
                     onRename = { viewModel.renameDay(dayIndex, it) },
                     onRemoveDay = { viewModel.removeDay(dayIndex) },
                     onExerciseClick = { exerciseIndex -> editTarget = dayIndex to exerciseIndex },
-                    onMoveUp = { exerciseIndex -> viewModel.moveExercise(dayIndex, exerciseIndex, -1) },
-                    onMoveDown = { exerciseIndex -> viewModel.moveExercise(dayIndex, exerciseIndex, +1) },
+                    onReorder = { from, to -> viewModel.reorderExercise(dayIndex, from, to) },
                     onSubstitutes = { exerciseIndex ->
                         viewModel.openSubstitutesForRow(dayIndex, exerciseIndex)
                     },
@@ -308,41 +315,71 @@ private fun EditorContent(
 
 // ---------- karta dnia ----------
 
-/** Długość bloku progresji: tygodnie pracy − / + (ADR-004). */
+/**
+ * Blok progresji (ADR-004) jako rzecz OPCJONALNA: przełącznik „Blok treningowy",
+ * a pod nim — tylko gdy włączony — tygodnie pracy − / +.
+ *
+ * Wyłączony blok ([blockLengthWeeks] == null) znaczy plan bez końca: progresja
+ * leci ciągiem i tydzień lekki nie wypada nigdy.
+ */
 @Composable
-private fun BlockLengthRow(blockLengthWeeks: Int, onChange: (Int) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Długość bloku",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "tygodnie pracy — po nich 1 tydzień lekki",
-                style = MaterialTheme.typography.bodySmall,
-                color = StronkTheme.colors.textDim,
+private fun BlockLengthRow(
+    blockLengthWeeks: Int?,
+    onChange: (Int) -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Blok treningowy",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = if (blockLengthWeeks == null) {
+                        "bez bloku — progresja bez końca, żadnego tygodnia lekkiego"
+                    } else {
+                        "tygodnie pracy — po nich 1 tydzień lekki"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StronkTheme.colors.textDim,
+                )
+            }
+            Switch(
+                checked = blockLengthWeeks != null,
+                onCheckedChange = onEnabledChange,
             )
         }
-        IconButton(
-            onClick = { onChange(blockLengthWeeks - 1) },
-            enabled = blockLengthWeeks > PlanDefaults.BLOCK_WEEKS_MIN,
-        ) {
-            Text("−", style = MaterialTheme.typography.titleLarge)
-        }
-        Text(
-            text = "$blockLengthWeeks tyg.",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        IconButton(
-            onClick = { onChange(blockLengthWeeks + 1) },
-            enabled = blockLengthWeeks < PlanDefaults.BLOCK_WEEKS_MAX,
-        ) {
-            Text("+", style = MaterialTheme.typography.titleLarge)
+        if (blockLengthWeeks != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = StronkSpacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Spacer(Modifier.weight(1f))
+                IconButton(
+                    onClick = { onChange(blockLengthWeeks - 1) },
+                    enabled = blockLengthWeeks > PlanDefaults.BLOCK_WEEKS_MIN,
+                ) {
+                    Text("−", style = MaterialTheme.typography.titleLarge)
+                }
+                Text(
+                    text = "$blockLengthWeeks tyg.",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                IconButton(
+                    onClick = { onChange(blockLengthWeeks + 1) },
+                    enabled = blockLengthWeeks < PlanDefaults.BLOCK_WEEKS_MAX,
+                ) {
+                    Text("+", style = MaterialTheme.typography.titleLarge)
+                }
+            }
         }
     }
 }
@@ -354,8 +391,7 @@ private fun DayCard(
     onRename: (String) -> Unit,
     onRemoveDay: () -> Unit,
     onExerciseClick: (Int) -> Unit,
-    onMoveUp: (Int) -> Unit,
-    onMoveDown: (Int) -> Unit,
+    onReorder: (from: Int, to: Int) -> Unit,
     onSubstitutes: (Int) -> Unit,
     onDetails: (Int) -> Unit,
     onRemoveExercise: (Int) -> Unit,
@@ -387,22 +423,15 @@ private fun DayCard(
             // Nagłówki kolumn RAZ na dzień — niżej stoją same liczby (zasada
             // Karola: nigdy „3×10" w jednej frazie).
             ExerciseColumnHeaders(modifier = Modifier.padding(top = StronkSpacing.sm))
-            Column(
+            ReorderableExercises(
+                exercises = day.exercises,
                 modifier = Modifier.padding(top = StronkSpacing.xxs),
-                verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
-            ) {
-                day.exercises.forEachIndexed { exerciseIndex, exercise ->
-                    ExercisePlanRow(
-                        exercise = exercise,
-                        onClick = { onExerciseClick(exerciseIndex) },
-                        onMoveUp = { onMoveUp(exerciseIndex) },
-                        onMoveDown = { onMoveDown(exerciseIndex) },
-                        onSubstitutes = { onSubstitutes(exerciseIndex) },
-                        onDetails = { onDetails(exerciseIndex) },
-                        onRemove = { onRemoveExercise(exerciseIndex) },
-                    )
-                }
-            }
+                onExerciseClick = onExerciseClick,
+                onReorder = onReorder,
+                onSubstitutes = onSubstitutes,
+                onDetails = onDetails,
+                onRemove = onRemoveExercise,
+            )
         }
 
         if (day.missingGroups.isNotEmpty()) {
@@ -416,7 +445,8 @@ private fun DayCard(
             ) {
                 day.missingGroups.forEach { group ->
                     StronkChoiceChip(
-                        label = group.label,
+                        // Chipy w mockach są kapitalizowane — „Plecy", nie „plecy".
+                        label = PlanTexts.chipLabel(group.label),
                         selected = false,
                         onClick = { onSuggestion(group) },
                         icon = MuscleIcons.forMuscle(group.representativeMuscleKey()),
@@ -467,40 +497,134 @@ private fun ColumnCaption(text: String, width: Dp) {
     )
 }
 
-/** Wiersz ćwiczenia w dniu: miniaturka, nazwa + partia, kolumny SERIE / CEL, menu akcji. */
+/**
+ * Lista ćwiczeń dnia z REORDEREM przez przeciąganie (bez zewnętrznych bibliotek).
+ *
+ * Chwyt to ikona ≡ po prawej wiersza: przytrzymanie podnosi wiersz (obrys
+ * `--lime-line`, skala 1,02 i cień), a przeciąganie w pionie przestawia go
+ * między sąsiadami. Kolejność zmienia od razu ViewModel ([onReorder]) — wiersz
+ * pod palcem trzyma pozycję przez korektę offsetu, więc nic nie „ucieka".
+ * Tapnięcie tego samego chwytu otwiera menu wiersza (zamienniki / podgląd / usuń).
+ */
+@Composable
+private fun ReorderableExercises(
+    exercises: List<EditorExerciseUi>,
+    onExerciseClick: (Int) -> Unit,
+    onReorder: (from: Int, to: Int) -> Unit,
+    onSubstitutes: (Int) -> Unit,
+    onDetails: (Int) -> Unit,
+    onRemove: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val gapPx = with(LocalDensity.current) { StronkSpacing.row.toPx() }
+    val shadowPx = with(LocalDensity.current) { DRAG_SHADOW.toPx() }
+    var rowHeightPx by remember { mutableFloatStateOf(0f) }
+    var draggedIndex by remember { mutableStateOf<Int?>(null) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+
+    fun endDrag() {
+        draggedIndex = null
+        dragOffsetY = 0f
+    }
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
+    ) {
+        exercises.forEachIndexed { index, exercise ->
+            val dragging = draggedIndex == index
+            ExercisePlanRow(
+                exercise = exercise,
+                dragging = dragging,
+                onClick = { onExerciseClick(index) },
+                onSubstitutes = { onSubstitutes(index) },
+                onDetails = { onDetails(index) },
+                onRemove = { onRemove(index) },
+                modifier = Modifier
+                    .zIndex(if (dragging) 1f else 0f)
+                    .graphicsLayer {
+                        if (dragging) {
+                            translationY = dragOffsetY
+                            scaleX = DRAG_SCALE
+                            scaleY = DRAG_SCALE
+                            shadowElevation = shadowPx
+                            shape = StronkRadius.innerShape
+                            clip = false
+                        }
+                    }
+                    .onSizeChanged { rowHeightPx = it.height.toFloat() },
+                handleModifier = Modifier.pointerInput(exercises.size) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = {
+                            draggedIndex = index
+                            dragOffsetY = 0f
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
+                        onDragEnd = { endDrag() },
+                        onDragCancel = { endDrag() },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            val current = draggedIndex ?: return@detectDragGesturesAfterLongPress
+                            dragOffsetY += amount.y
+                            val step = rowHeightPx + gapPx
+                            if (step <= 0f) return@detectDragGesturesAfterLongPress
+                            val target = (current + (dragOffsetY / step).roundToInt())
+                                .coerceIn(0, exercises.lastIndex)
+                            if (target != current) {
+                                onReorder(current, target)
+                                // Wiersz zostaje pod palcem: offset traci dokładnie
+                                // tyle, ile urósł przez przeskok o pozycje.
+                                dragOffsetY -= (target - current) * step
+                                draggedIndex = target
+                            }
+                        },
+                    )
+                },
+            )
+        }
+    }
+}
+
+/** Skala podniesionego wiersza — tyle, żeby było widać „trzymam", a nie „skacze". */
+private const val DRAG_SCALE = 1.02f
+
+/** Cień podniesionego wiersza. */
+private val DRAG_SHADOW = 10.dp
+
+/** Wiersz ćwiczenia w dniu: miniaturka, nazwa + partia, kolumny SERIE / CEL, chwyt ≡. */
 @Composable
 private fun ExercisePlanRow(
     exercise: EditorExerciseUi,
+    dragging: Boolean,
     onClick: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
     onSubstitutes: () -> Unit,
     onDetails: () -> Unit,
     onRemove: () -> Unit,
+    handleModifier: Modifier,
+    modifier: Modifier = Modifier,
 ) {
     val warning = !exercise.compliance.isFullyCompliant
-    val thumbnailPath = exercise.exercise?.images?.firstOrNull()
 
-    StronkInsetCard(onClick = onClick, contentPadding = PaddingValues(StronkSpacing.xs)) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = StronkRadius.innerShape,
+        color = StronkTheme.colors.surfaceTile,
+        border = if (dragging) BorderStroke(1.dp, StronkTheme.colors.limeLine) else null,
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(StronkSpacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
         ) {
-            if (thumbnailPath != null) {
-                AsyncImage(
-                    model = ExerciseRepository.IMAGES_BASE_URI + thumbnailPath,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(StronkSizes.iconTile)
-                        .clip(StronkRadius.tileShape),
-                )
-            } else {
-                StronkIconBadge(
-                    icon = exercise.exercise?.let(MuscleIcons::forExercise) ?: MuscleIcons.forMuscle(null),
-                    size = StronkIconBadgeSize.MEDIUM,
-                )
-            }
+            StronkExerciseThumb(
+                exerciseId = exercise.planExercise.exerciseId,
+                size = StronkSizes.iconTile,
+                cornerRadius = StronkRadius.tileSmall,
+            )
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
@@ -551,9 +675,9 @@ private fun ExercisePlanRow(
                 maxLines = 1,
                 modifier = Modifier.width(TARGET_COLUMN_WIDTH),
             )
-            ExerciseRowMenu(
-                onMoveUp = onMoveUp,
-                onMoveDown = onMoveDown,
+            ExerciseRowHandle(
+                dragging = dragging,
+                handleModifier = handleModifier,
                 onSubstitutes = onSubstitutes,
                 onDetails = onDetails,
                 onRemove = onRemove,
@@ -562,10 +686,15 @@ private fun ExercisePlanRow(
     }
 }
 
+/**
+ * Chwyt wiersza ≡ — jeden element, dwa gesty: PRZYTRZYMANIE zaczyna
+ * przeciąganie (kolejność ćwiczeń), TAPNIĘCIE otwiera menu wiersza.
+ * Opcji „w górę / w dół" już nie ma — od tego jest przeciąganie.
+ */
 @Composable
-private fun ExerciseRowMenu(
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
+private fun ExerciseRowHandle(
+    dragging: Boolean,
+    handleModifier: Modifier,
     onSubstitutes: () -> Unit,
     onDetails: () -> Unit,
     onRemove: () -> Unit,
@@ -578,12 +707,14 @@ private fun ExerciseRowMenu(
     }
 
     Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(Icons.Rounded.MoreVert, contentDescription = "Więcej akcji", tint = StronkTheme.colors.textDim)
+        IconButton(onClick = { expanded = true }, modifier = handleModifier) {
+            Icon(
+                imageVector = Icons.Rounded.DragHandle,
+                contentDescription = "Przeciągnij, żeby zmienić kolejność",
+                tint = if (dragging) StronkTheme.colors.lime else StronkTheme.colors.textDim,
+            )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(text = { Text("W górę") }, onClick = action(onMoveUp))
-            DropdownMenuItem(text = { Text("W dół") }, onClick = action(onMoveDown))
             DropdownMenuItem(text = { Text("Zamienniki") }, onClick = action(onSubstitutes))
             DropdownMenuItem(text = { Text("Podgląd w bazie") }, onClick = action(onDetails))
             DropdownMenuItem(text = { Text("Usuń") }, onClick = action(onRemove))

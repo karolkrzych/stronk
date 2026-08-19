@@ -99,7 +99,10 @@ data class PlanOption(
 /** Stan ekranu Tydzień. */
 data class ScheduleUiState(
     val loading: Boolean = true,
-    /** Nagłówek: „Tydzień 1/6"; pusty, gdy nie ma jeszcze planu. */
+    /**
+     * Nagłówek: „Tydzień 1/6" w planie z blokiem, samo „Tydzień 7" w planie bez
+     * bloku (nie ma mianownika, plan biegnie bez końca); pusty bez planu.
+     */
     val blockLabel: String = "",
     /** Podtytuł: miesiąc(-e) objęte siatką, np. „Sierpień – wrzesień". */
     val monthLabel: String = "",
@@ -231,18 +234,32 @@ class ScheduleViewModel(
         val plan = activePlan(schedule, plansById, today)
 
         // Pozycja w bloku liczona WYŁĄCZNIE przez silnik progresji (ADR-004).
-        val blockWeeks = (plan?.blockLengthWeeks ?: ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT) +
-            ProgressionConstants.BLOCK_LIGHT_WEEKS
+        // null = plan bez bloku: tygodnie lecą liniowo, siatka jedzie oknem.
+        // Bez planu w ogóle zostaje domyślny blok — siatka ma znajomy kształt.
+        val blockWeeks = if (plan == null) {
+            ProgressionConstants.BLOCK_LENGTH_WEEKS_DEFAULT
+        } else {
+            ProgressionEngine.fullBlockWeeks(plan.blockLengthWeeks)
+        }
         val weekIndex = plan?.let {
-            ProgressionEngine.weekIndexInBlock(it.createdAt, System.currentTimeMillis(), blockWeeks)
+            ProgressionEngine.weekIndexForBlock(
+                it.createdAt,
+                System.currentTimeMillis(),
+                blockWeeks,
+            )
         } ?: 0
-        val window = blockGridWindow(weekIndex, blockWeeks)
+        val window = gridWindow(weekIndex, blockWeeks)
         val mondays = blockWeekMondays(today, weekIndex, window)
 
         val weeks = mondays.mapIndexed { row, monday ->
             val weekIndexOfRow = window.startWeek + row
             ScheduleWeekUi(
-                weekNumber = weekIndexOfRow % blockWeeks + 1,
+                // Bez bloku numeracja jest liniowa — nie ma czego zawijać modulo.
+                weekNumber = if (blockWeeks == null) {
+                    weekIndexOfRow + 1
+                } else {
+                    weekIndexOfRow % blockWeeks + 1
+                },
                 isCurrentWeek = weekIndexOfRow == weekIndex,
                 days = (0 until ScheduleConstants.DAYS_IN_WEEK).map { offset ->
                     val date = monday.plusDays(offset.toLong())
@@ -266,7 +283,7 @@ class ScheduleViewModel(
             blockLabel = if (plan == null) {
                 ""
             } else {
-                ScheduleTexts.blockWeekLabel(weekIndex + 1, blockWeeks)
+                ScheduleTexts.weekHeaderLabel(weekIndex + 1, blockWeeks)
             },
             monthLabel = ScheduleTexts.monthRangeLabel(gridFrom, gridTo, today),
             weeks = weeks,

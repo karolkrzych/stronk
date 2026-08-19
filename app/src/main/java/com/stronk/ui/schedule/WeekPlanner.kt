@@ -78,6 +78,35 @@ fun blockGridWindow(
 }
 
 /**
+ * Okno siatki dla planu BEZ bloku (`Plan.blockLengthWeeks == null`): stałe
+ * [rows] tygodni wokół bieżącego, z [past] tygodniami przeszłości. Bloku nie ma
+ * czego domykać, więc siatka po prostu jedzie razem z planem w nieskończoność.
+ *
+ * @param weekIndex liniowy numer tygodnia planu, 0-based
+ *   (z `ProgressionEngine.weekIndexForBlock` dla planu bez bloku)
+ */
+fun continuousGridWindow(
+    weekIndex: Int,
+    rows: Int = ScheduleConstants.GRID_WEEKS_CONTINUOUS,
+    past: Int = ScheduleConstants.GRID_WEEKS_CONTINUOUS_PAST,
+): BlockWindow = BlockWindow(
+    startWeek = (weekIndex - past).coerceAtLeast(0),
+    rows = rows.coerceAtLeast(1),
+)
+
+/**
+ * Okno siatki dla planu z blokiem ALBO bez niego — jedno wejście dla ekranu:
+ * [fullBlockWeeks] null = plan bez bloku ([continuousGridWindow]), w przeciwnym
+ * razie zwykłe okno bloku ([blockGridWindow]).
+ */
+fun gridWindow(weekIndex: Int, fullBlockWeeks: Int?): BlockWindow =
+    if (fullBlockWeeks == null) {
+        continuousGridWindow(weekIndex)
+    } else {
+        blockGridWindow(weekIndex, fullBlockWeeks)
+    }
+
+/**
  * Poniedziałki rzędów siatki. Kotwicą jest poniedziałek tygodnia [today]
  * cofnięty o [weekIndexInBlock] tygodni — silnik liczy tygodnie bloku jako
  * pełne 7-dniowe okna od `plan.createdAt`, więc w kalendarzu (który zaczyna
