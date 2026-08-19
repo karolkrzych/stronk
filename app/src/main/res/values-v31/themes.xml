@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      API 31+: splash-screen systemowy dostaje to samo tło co okno i Compose.
+      Bez tego pierwsza klatka to domyślny kolor systemu, a potem przeskok na token s0.
+    -->
+    <style name="Theme.Stronk" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/stronk_s0</item>
+        <item name="android:colorBackground">@color/stronk_s0</item>
+        <item name="android:windowSplashScreenBackground">@color/stronk_s0</item>
+    </style>
+</resources>

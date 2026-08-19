@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Motyw systemowy tylko jako podkład — właściwy wygląd rysuje Compose (Material 3). -->
-    <style name="Theme.Stronk" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+      Motyw systemowy tylko jako podkład — właściwy wygląd rysuje Compose (Material 3).
+      Apka jest DARK ONLY, więc podkład też jest ciemny niezależnie od motywu systemu,
+      a windowBackground = token s0: zero przeskoku koloru między oknem a pierwszą
+      klatką Compose (Karol widział „zmianę koloru po załadowaniu").
+    -->
+    <style name="Theme.Stronk" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/stronk_s0</item>
+        <item name="android:colorBackground">@color/stronk_s0</item>
+    </style>
 </resources>

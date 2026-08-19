@@ -11,19 +11,20 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
 ## Tokeny
 
 ```css
-/* powierzchnie — jedna rodzina, hue 80, minimalna saturacja */
---page:      hsl(80, 4%, 4%);    /* tło poza ekranem (mocki) */
---s0:        hsl(80, 4%, 6%);    /* tło ekranu */
---s1:        hsl(80, 4%, 10%);   /* karta */
---s2:        hsl(75, 4%, 14%);   /* element na karcie / kafelek */
---s3:        hsl(75, 4%, 19%);   /* placeholder, tor paska, pusty dzień */
---line:      hsl(75, 4%, 17%);
---line-soft: hsl(75, 4%, 12%);
+/* powierzchnie — jedna rodzina NEUTRALNEJ czerni, saturacja 0 (patrz „Tła plain")
+   jasności bez zmian względem rundy mocków, zmienił się tylko podton */
+--page:      hsl(0, 0%, 4%);    /* #0A0A0A — tło poza ekranem (mocki) */
+--s0:        hsl(0, 0%, 6%);    /* #0F0F0F — tło ekranu = windowBackground */
+--s1:        hsl(0, 0%, 10%);   /* #1A1A1A — karta */
+--s2:        hsl(0, 0%, 14%);   /* #242424 — element na karcie / kafelek */
+--s3:        hsl(0, 0%, 19%);   /* #303030 — placeholder, tor paska, pusty dzień */
+--line:      hsl(0, 0%, 17%);
+--line-soft: hsl(0, 0%, 12%);
 
-/* tekst */
---text:   hsl(70, 8%, 96%);
---text-2: hsl(70, 5%, 70%);
---text-3: hsl(70, 4%, 46%);
+/* tekst — też neutralny, zero podtonu limonki */
+--text:   hsl(0, 0%, 96%);
+--text-2: hsl(0, 0%, 70%);
+--text-3: hsl(0, 0%, 46%);
 
 /* akcent: limonka ujarzmiona */
 --lime:      hsl(75, 70%, 52%);   /* akcja / teraz / dziś / PR */
@@ -45,6 +46,7 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
 
 /* promienie */
 --r-card: 24px; --r-inner: 18px; --r-tile: 14px; --r-day: 7px; --r-pill: 999px;
+--r-swatch: 4px;  /* znacznik legendy kalendarza (kwadracik 12px) */
 
 /* rytm */
 --pad-screen: 22px; --pad-card: 20px;  /* odstępy: 4/8/12/16/20/24/32 */
@@ -65,6 +67,16 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
    mockach → w apce własne ImageVectory lub material-icons Rounded).
 6. Implementowalne w Compose M3: karty, promienie, Canvas (wykresy, kwadraty,
    kropki); bez blur/glass/zdjęć/3D.
+7. **Tła plain, bez podtonu.** Powierzchnie (`--page`/`--s0`…`--s3`), linie i
+   tekst mają saturację 0 — czysta neutralna czerń. Zielonkawy podton z pierwszej
+   wersji („za zielone tło") jest ODRZUCONY: limonka ma być JEDYNYM kolorem na
+   ekranie, więc nie może się rozlewać po tle. Jasności zostają bez zmian.
+8. **`android:windowBackground` = `--s0`** (`@color/stronk_s0` w
+   `res/values/colors.xml`, motyw ciemny także w `values/`, splash w
+   `values-v31`). Tło okna, splash i pierwsza klatka Compose muszą być tym samym
+   kolorem — inaczej po starcie widać „zmianę koloru". Zmieniasz `--s0`?
+   Zmień oba miejsca naraz. Żaden ekran ani Scaffold nie maluje własnego tła —
+   tło daje `colorScheme.background` = `--s0`.
 
 ## Komponenty (przepisy w pliku kanonicznym)
 
@@ -74,10 +86,13 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
   wysokość ~66px. Ghost-przycisk: transparent + border `--line`.
 - **Kalendarz kwadratów** (Ladder): 7 w rzędzie, radius `--r-day`;
   wypełniony `--lime-deep` = zrobione, obrys = plan, dziś = obrys + limonkowy ring,
-  wolne = `--s3` ledwie widoczne. Legenda maks 2 pozycje.
+  wolne = `--s3` ledwie widoczne. Legenda maks 2 pozycje, znaczniki to
+  KWADRACIKI 12px o promieniu `--r-swatch` (miniatury kwadratu dnia, nie kółka):
+  „zrobione" wypełniony `--lime-deep`, „plan" sam obrys `--line`.
 - **Wiersz listy ćwiczeń**: miniatura/ikona w `--s2` (radius `--r-tile`) + nazwa
   `--fs-h2` + jeden chip ("3 serie") + ewent. chevron.
-- **Chip/pigułka**: `--s2`, radius `--r-pill`, tekst `--fs-meta`; zaznaczony =
+- **Chip/pigułka**: `--s2`, radius `--r-pill`, tekst `--fs-meta` z pierwszą
+  WIELKĄ literą (kapitalizację robi sam komponent); zaznaczony =
   `--lime-dim` tło + `--lime-line` obrys.
 - **Taby segmentowe** (Opis|Historia): kontener `--s1` pill, aktywny segment `--s2`.
 - **Notka**: karta `--s1` z lewą krechą 3px (limonka lub semantyka), jedna linijka.

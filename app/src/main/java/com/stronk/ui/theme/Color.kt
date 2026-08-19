@@ -9,9 +9,12 @@ import androidx.compose.ui.graphics.Color
  * Tokeny kolorów „Limonka" — 1:1 z sekcją `:root` mocków w `mocks/limonka/`
  * (`wariant-c2-limonka.html` + `pack-*.html`).
  *
- * Jedna rodzina powierzchni: czerń o hue 80 z minimalną saturacją. JEDEN akcent:
- * stonowana limonka, maks. ~10% powierzchni ekranu — jasna [Lime] to akcja /
- * teraz / dziś / PR, przygaszona [LimeDeep] to fakty z przeszłości.
+ * Powierzchnie i tekst są NEUTRALNE (saturacja 0) — tło ma być „plain ciemne",
+ * bez zielonkawego podtonu. Podton wracał echem limonki na całym ekranie i po
+ * starcie apki dawał wrażenie zmiany koloru; jasności zostały te same, zmienił
+ * się tylko podton. JEDEN akcent: stonowana limonka, maks. ~10% powierzchni
+ * ekranu — jasna [Lime] to akcja / teraz / dziś / PR, przygaszona [LimeDeep] to
+ * fakty z przeszłości. Limonka jest JEDYNYM kolorem w apce.
  *
  * Zero indygo, zero fioletu, zero drugiego hue „na semantykę" — ostrzeżenia
  * i ryzyko niosą IKONY i słowa, nie kolor (tak jak w zaakceptowanych mockach).
@@ -20,41 +23,48 @@ import androidx.compose.ui.graphics.Color
  * Nazwy odpowiadają zmiennym CSS z mocków, żeby dało się je porównać wzrokiem.
  */
 internal object StronkTokens {
-    /** `--page` — najciemniejsze tło (za ekranem, paski systemowe). */
-    val Page = Color.hsl(80f, 0.04f, 0.04f)
+    /**
+     * `--page` — najciemniejsze tło (za ekranem, paski systemowe). Neutralne.
+     * Powierzchnie trzymają hue 0 / saturację 0: jasności jak wcześniej, zero podtonu.
+     */
+    val Page = Color.hsl(0f, 0f, 0.04f)
 
-    /** `--s0` — tło ekranu i dolnej nawigacji. */
-    val S0 = Color.hsl(80f, 0.04f, 0.06f)
+    /**
+     * `--s0` — tło ekranu i dolnej nawigacji. Ta sama wartość co
+     * `@color/stronk_s0` w `res/values/colors.xml` (windowBackground), żeby nie
+     * było przeskoku między tłem okna a pierwszą klatką Compose.
+     */
+    val S0 = Color.hsl(0f, 0f, 0.06f)
 
     /** Poziom pośredni między tłem a kartą (nie ma w mockach, potrzebny M3). */
-    val S05 = Color.hsl(80f, 0.04f, 0.08f)
+    val S05 = Color.hsl(0f, 0f, 0.08f)
 
     /** `--s1` — karta, pole wyszukiwania, kontener tabów. */
-    val S1 = Color.hsl(80f, 0.04f, 0.10f)
+    val S1 = Color.hsl(0f, 0f, 0.10f)
 
     /** Poziom pośredni między kartą a elementem na karcie. */
-    val S15 = Color.hsl(78f, 0.04f, 0.12f)
+    val S15 = Color.hsl(0f, 0f, 0.12f)
 
     /** `--s2` — element na karcie: kafelek ikony, chip, tor pierścienia. */
-    val S2 = Color.hsl(75f, 0.04f, 0.14f)
+    val S2 = Color.hsl(0f, 0f, 0.14f)
 
     /** `--s3` — placeholder, tor paska, pusty dzień, aktywny segment tabów. */
-    val S3 = Color.hsl(75f, 0.04f, 0.19f)
+    val S3 = Color.hsl(0f, 0f, 0.19f)
 
     /** `--line` — obrys wyraźny (ghost-przycisk, dzielnik statów, dzień „plan"). */
-    val Line = Color.hsl(75f, 0.04f, 0.17f)
+    val Line = Color.hsl(0f, 0f, 0.17f)
 
     /** `--line-soft` — dzielnik wierszy i linia nad dolną nawigacją. */
-    val LineSoft = Color.hsl(75f, 0.04f, 0.12f)
+    val LineSoft = Color.hsl(0f, 0f, 0.12f)
 
-    /** `--text` — tekst główny i liczby. */
-    val Text = Color.hsl(70f, 0.08f, 0.96f)
+    /** `--text` — tekst główny i liczby. Neutralny, bez podtonu limonki. */
+    val Text = Color.hsl(0f, 0f, 0.96f)
 
     /** `--text-2` — tekst wspierający (nazwy na listach, ghost-przyciski). */
-    val Text2 = Color.hsl(70f, 0.05f, 0.70f)
+    val Text2 = Color.hsl(0f, 0f, 0.70f)
 
     /** `--text-3` — tekst wygaszony: KAPITALIKI statów, meta, ikony w kafelkach. */
-    val Text3 = Color.hsl(70f, 0.04f, 0.46f)
+    val Text3 = Color.hsl(0f, 0f, 0.46f)
 
     /** `--lime` — jedyny akcent: akcja / teraz / dziś / PR. */
     val Lime = Color.hsl(75f, 0.70f, 0.52f)

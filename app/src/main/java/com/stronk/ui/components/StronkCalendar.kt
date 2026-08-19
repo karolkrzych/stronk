@@ -147,6 +147,10 @@ fun StronkWeekdayHeader(
 /**
  * Legenda kalendarza (mocki: `.legend`) — MAKS 2 pozycje: „Zrobione" i „Plan".
  * Trzecia pozycja to znak, że siatka przestała być czytelna sama z siebie.
+ *
+ * Znaczniki to KWADRACIKI 12 dp o promieniu 4 dp (miniatury kwadratu dnia), nie
+ * kółka: „zrobione" wypełnione `--lime-deep` — dokładnie tym, czym wypełnia się
+ * kwadrat dnia — „plan" tylko obrysem `--line`.
  */
 @Composable
 fun StronkDayLegend(
@@ -163,14 +167,14 @@ fun StronkDayLegend(
             Box(
                 Modifier
                     .size(12.dp)
-                    .background(StronkTheme.colors.limeDeep, StronkRadius.dayShape),
+                    .background(StronkTheme.colors.limeDeep, StronkRadius.swatchShape),
             )
         }
         LegendItem(plannedLabel) {
             Box(
                 Modifier
                     .size(12.dp)
-                    .border(1.5.dp, StronkTheme.colors.line, StronkRadius.dayShape),
+                    .border(1.5.dp, StronkTheme.colors.line, StronkRadius.swatchShape),
             )
         }
     }

@@ -31,6 +31,9 @@ import com.stronk.ui.theme.StronkTheme
  * nie plama: tło `--lime-dim`, obrys `--lime-line`, tekst `--lime`. Rozmiar chipa
  * nie zmienia się przy zaznaczeniu — obrys jest zawsze rysowany.
  *
+ * Pierwszą literę etykiety chip pokazuje ZAWSZE wielką (jak w mockach) — ekrany
+ * nie muszą o tym pamiętać i mogą podawać etykiety z danych („pośladki").
+ *
  * @param label 1–2 słowa, np. "Pośladki", "3 serie"
  * @param onClick null = chip jest etykietą, nie kontrolką
  */
@@ -65,7 +68,7 @@ fun StronkChip(
                 Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(14.dp))
             }
             Text(
-                text = label,
+                text = label.replaceFirstChar { it.uppercaseChar() },
                 style = MaterialTheme.typography.labelMedium,
                 color = content,
                 maxLines = 1,

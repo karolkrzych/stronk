@@ -52,6 +52,9 @@ object StronkRadius {
     /** `--r-day` — kwadrat dnia w kalendarzu. */
     val day = 7.dp
 
+    /** Znacznik legendy kalendarza — mały kwadracik 12 dp (mocki: `.legend i`). */
+    val swatch = 4.dp
+
     /** `--r-pill` — chip, badge, segment tabów. */
     val pill = RoundedCornerShape(percent = 50)
 
@@ -63,6 +66,7 @@ object StronkRadius {
     val tileShape: Shape = RoundedCornerShape(tile)
     val tileSmallShape: Shape = RoundedCornerShape(tileSmall)
     val dayShape: Shape = RoundedCornerShape(day)
+    val swatchShape: Shape = RoundedCornerShape(swatch)
 }
 
 /**
