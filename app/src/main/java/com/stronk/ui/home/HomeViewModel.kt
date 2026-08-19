@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.stronk.StronkApplication
+import com.stronk.data.CardioEntry
+import com.stronk.data.CardioRepository
+import com.stronk.data.CardioType
 import com.stronk.data.Exercise
 import com.stronk.data.ExerciseRepository
 import com.stronk.data.Plan
@@ -14,6 +17,7 @@ import com.stronk.data.ScheduleEntry
 import com.stronk.data.ScheduleRepository
 import com.stronk.data.ScheduleStatus
 import com.stronk.progression.ProgressionEngine
+import com.stronk.ui.cardio.CardioRowUi
 import com.stronk.ui.plans.PlanTexts
 import com.stronk.ui.workout.WorkoutSession
 import com.stronk.ui.workout.WorkoutSessionManager
@@ -93,12 +97,15 @@ data class HomeUiState(
     /** Niepusty = notka "trening w toku" z nawigacją z powrotem do sesji. */
     val activeWorkout: ActiveWorkoutUi? = null,
     val content: HomeContent = HomeContent.NoPlans,
+    /** Cardio wpisane DZIŚ — sekcja pod ćwiczeniami (poziom 1: ręczny wpis). */
+    val cardio: List<CardioRowUi> = emptyList(),
 )
 
 class HomeViewModel(
     scheduleRepository: ScheduleRepository,
     planRepository: PlanRepository,
     exerciseRepository: ExerciseRepository,
+    private val cardioRepository: CardioRepository,
 ) : ViewModel() {
 
     /** Dataset z assets — null do końca pierwszego ładowania. */
@@ -109,9 +116,10 @@ class HomeViewModel(
         planRepository.observePlans(),
         exercisesById,
         WorkoutSessionManager.session,
-    ) { schedule, plans, exercises, session ->
+        cardioRepository.observeCardio(),
+    ) { schedule, plans, exercises, session, cardio ->
         if (exercises == null) HomeUiState(loading = true)
-        else buildState(schedule, plans, exercises, session)
+        else buildState(schedule, plans, exercises, session, cardio)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     init {
@@ -120,12 +128,46 @@ class HomeViewModel(
         }
     }
 
+    // ---------- cardio (poziom 1: ręczny wpis, zero GPS) ----------
+
+    /**
+     * Zapis wpisu cardio na DZIŚ. [entryId] niepuste = edycja istniejącego
+     * wpisu (id i dzień zostają, zmienia się treść).
+     */
+    fun onSaveCardio(
+        entryId: String?,
+        type: CardioType,
+        durationMin: Int,
+        distanceKm: Double?,
+    ) {
+        val existing = latestCardio.firstOrNull { it.id == entryId }
+        cardioRepository.save(
+            CardioEntry(
+                id = entryId ?: cardioRepository.newId(),
+                date = existing?.date ?: LocalDate.now().toString(),
+                type = type,
+                durationMin = durationMin,
+                distanceKm = distanceKm,
+                createdAt = existing?.createdAt ?: System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    fun onDeleteCardio(entryId: String) {
+        cardioRepository.delete(entryId)
+    }
+
+    /** Ostatni znany zestaw wpisów cardio — pod edycję (zachowanie daty wpisu). */
+    private var latestCardio: List<CardioEntry> = emptyList()
+
     private fun buildState(
         schedule: List<ScheduleEntry>,
         plans: List<Plan>,
         exercises: Map<String, Exercise>,
         session: WorkoutSession?,
+        cardio: List<CardioEntry>,
     ): HomeUiState {
+        latestCardio = cardio
         val today = LocalDate.now()
         val todayKey = today.toString()
         val planned = schedule.filter { it.status == ScheduleStatus.PLANNED }
@@ -155,6 +197,14 @@ class HomeViewModel(
                 )
             },
             content = content,
+            cardio = cardio.filter { it.date == todayKey }.map { entry ->
+                CardioRowUi(
+                    id = entry.id,
+                    type = entry.type,
+                    durationMin = entry.durationMin,
+                    distanceKm = entry.distanceKm,
+                )
+            },
         )
     }
 
@@ -221,6 +271,7 @@ class HomeViewModel(
                     scheduleRepository = app.scheduleRepository,
                     planRepository = app.planRepository,
                     exerciseRepository = app.exerciseRepository,
+                    cardioRepository = app.cardioRepository,
                 )
             }
         }

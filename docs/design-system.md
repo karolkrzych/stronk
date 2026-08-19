@@ -1,5 +1,9 @@
 # Design system "Limonka" (zatwierdzony 2026-08-19)
 
+**2026-08-19 runda 4:** drabinka +3 pkt (wybór Karola, wariant A) — s0 6%→9%,
+s1 10%→13%, s2 14%→17%, s3 19%→22%, `--line`/`--line-soft` o te same +3 pkt;
+saturacja zostaje 0%.
+
 Kierunek wizualny zatwierdzony przez Karola po 2 rundach iteracji; **pełny zestaw
 12 ekranów (runda 3) ZAAKCEPTOWANY 2026-08-19** ("Generalnie mi się podoba wszystko")
 z poprawkami: pierścień-zegar na przerwie, przyciski Pomiń/+30 4:1, nav ujednolicony.
@@ -12,14 +16,14 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
 
 ```css
 /* powierzchnie — jedna rodzina NEUTRALNEJ czerni, saturacja 0 (patrz „Tła plain")
-   jasności bez zmian względem rundy mocków, zmienił się tylko podton */
---page:      hsl(0, 0%, 4%);    /* #0A0A0A — tło poza ekranem (mocki) */
---s0:        hsl(0, 0%, 6%);    /* #0F0F0F — tło ekranu = windowBackground */
---s1:        hsl(0, 0%, 10%);   /* #1A1A1A — karta */
---s2:        hsl(0, 0%, 14%);   /* #242424 — element na karcie / kafelek */
---s3:        hsl(0, 0%, 19%);   /* #303030 — placeholder, tor paska, pusty dzień */
---line:      hsl(0, 0%, 17%);
---line-soft: hsl(0, 0%, 12%);
+   runda 4: cała drabinka +3 pkt jasności (wybór Karola, wariant A) */
+--page:      hsl(0, 0%, 7%);    /* #121212 — tło poza ekranem (mocki) */
+--s0:        hsl(0, 0%, 9%);    /* #171717 — tło ekranu = windowBackground */
+--s1:        hsl(0, 0%, 13%);   /* #212121 — karta */
+--s2:        hsl(0, 0%, 17%);   /* #2B2B2B — element na karcie / kafelek */
+--s3:        hsl(0, 0%, 22%);   /* #383838 — placeholder, tor paska, pusty dzień */
+--line:      hsl(0, 0%, 20%);
+--line-soft: hsl(0, 0%, 15%);
 
 /* tekst — też neutralny, zero podtonu limonki */
 --text:   hsl(0, 0%, 96%);
@@ -117,6 +121,23 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
   wolne = `--s3` ledwie widoczne. Legenda maks 2 pozycje, znaczniki to
   KWADRACIKI 12px o promieniu `--r-swatch` (miniatury kwadratu dnia, nie kółka):
   „zrobione" wypełniony `--lime-deep`, „plan" sam obrys `--line`.
+- **Cardio w kalendarzu** (runda 4, mock `round4/cardio-l1.html`): sam dzień
+  cardio = OBRYS `--lime-deep` (fakt, ale nie trening siłowy); dzień siłowy
+  zostaje wypełniony; oba naraz = wypełnienie + wewnętrzny ring `--lime` (inset
+  3px, radius 4). Wypełnienie znaczy więc dalej dokładnie jedno: trening
+  zrobiony. Legenda dostaje TRZECIĄ pozycję „Cardio" (kwadracik z obrysem
+  `--lime-deep`) — tylko wtedy, gdy w siatce faktycznie jest cardio.
+  Compose: `CalendarMarkers.marker(status, hasCardio)` → `StronkDaySquare(cardio = …)`.
+- **Wiersz cardio** (mock `.crow`): kafelek z piktogramem typu (ikona w
+  `--lime-deep`), nazwa typu `--fs-h2`, po prawej OSOBNE staty CZAS │ DYSTANS —
+  każdy z własnym kapitalikiem, liczby w `--lime-deep` (fakt przeszły), dystans
+  tylko gdy podany. Pod listą ghost-wiersz „+ Dodaj cardio" (kreskowana linia
+  i kreskowane kółko, `--text-3`) — zaproszenie, nie CTA.
+- **Duże pole liczbowe** (sheet cardio, zamiast slidera — decyzja Karola):
+  stat-blok, w którym liczba JEST polem: KAPITALIK, pod nim `--fs-hero` 62px
+  z klawiaturą numeryczną, jednostka jako sufiks 19px w `--text-3`, kursor
+  limonkowy, placeholder w `--s3`. Pole opcjonalne (dystans) to mały prostokąt
+  `--s2` 128×46 z etykietą „opcjonalnie" i placeholderem — nigdy nie blokuje CTA.
 - **Wiersz listy ćwiczeń**: miniatura/ikona w `--s2` (radius `--r-tile`) + nazwa
   `--fs-h2` + jeden chip ("3 serie") + ewent. chevron.
 - **Chip/pigułka**: `--s2`, radius `--r-pill`, tekst `--fs-meta` z pierwszą

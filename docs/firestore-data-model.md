@@ -64,6 +64,20 @@ movedTo: "YYYY-MM-DD"?     // przy status=moved
 workoutId: string?         // przy status=done — link do logu
 ```
 
+### `users/{code}/cardio/{entryId}` — ręczny wpis cardio (poziom 1)
+Cardio jest OSOBNE od treningu siłowego: nie ma planu, nie ma serii, nie dotyka
+silnika progresji (ADR-004). Jeden dokument = jedno cardio danego dnia:
+```
+date: "YYYY-MM-DD"                     // ten sam format co schedule
+type: "bike" | "run" | "walk" | "other"  // małymi literami, jak status harmonogramu
+durationMin: int                       // zawsze > 0; wpis bez czasu nie istnieje
+distanceKm: double?                    // OPCJONALNY — brak pola = brak dystansu
+createdAt: millis                      // porządkuje kilka wpisów tego samego dnia
+```
+Odczyt jest odporny: nieznany `type` → `other`, brak daty albo czasu → wpis
+pomijany, `distanceKm <= 0` → traktowane jak brak dystansu. Zero GPS, zero map —
+to ręczny wpis, nie tracker.
+
 ### `users/{code}/workouts/{workoutId}` — wykonany trening
 Serie **embedded w dokumencie treningu** (trening = dziesiątki serii = pojedyncze KB; unika setek mikro-dokumentów, cały trening zapisuje się atomowo):
 ```
@@ -109,7 +123,7 @@ Sesja anonimowa wymagana (odcina niezalogowany internet), dostęp do danych chro
 
 ## Eksport/import JSON (ADR-002 pkt 5)
 
-Eksport = jeden JSON: `{ profile, plans[], schedule[], workouts[], exerciseState{} }`. Dzięki epoch millis i stringom dat plik jest samowystarczalny. Import = walidacja + zapis batchem. Implementacja w Fazie 7.
+Eksport = jeden JSON: `{ profile, plans[], schedule[], cardio[], workouts[], exerciseState{} }`. Dzięki epoch millis i stringom dat plik jest samowystarczalny. Import = walidacja + zapis batchem. Implementacja w Fazie 7.
 
 ## Otwarte pytania do Karola
 

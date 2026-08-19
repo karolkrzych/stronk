@@ -211,6 +211,37 @@ object FirestoreMappers {
         )
     }
 
+    // ---------- CardioEntry ----------
+
+    /** Dystans null nie jest zapisywany — brak pola znaczy „cardio bez dystansu". */
+    fun cardioEntryToMap(entry: CardioEntry): Map<String, Any?> = buildMap {
+        put("date", entry.date)
+        put("type", entry.type.name.lowercase())
+        put("durationMin", entry.durationMin)
+        entry.distanceKm?.let { put("distanceKm", it) }
+        put("createdAt", entry.createdAt)
+    }
+
+    /**
+     * Wpis bez daty albo bez dodatniego czasu → null (nie ma czego pokazać);
+     * nieznany typ → [CardioType.OTHER] (bezpieczny default, jak PLANNED przy
+     * harmonogramie); dystans ≤ 0 traktujemy jak brak dystansu.
+     */
+    fun cardioEntryFromMap(id: String, map: Map<String, Any?>): CardioEntry? {
+        val date = map.stringOrNull("date") ?: return null
+        val durationMin = map.intOrNull("durationMin")?.takeIf { it > 0 } ?: return null
+        return CardioEntry(
+            id = id,
+            date = date,
+            type = map.stringOrNull("type")
+                ?.let { raw -> CardioType.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } }
+                ?: CardioType.OTHER,
+            durationMin = durationMin,
+            distanceKm = map.doubleOrNull("distanceKm")?.takeIf { it > 0.0 },
+            createdAt = map.longOrNull("createdAt") ?: 0L,
+        )
+    }
+
     // ---------- Workout ----------
 
     fun workoutToMap(workout: Workout): Map<String, Any?> = buildMap {
