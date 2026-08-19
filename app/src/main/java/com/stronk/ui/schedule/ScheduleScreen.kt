@@ -1,29 +1,23 @@
 package com.stronk.ui.schedule
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -33,7 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,31 +36,51 @@ import com.stronk.data.ScheduleStatus
 import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkCard
+import com.stronk.ui.components.StronkDayLegend
+import com.stronk.ui.components.StronkDaySquare
+import com.stronk.ui.components.StronkDayState
 import com.stronk.ui.components.StronkEmptyState
-import com.stronk.ui.components.StronkFooterActions
 import com.stronk.ui.components.StronkIconBadge
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkListRow
-import com.stronk.ui.components.StronkMetaChip
 import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkScreenHeader
-import com.stronk.ui.components.StronkSectionHeader
-import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
+import com.stronk.ui.components.StronkWeekdayHeader
+import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 import java.time.LocalDate
 
+/** Odstęp między kwadratami siatki (mock: `.cal .grid { gap: 8px }`). */
+private val DaySquareGap = 8.dp
+
+/** Nagłówek → siatka i siatka → karta dnia (mock: `.cal`/`.daycard` margin-top 18). */
+private val BlockGap = 18.dp
+
+/** Siatka → legenda (mock: `.legend { margin-top: 14px }`). */
+private val LegendGap = 14.dp
+
+/** Wewnętrzny padding karty dnia (mock: `.daycard { padding: 18px }`). */
+private val DayCardPadding = 18.dp
+
 /**
- * Harmonogram — widok tygodnia (moduł 4 CONCEPT, mock "Ekran 2").
- * Siatka poniedziałek–niedziela z nawigacją tygodni, karta(-y) wybranego dnia
- * (lista ćwiczeń + CTA "Zacznij trening"), przesunięcie/odwołanie wpisu
- * oraz przypisanie planu do dni tygodnia (generacja wpisów PLANNED).
- * Przypomnienia-notyfikacje świadomie poza tym zakresem (backlog).
+ * Harmonogram — ekran „Tydzień" (mock `wariant-c2-limonka.html`, ekran 2).
+ *
+ * Dominanta ekranu to SIATKA KWADRATÓW: 7 kolumn × tygodnie bieżącego bloku
+ * w dół, numer dnia w kwadracie, stan niesiony wypełnieniem (zrobione), obrysem
+ * (plan) albo brakiem obu (dzień wolny); „dziś" to limonkowy ring. Legenda ma
+ * maks 2 pozycje — trzecia byłaby znakiem, że siatka przestała być czytelna.
+ *
+ * Pod siatką jest jedna karta wybranego dnia: „Środa · Full body B", CTA
+ * „Zacznij trening" i prosta lista ćwiczeń (ikona + nazwa + chip „3 serie").
+ * Akcje drugorzędne (przesuń/odwołaj) to podkreślone linki, nie przyciski.
+ * Dolna nawigacja żyje w [com.stronk.ui.StronkNavHost] — ten ekran jej nie rysuje.
  *
  * @param onStartWorkout start treningu dnia planu; scheduleEntryId wpisu,
  *   żeby tryb treningu mógł go po zakończeniu oznaczyć jako DONE.
- * @param onPlanClick otwiera edytor planu (np. z karty dnia).
+ * @param onPlanClick otwiera edytor planu (nazwa planu w karcie dnia).
  * @param onNewPlan otwiera edytor nowego planu (empty state bez planów).
  * @param onExerciseClick podgląd ćwiczenia w bazie (wiersz w karcie dnia).
  */
@@ -85,7 +99,9 @@ fun ScheduleScreen(
     Scaffold { innerPadding ->
         if (state.loading) {
             Box(
-                modifier = Modifier.padding(innerPadding).fillMaxSize(),
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) { CircularProgressIndicator() }
             return@Scaffold
@@ -96,14 +112,14 @@ fun ScheduleScreen(
                 .padding(innerPadding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
-            verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
+                .padding(horizontal = StronkSpacing.screen)
+                .padding(top = StronkSpacing.sm, bottom = StronkSpacing.lg),
         ) {
             StronkScreenHeader(
-                title = "Twój tydzień",
-                subtitle = state.weekLabel.ifEmpty { null },
+                title = state.blockLabel.ifEmpty { "Tydzień" },
+                subtitle = state.monthLabel.ifEmpty { null },
                 actions = {
-                    if (!state.isCurrentWeek) {
+                    if (!state.todaySelected) {
                         IconButton(onClick = viewModel::onBackToToday) {
                             Icon(
                                 StronkIcons.today,
@@ -117,59 +133,40 @@ fun ScheduleScreen(
                             Icon(
                                 StronkIcons.add,
                                 contentDescription = "Zaplanuj tydzień",
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = StronkTheme.colors.lime,
                             )
                         }
                     }
                 },
             )
 
-            WeekGrid(
-                days = state.days,
-                onPreviousWeek = viewModel::onPreviousWeek,
-                onNextWeek = viewModel::onNextWeek,
-                onSelectDay = viewModel::onSelectDay,
-            )
+            Spacer(Modifier.height(BlockGap))
+            BlockCalendar(weeks = state.weeks, onSelectDay = viewModel::onSelectDay)
 
+            Spacer(Modifier.height(LegendGap))
+            StronkDayLegend()
+
+            Spacer(Modifier.height(BlockGap))
             if (state.scheduleEmpty) {
-                val hasPlans = state.planOptions.isNotEmpty()
-                val onEmptyAction: () -> Unit = if (hasPlans) {
-                    { showAssignDialog = true }
-                } else {
-                    onNewPlan
-                }
-                StronkEmptyState(
-                    icon = StronkIcons.week,
-                    title = "Pusty tydzień",
-                    description = if (hasPlans) {
-                        "Przypisz plan do dni tygodnia — wpisy na najbliższe tygodnie " +
-                            "wygenerują się same."
-                    } else {
-                        "Najpierw złóż plan treningowy, potem przypiszesz go do dni tygodnia."
-                    },
-                    actionLabel = if (hasPlans) "Przypisz plan do tygodnia" else "Stwórz plan",
-                    onAction = onEmptyAction,
+                EmptySchedule(
+                    hasPlans = state.planOptions.isNotEmpty(),
+                    onAssign = { showAssignDialog = true },
+                    onNewPlan = onNewPlan,
                 )
+            } else if (state.selectedEntries.isEmpty()) {
+                FreeDayCard(state.selectedDayLabel)
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(StronkSpacing.sm)) {
-                    StronkSectionHeader(title = state.selectedDayLabel, icon = StronkIcons.today)
-                    if (state.selectedEntries.isEmpty()) {
-                        RestDayCard()
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(StronkSpacing.section)) {
-                            state.selectedEntries.forEach { entry ->
-                                EntryCard(
-                                    entry = entry,
-                                    onStartWorkout = onStartWorkout,
-                                    onPlanClick = onPlanClick,
-                                    onExerciseClick = onExerciseClick,
-                                    onMove = { moveEntryId = it },
-                                    onCancel = viewModel::onCancelEntry,
-                                    onRestore = viewModel::onRestoreEntry,
-                                )
-                            }
-                        }
-                    }
+                state.selectedEntries.forEachIndexed { index, entry ->
+                    if (index > 0) Spacer(Modifier.height(StronkSpacing.sm))
+                    DayCard(
+                        entry = entry,
+                        onStartWorkout = onStartWorkout,
+                        onPlanClick = onPlanClick,
+                        onExerciseClick = onExerciseClick,
+                        onMove = { moveEntryId = it },
+                        onCancel = viewModel::onCancelEntry,
+                        onRestore = viewModel::onRestoreEntry,
+                    )
                 }
             }
         }
@@ -188,7 +185,7 @@ fun ScheduleScreen(
 
     moveEntryId?.let { entryId ->
         ScheduleDatePickerDialog(
-            title = "Przesuń trening na…",
+            title = "Przesuń trening",
             initialDate = state.selectedDate,
             onConfirm = { newDate ->
                 viewModel.onMoveEntry(entryId, newDate)
@@ -199,168 +196,51 @@ fun ScheduleScreen(
     }
 }
 
-/** Strzałki tygodnia + 7 komórek dni (jak week-grid z mocka). */
+/**
+ * Siatka kwadratów bloku (mock: `.cal`) — nagłówek liter dni + rzędy tygodni.
+ * Ring „dziś" rysuje się POZA kwadratem, więc odstęp 8 dp musi zostać.
+ */
 @Composable
-private fun WeekGrid(
-    days: List<ScheduleDayUi>,
-    onPreviousWeek: () -> Unit,
-    onNextWeek: () -> Unit,
+private fun BlockCalendar(
+    weeks: List<ScheduleWeekUi>,
     onSelectDay: (LocalDate) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onPreviousWeek) {
-            Icon(
-                Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
-                contentDescription = "Poprzedni tydzień",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xxs),
-        ) {
-            days.forEach { day ->
-                WeekDayCell(
-                    day = day,
-                    onClick = { onSelectDay(day.date) },
-                    modifier = Modifier.weight(1f),
-                )
+    Column(verticalArrangement = Arrangement.spacedBy(DaySquareGap)) {
+        StronkWeekdayHeader(modifier = Modifier.padding(bottom = 2.dp))
+        weeks.forEach { week ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(DaySquareGap),
+            ) {
+                week.days.forEach { day ->
+                    StronkDaySquare(
+                        day = day.dayOfMonth.toString(),
+                        state = day.status.toSquareState(),
+                        // Ring = punkt odniesienia: dziś (mock) i dzień, którego
+                        // kartę widać pod siatką. Domyślnie to ten sam kwadrat.
+                        today = day.isToday || day.isSelected,
+                        onClick = { onSelectDay(day.date) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
-        IconButton(onClick = onNextWeek) {
-            Icon(
-                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = "Następny tydzień",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 
-@Composable
-private fun WeekDayCell(
-    day: ScheduleDayUi,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val highlighted = day.isToday || day.isSelected
-    val container = when {
-        day.isToday -> MaterialTheme.colorScheme.surfaceVariant
-        day.badge == DayBadge.NONE -> MaterialTheme.colorScheme.background
-        else -> MaterialTheme.colorScheme.surfaceContainer
-    }
-    Surface(
-        onClick = onClick,
-        modifier = modifier.heightIn(min = 82.dp),
-        shape = MaterialTheme.shapes.small,
-        color = container,
-        border = BorderStroke(
-            if (highlighted) 1.5.dp else 1.dp,
-            if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(vertical = StronkSpacing.xs, horizontal = 2.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = day.abbrev,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (day.isToday) MaterialTheme.colorScheme.primary else StronkTheme.colors.textDim,
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = "${day.dayOfMonth}",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.weight(1f))
-            DayCellStatus(day)
-        }
-    }
+/**
+ * Zaplanowany dzień w przeszłości bez zaliczenia rysuje się jak plan — legenda
+ * zostaje przy dwóch pozycjach, a pusty obrys w przeszłości mówi sam za siebie.
+ */
+private fun ScheduleDayStatus.toSquareState(): StronkDayState = when (this) {
+    ScheduleDayStatus.DONE -> StronkDayState.DONE
+    ScheduleDayStatus.PLANNED, ScheduleDayStatus.MISSED -> StronkDayState.PLANNED
+    ScheduleDayStatus.FREE -> StronkDayState.OFF
 }
 
-/** Dolna linijka komórki: status ikoną+kolorem, nazwa dnia planu pod spodem. */
+/** Karta wybranego dnia (mock: `.daycard`). */
 @Composable
-private fun DayCellStatus(day: ScheduleDayUi) {
-    when (day.badge) {
-        DayBadge.NONE -> Text(
-            text = "–",
-            style = MaterialTheme.typography.labelSmall,
-            color = StronkTheme.colors.textDim,
-        )
-
-        DayBadge.PLANNED -> DayCellLabel(day.label, MaterialTheme.colorScheme.onSurfaceVariant)
-
-        DayBadge.DONE -> {
-            Icon(
-                StronkIcons.done,
-                contentDescription = null,
-                tint = StronkTheme.colors.success,
-                modifier = Modifier.size(12.dp),
-            )
-            DayCellLabel(day.label, StronkTheme.colors.textDim)
-        }
-
-        DayBadge.SKIPPED -> {
-            Icon(
-                StronkIcons.close,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.size(12.dp),
-            )
-            DayCellLabel(day.label, StronkTheme.colors.textDim, decoration = TextDecoration.LineThrough)
-        }
-
-        DayBadge.MOVED -> {
-            Icon(
-                StronkIcons.swap,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.size(12.dp),
-            )
-            DayCellLabel(day.label, StronkTheme.colors.textDim)
-        }
-    }
-}
-
-@Composable
-private fun DayCellLabel(
-    text: String,
-    color: Color,
-    decoration: TextDecoration? = null,
-) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = color,
-        textDecoration = decoration,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
-}
-
-/** Dzień bez wpisu — mały komunikat zamiast pustej karty. */
-@Composable
-private fun RestDayCard() {
-    StronkCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            StronkIconBadge(icon = StronkIcons.restDay)
-            Text(
-                text = "Dzień odpoczynku",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = StronkSpacing.sm),
-            )
-        }
-    }
-}
-
-/** Karta jednego wpisu harmonogramu wybranego dnia (day-card z mocka). */
-@Composable
-private fun EntryCard(
+private fun DayCard(
     entry: ScheduleEntryUi,
     onStartWorkout: (planId: String, dayIndex: Int, scheduleEntryId: String?) -> Unit,
     onPlanClick: (planId: String) -> Unit,
@@ -369,123 +249,185 @@ private fun EntryCard(
     onCancel: (entryId: String) -> Unit,
     onRestore: (entryId: String) -> Unit,
 ) {
-    StronkCard {
+    StronkCard(contentPadding = PaddingValues(DayCardPadding)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = entry.dayName ?: "Plan usunięty",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = if (entry.dayName == null) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
+                    text = entry.title,
+                    style = StronkTextStyles.h1Small,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                if (entry.planName != null) {
+                if (entry.planMissing) {
+                    Text(
+                        text = "Plan usunięty",
+                        style = StronkTextStyles.meta,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = StronkSpacing.xxs),
+                    )
+                } else if (entry.planName != null) {
                     Text(
                         text = entry.planName,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = StronkTextStyles.meta,
                         color = StronkTheme.colors.textDim,
-                        modifier = Modifier.clickable { onPlanClick(entry.planId) },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .padding(top = StronkSpacing.xxs)
+                            .clickable { onPlanClick(entry.planId) },
                     )
                 }
             }
-            EntryStatus(entry)
+            EntryStatusBadge(entry.status)
+        }
+
+        if (entry.canStart) {
+            Spacer(Modifier.height(StronkSpacing.lg))
+            StronkPrimaryButton(
+                text = "Zacznij trening",
+                icon = StronkIcons.start,
+                height = StronkSizes.ctaSmall,
+                onClick = { onStartWorkout(entry.planId, entry.dayIndex, entry.entryId) },
+            )
+        }
+
+        if (entry.status == ScheduleStatus.MOVED && entry.movedToLabel != null) {
+            Spacer(Modifier.height(StronkSpacing.sm))
+            Text(
+                text = "Przeniesiony na ${entry.movedToLabel}",
+                style = StronkTextStyles.meta,
+                color = StronkTheme.colors.textDim,
+            )
         }
 
         if (entry.exercises.isNotEmpty() && entry.status != ScheduleStatus.MOVED) {
-            Spacer(Modifier.height(StronkSpacing.md))
-            Column(verticalArrangement = Arrangement.spacedBy(StronkSpacing.row)) {
-                entry.exercises.forEach { row ->
-                    StronkListRow(
-                        title = row.name,
-                        icon = MuscleIcons.forMuscle(row.muscleKey),
-                        iconLabel = MuscleIcons.groupLabel(row.muscleKey),
-                        trailing = row.targetLabel,
-                        inset = true,
-                        onClick = { onExerciseClick(row.exerciseId) },
-                    )
-                }
+            Spacer(Modifier.height(6.dp))
+            entry.exercises.forEachIndexed { index, row ->
+                StronkListRow(
+                    title = row.name,
+                    icon = MuscleIcons.forMuscle(row.muscleKey),
+                    trailing = row.setsLabel,
+                    divider = index < entry.exercises.lastIndex,
+                    onClick = { onExerciseClick(row.exerciseId) },
+                )
             }
         }
 
         when (entry.status) {
             ScheduleStatus.PLANNED -> {
-                if (entry.canStart) {
-                    Spacer(Modifier.height(StronkSpacing.md))
-                    StronkPrimaryButton(
-                        text = "Zacznij trening",
-                        icon = StronkIcons.start,
-                        onClick = { onStartWorkout(entry.planId, entry.dayIndex, entry.entryId) },
-                    )
-                }
-                Spacer(Modifier.height(StronkSpacing.xs))
-                StronkFooterActions {
-                    StronkTextAction(
-                        text = "Przesuń",
-                        icon = StronkIcons.swap,
-                        onClick = { onMove(entry.entryId) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    StronkTextAction(
-                        text = "Odwołaj",
-                        icon = StronkIcons.close,
-                        tone = StronkTone.DANGER,
-                        onClick = { onCancel(entry.entryId) },
-                        modifier = Modifier.weight(1f),
-                    )
+                Spacer(Modifier.height(BlockGap))
+                DayCardLinks {
+                    ScheduleLinkAction(text = "Przesuń", onClick = { onMove(entry.entryId) })
+                    ScheduleLinkAction(text = "Odwołaj", onClick = { onCancel(entry.entryId) })
                 }
             }
 
             ScheduleStatus.SKIPPED -> {
-                Spacer(Modifier.height(StronkSpacing.sm))
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    StronkTextAction(
-                        text = "Przywróć",
-                        icon = StronkIcons.add,
-                        onClick = { onRestore(entry.entryId) },
-                    )
+                Spacer(Modifier.height(BlockGap))
+                DayCardLinks {
+                    ScheduleLinkAction(text = "Przywróć", onClick = { onRestore(entry.entryId) })
                 }
             }
 
-            ScheduleStatus.MOVED -> {
-                if (entry.movedToLabel != null) {
-                    Spacer(Modifier.height(StronkSpacing.xxs))
-                    Text(
-                        text = "Przeniesiony na ${entry.movedToLabel}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StronkTheme.colors.textDim,
-                    )
-                }
-            }
-
-            ScheduleStatus.DONE -> Unit // status widoczny w badge'u, bez akcji
+            ScheduleStatus.DONE, ScheduleStatus.MOVED -> Unit
         }
     }
 }
 
-/** Status wpisu jako badge (ikona + kolor semantyczny) zamiast samego tekstu. */
+/** Rząd podkreślonych linków pod kartą dnia (mock: `.skip u`). */
 @Composable
-private fun EntryStatus(entry: ScheduleEntryUi) {
-    when (entry.status) {
+private fun DayCardLinks(content: @Composable () -> Unit) {
+    val centered = Arrangement.spacedBy(StronkSpacing.md, Alignment.CenterHorizontally)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = centered,
+        verticalAlignment = Alignment.CenterVertically,
+    ) { content() }
+}
+
+/**
+ * Akcja drugorzędna jako PODKREŚLONY LINK (mock: `.skip u`, `.weeklink u`) —
+ * 13/600 w `--text-3`. Nie przycisk: przycisk konkurowałby wagą z CTA.
+ */
+@Composable
+internal fun ScheduleLinkAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text,
+        style = StronkTextStyles.meta.copy(
+            fontWeight = FontWeight.SemiBold,
+            textDecoration = TextDecoration.Underline,
+        ),
+        color = StronkTheme.colors.textDim,
+        maxLines = 1,
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .padding(horizontal = StronkSpacing.sm, vertical = StronkSpacing.xs),
+    )
+}
+
+/** Status wpisu jako badge — tylko wtedy, gdy nie jest zwykłym „zaplanowany". */
+@Composable
+private fun EntryStatusBadge(status: ScheduleStatus) {
+    when (status) {
         ScheduleStatus.DONE -> StronkBadge(
             text = "zaliczony",
             tone = StronkTone.SUCCESS,
             icon = StronkIcons.done,
         )
 
-        ScheduleStatus.SKIPPED -> StronkBadge(
-            text = "odwołany",
-            tone = StronkTone.NEUTRAL,
-            icon = StronkIcons.close,
-        )
+        ScheduleStatus.SKIPPED -> StronkBadge(text = "odwołany", icon = StronkIcons.close)
 
-        ScheduleStatus.MOVED -> StronkBadge(
-            text = "przesunięty",
-            tone = StronkTone.NEUTRAL,
-            icon = StronkIcons.swap,
-        )
+        ScheduleStatus.MOVED -> StronkBadge(text = "przesunięty", icon = StronkIcons.swap)
 
-        ScheduleStatus.PLANNED -> StronkMetaChip("${entry.exercises.size} ćw.")
+        ScheduleStatus.PLANNED -> Unit
     }
+}
+
+/** Dzień bez treningu — jedna linijka, żeby ekran nie puchł. */
+@Composable
+private fun FreeDayCard(dayLabel: String) {
+    StronkCard(contentPadding = PaddingValues(DayCardPadding)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StronkIconBadge(icon = StronkIcons.restDay)
+            Column(Modifier.padding(start = StronkSpacing.sm)) {
+                Text(
+                    text = "Dzień wolny",
+                    style = StronkTextStyles.h2,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = dayLabel,
+                    style = StronkTextStyles.meta,
+                    color = StronkTheme.colors.textDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** Pusty harmonogram — jedna zachęta, zero tłumaczeń na trzy akapity. */
+@Composable
+private fun EmptySchedule(
+    hasPlans: Boolean,
+    onAssign: () -> Unit,
+    onNewPlan: () -> Unit,
+) {
+    StronkEmptyState(
+        icon = StronkIcons.week,
+        title = "Pusty tydzień",
+        description = if (hasPlans) {
+            "Przypisz plan do dni tygodnia — wpisy wygenerują się same."
+        } else {
+            "Najpierw złóż plan, potem przypiszesz go do dni tygodnia."
+        },
+        actionLabel = if (hasPlans) "Zaplanuj tydzień" else "Stwórz plan",
+        onAction = if (hasPlans) onAssign else onNewPlan,
+    )
 }

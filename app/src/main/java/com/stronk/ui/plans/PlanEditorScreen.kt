@@ -14,11 +14,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,7 +44,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -55,7 +57,6 @@ import com.stronk.data.PlanExercise
 import com.stronk.data.SetTarget
 import com.stronk.ui.PlLabels
 import com.stronk.ui.components.MuscleIcons
-import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkCard
 import com.stronk.ui.components.StronkChoiceChip
 import com.stronk.ui.components.StronkEmptyState
@@ -69,15 +70,24 @@ import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
+import com.stronk.ui.theme.StronkRadius
+import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 
 /**
- * Edytor/kreator planu (moduł 3, lift czytelności rundy UI/UX): nazwa, długość
- * bloku, dni jako karty z czytelnymi wierszami ćwiczeń (miniaturka + duże
- * serie×powtórzenia), sugestie pokrycia partii, presety parametryzowane
- * profilem/celem i picker ćwiczeń. Nawigacja wewnętrzna (picker) jest stanem
- * ViewModelu — sygnatura trasy pozostaje nietknięta.
+ * Plan w trzech warstwach jednej trasy (nawigacja wewnętrzna to stan ViewModelu,
+ * sygnatura trasy zostaje nietknięta):
+ *
+ * 1. **Kreator** ([PlanWizard]) — tylko dla nowego planu: szablon → długość
+ *    bloku → ograniczenia → nazwa.
+ * 2. **Edytor** — dni jako karty; liczby stoją w kolumnach `SERIE` / `CEL`
+ *    z nagłówkami raz na dzień, nigdy jako fraza „3×10".
+ * 3. **Picker** ([ExercisePicker]) — dobór ćwiczenia do dnia.
+ *
+ * Akcje planu (Zapisz, Archiwizuj/Przywróć) mieszkają TU, w szczegółach —
+ * lista planów ma same karty.
  *
  * @param planId id edytowanego planu; null = tworzenie nowego.
  * @param onBack powrót (także po zapisie).
@@ -97,15 +107,15 @@ fun PlanEditorScreen(
         if (state.saved) onBack()
     }
 
+    val wizard = state.wizard
     when {
         state.loading -> LoadingScreen(onBack)
 
-        state.showStartChooser -> StartChooser(
-            presets = state.presets,
-            onPreset = viewModel::applyPreset,
-            onFromScratch = viewModel::startFromScratch,
-            onBack = onBack,
-        )
+        wizard != null -> {
+            // Wstecz z pierwszego kroku = wyjście z kreatora (nic nie powstało).
+            BackHandler(onBack = { if (wizard.stepIndex == 0) onBack() else viewModel.wizardBack() })
+            PlanWizard(wizard = wizard, viewModel = viewModel, onBack = onBack)
+        }
 
         state.pickerDayIndex != null -> {
             BackHandler(onBack = viewModel::closePicker)
@@ -142,6 +152,15 @@ fun PlanEditorScreen(
     }
 }
 
+/** Szerokość kolumny SERIE w wierszu ćwiczenia (i w nagłówku nad nim). */
+private val SETS_COLUMN_WIDTH = 34.dp
+
+/** Szerokość kolumny CEL — mieści „12", „60 s" i „1 km · 6:00". */
+private val TARGET_COLUMN_WIDTH = 74.dp
+
+/** Szerokość kolumny menu akcji — tyle, ile domyślny `IconButton`. */
+private val MENU_COLUMN_WIDTH = 48.dp
+
 // ---------- warstwy ekranu ----------
 
 /** Nagłówek podekranu edytora: strzałka wstecz + [StronkScreenHeader]. Współdzielony z [ExercisePicker]. */
@@ -159,9 +178,10 @@ internal fun EditorHeader(
     ) {
         IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
             Icon(
-                Icons.AutoMirrored.Rounded.ArrowBack,
+                imageVector = StronkIcons.back,
                 contentDescription = "Wstecz",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
             )
         }
         StronkScreenHeader(title = title, modifier = Modifier.weight(1f), actions = actions)
@@ -174,61 +194,6 @@ private fun LoadingScreen(onBack: () -> Unit) {
         EditorHeader(title = "", onBack = onBack, modifier = Modifier.padding(StronkSpacing.screen))
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-        }
-    }
-}
-
-/** Nowy plan: wybór presetu albo start od zera. */
-@Composable
-private fun StartChooser(
-    presets: List<PlanPreset>,
-    onPreset: (PlanPreset) -> Unit,
-    onFromScratch: () -> Unit,
-    onBack: () -> Unit,
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
-        verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
-    ) {
-        item { EditorHeader(title = "Nowy plan", onBack = onBack) }
-        item {
-            Text(
-                text = "Zacznij od gotowego szablonu — ćwiczenia dobiorą się pod Twój " +
-                    "sprzęt, ograniczenia i cel z profilu.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = StronkTheme.colors.textDim,
-            )
-        }
-        items(presets, key = { it.id }) { preset ->
-            StronkCard(onClick = { onPreset(preset) }) {
-                Text(
-                    text = preset.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = preset.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = StronkTheme.colors.textDim,
-                    modifier = Modifier.padding(top = StronkSpacing.xxs),
-                )
-                Row(
-                    modifier = Modifier.padding(top = StronkSpacing.sm),
-                    horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
-                ) {
-                    StronkBadge(text = "${preset.days.size} dni", icon = StronkIcons.week)
-                    StronkBadge(text = "${preset.slotCount} ćwiczeń", icon = StronkIcons.plans)
-                }
-            }
-        }
-        item {
-            StronkGhostButton(
-                text = "Zacznij od zera",
-                onClick = onFromScratch,
-                icon = StronkIcons.add,
-                modifier = Modifier.fillMaxWidth(),
-            )
         }
     }
 }
@@ -269,6 +234,7 @@ private fun EditorContent(
                     onValueChange = viewModel::onNameChange,
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Nazwa planu") },
+                    shape = StronkRadius.innerShape,
                     singleLine = true,
                 )
                 Spacer(Modifier.height(StronkSpacing.sm))
@@ -307,6 +273,17 @@ private fun EditorContent(
                 icon = StronkIcons.add,
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+        // Archiwizacja mieszka TU, w szczegółach planu — lista planów ma same karty.
+        if (state.canArchive) {
+            item {
+                StronkGhostButton(
+                    text = if (state.archived) "Przywróć z archiwum" else "Archiwizuj plan",
+                    onClick = { viewModel.setArchived(!state.archived) },
+                    icon = if (state.archived) StronkIcons.start else Icons.Rounded.Archive,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
         item { Spacer(Modifier.height(StronkSpacing.xxl)) }
     }
@@ -392,6 +369,7 @@ private fun DayCard(
                 onValueChange = onRename,
                 modifier = Modifier.weight(1f),
                 label = { Text("Nazwa dnia") },
+                shape = StronkRadius.innerShape,
                 singleLine = true,
             )
             IconButton(onClick = onRemoveDay) {
@@ -406,8 +384,11 @@ private fun DayCard(
                 tone = StronkTone.NEUTRAL,
             )
         } else {
+            // Nagłówki kolumn RAZ na dzień — niżej stoją same liczby (zasada
+            // Karola: nigdy „3×10" w jednej frazie).
+            ExerciseColumnHeaders(modifier = Modifier.padding(top = StronkSpacing.sm))
             Column(
-                modifier = Modifier.padding(top = StronkSpacing.sm),
+                modifier = Modifier.padding(top = StronkSpacing.xxs),
                 verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
             ) {
                 day.exercises.forEachIndexed { exerciseIndex, exercise ->
@@ -453,7 +434,40 @@ private fun DayCard(
     }
 }
 
-/** Wiersz ćwiczenia w dniu: miniaturka, nazwa + partia, duże serie×powtórzenia, menu akcji. */
+/**
+ * Nagłówki kolumn liczbowych dnia — kapitaliki `SERIE` i `CEL` ustawione dokładnie
+ * nad kolumnami wierszy ([SETS_COLUMN_WIDTH] / [TARGET_COLUMN_WIDTH]), z zapasem
+ * na menu akcji po prawej.
+ */
+@Composable
+private fun ExerciseColumnHeaders(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(end = StronkSpacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+    ) {
+        Spacer(Modifier.weight(1f))
+        ColumnCaption("Serie", SETS_COLUMN_WIDTH)
+        ColumnCaption("Cel", TARGET_COLUMN_WIDTH)
+        Spacer(Modifier.width(MENU_COLUMN_WIDTH))
+    }
+}
+
+@Composable
+private fun ColumnCaption(text: String, width: Dp) {
+    Text(
+        text = text.uppercase(),
+        style = StronkTextStyles.cap,
+        color = StronkTheme.colors.textDim,
+        textAlign = TextAlign.End,
+        maxLines = 1,
+        modifier = Modifier.width(width),
+    )
+}
+
+/** Wiersz ćwiczenia w dniu: miniaturka, nazwa + partia, kolumny SERIE / CEL, menu akcji. */
 @Composable
 private fun ExercisePlanRow(
     exercise: EditorExerciseUi,
@@ -477,7 +491,9 @@ private fun ExercisePlanRow(
                 AsyncImage(
                     model = ExerciseRepository.IMAGES_BASE_URI + thumbnailPath,
                     contentDescription = null,
-                    modifier = Modifier.size(52.dp).clip(MaterialTheme.shapes.medium),
+                    modifier = Modifier
+                        .size(StronkSizes.iconTile)
+                        .clip(StronkRadius.tileShape),
                 )
             } else {
                 StronkIconBadge(
@@ -489,7 +505,7 @@ private fun ExercisePlanRow(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = exercise.name,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = StronkTextStyles.h2,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -507,16 +523,33 @@ private fun ExercisePlanRow(
                 Text(
                     text = exercise.exercise?.primaryMuscles?.firstOrNull()?.let(PlLabels::muscle)
                         ?: "ćwiczenie spoza bazy",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = StronkTextStyles.meta,
                     color = StronkTheme.colors.textDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp),
                 )
             }
+            val valueColor = if (warning) {
+                StronkTheme.colors.warning
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            }
             Text(
-                text = PlanTexts.targetLabel(exercise.planExercise),
-                style = MaterialTheme.typography.titleLarge,
-                color = if (warning) StronkTheme.colors.warning else MaterialTheme.colorScheme.onSurface,
+                text = PlanTexts.setsValue(exercise.planExercise),
+                style = StronkTextStyles.h2,
+                color = valueColor,
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                modifier = Modifier.width(SETS_COLUMN_WIDTH),
+            )
+            Text(
+                text = PlanTexts.targetValue(exercise.planExercise),
+                style = StronkTextStyles.h2,
+                color = valueColor,
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                modifier = Modifier.width(TARGET_COLUMN_WIDTH),
             )
             ExerciseRowMenu(
                 onMoveUp = onMoveUp,
@@ -780,6 +813,7 @@ private fun NumberField(
         onValueChange = onValueChange,
         modifier = Modifier.fillMaxWidth(),
         label = { Text(label) },
+        shape = StronkRadius.innerShape,
         singleLine = true,
         keyboardOptions = KeyboardOptions(
             keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number,

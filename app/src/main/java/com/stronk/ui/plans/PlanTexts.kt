@@ -32,22 +32,49 @@ internal object PlanTexts {
         }
     }
 
-    /** Skrót celu ćwiczenia, np. "3×8", "3×60 s", "3× 1 km / 6:00". */
-    fun targetLabel(exercise: PlanExercise): String = when (val target = exercise.target) {
-        is SetTarget.WeightReps -> "${exercise.sets}×${target.reps}"
-        is SetTarget.Reps -> "${exercise.sets}×${target.reps}"
-        is SetTarget.Time -> "${exercise.sets}×${target.seconds} s"
+    /**
+     * SAMA liczba serii — do kolumny pod kapitalikiem „SERIE".
+     *
+     * Zakaz Karola: nigdy nie sklejaj frazy „3×10" ani „40 kg × 10 powt.".
+     * Serie i cel to dwie osobne wartości; nagłówki kolumn stoją RAZ nad sekcją.
+     */
+    fun setsValue(exercise: PlanExercise): String = exercise.sets.toString()
+
+    /**
+     * SAMA wartość celu jednej serii — do kolumny pod kapitalikiem „CEL":
+     * powtórzenia („10"), czas („60 s") albo dystans z czasem („1 km · 6:00").
+     */
+    fun targetValue(exercise: PlanExercise): String = when (val target = exercise.target) {
+        is SetTarget.WeightReps -> target.reps.toString()
+        is SetTarget.Reps -> target.reps.toString()
+        is SetTarget.Time -> "${target.seconds} s"
         is SetTarget.DistanceTime ->
-            "${exercise.sets}× ${metersLabel(target.meters)} / ${minutesLabel(target.seconds)}"
+            "${metersLabel(target.meters)} · ${minutesLabel(target.seconds)}"
     }
 
-    /** Podsumowanie planu na liście, np. "3 dni · 17 ćwiczeń · blok 5 tyg. + 1 lekki". */
-    fun planSummary(plan: Plan): String {
-        val exerciseCount = plan.days.sumOf { it.exercises.size }
-        return "${plan.days.size} ${dayWord(plan.days.size)} · " +
-            "$exerciseCount ${exerciseWord(exerciseCount)} · " +
-            "blok ${plan.blockLengthWeeks} tyg. + ${ProgressionConstants.BLOCK_LIGHT_WEEKS} lekki"
+    /** Nagłówek kolumny celu — zależy od typu pomiaru, więc liczba pod nim jest naga. */
+    fun targetColumnLabel(exercise: PlanExercise): String = when (exercise.target) {
+        is SetTarget.WeightReps, is SetTarget.Reps -> "Powt."
+        is SetTarget.Time -> "Czas"
+        is SetTarget.DistanceTime -> "Dystans"
     }
+
+    /**
+     * Chip liczby serii na liście ćwiczeń dnia (mock: „3 serie"). To ETYKIETA
+     * z odmienionym rzeczownikiem, nie fraza „wartość × wartość".
+     */
+    fun setsChip(sets: Int): String = when {
+        sets == 1 -> "1 seria"
+        sets % 10 in 2..4 && sets % 100 !in 12..14 -> "$sets serie"
+        else -> "$sets serii"
+    }
+
+    /** Pełna długość bloku razem z tygodniem lekkim (ADR-004) — do statu TYGODNIE. */
+    fun fullBlockWeeks(plan: Plan): Int =
+        plan.blockLengthWeeks + ProgressionConstants.BLOCK_LIGHT_WEEKS
+
+    /** Liczba ćwiczeń we wszystkich dniach planu — do statu ĆWICZENIA. */
+    fun exerciseCount(plan: Plan): Int = plan.days.sumOf { it.exercises.size }
 
     fun metersLabel(meters: Double): String {
         val rounded = meters.roundToInt()
@@ -55,12 +82,4 @@ internal object PlanTexts {
     }
 
     fun minutesLabel(seconds: Int): String = "%d:%02d".format(seconds / 60, seconds % 60)
-
-    private fun dayWord(count: Int): String = if (count == 1) "dzień" else "dni"
-
-    private fun exerciseWord(count: Int): String = when {
-        count == 1 -> "ćwiczenie"
-        count % 10 in 2..4 && count % 100 !in 12..14 -> "ćwiczenia"
-        else -> "ćwiczeń"
-    }
 }

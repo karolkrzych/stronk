@@ -16,6 +16,12 @@ import java.util.Locale
 /** Zaplanowany slot treningu: data + indeks dnia planu. */
 data class PlannedSlot(val date: LocalDate, val dayIndex: Int)
 
+/**
+ * Okno tygodni bloku pokazywane w siatce kwadratów: [startWeek] to 0-based
+ * indeks pierwszego rzędu w bloku, [rows] to liczba rzędów.
+ */
+data class BlockWindow(val startWeek: Int, val rows: Int)
+
 private val polishLocale = Locale.forLanguageTag("pl")
 private val dayMonthFormatter = DateTimeFormatter.ofPattern("d MMMM", polishLocale)
 private val dayMonthYearFormatter = DateTimeFormatter.ofPattern("d MMMM yyyy", polishLocale)
@@ -42,6 +48,50 @@ fun weekLabel(weekStart: LocalDate, today: LocalDate): String {
             "${dayMonthFormatter.format(weekStart)} – $endLabel"
 
         else -> "${dayMonthYearFormatter.format(weekStart)} – $endLabel"
+    }
+}
+
+/**
+ * Które tygodnie bloku trafiają do siatki kwadratów.
+ *
+ * Blok mieszczący się w limicie pokazujemy w całości od tygodnia 0 (typowy
+ * przypadek: 5 tygodni pracy + 1 lekki = 6 rzędów, dokładnie jak mock).
+ * Blok krótszy niż [minRows] dopełniamy kolejnymi tygodniami kalendarza
+ * (siatka ma być dominantą ekranu, a nie dwoma rzędami), a blok dłuższy niż
+ * [maxRows] pokazujemy oknem wyśrodkowanym na bieżącym tygodniu.
+ *
+ * @param weekIndexInBlock 0-based pozycja bieżącego tygodnia w bloku
+ *   (z `ProgressionEngine.weekIndexInBlock` — silnik jest źródłem prawdy)
+ * @param blockLengthWeeks pełna długość bloku (praca + tydzień lekki)
+ */
+fun blockGridWindow(
+    weekIndexInBlock: Int,
+    blockLengthWeeks: Int,
+    minRows: Int = ScheduleConstants.GRID_WEEKS_MIN,
+    maxRows: Int = ScheduleConstants.GRID_WEEKS_MAX,
+): BlockWindow {
+    val length = blockLengthWeeks.coerceAtLeast(1)
+    val rows = length.coerceIn(minRows.coerceAtMost(maxRows), maxRows)
+    if (rows >= length) return BlockWindow(startWeek = 0, rows = rows)
+    val centered = weekIndexInBlock - (rows - 1) / 2
+    return BlockWindow(startWeek = centered.coerceIn(0, length - rows), rows = rows)
+}
+
+/**
+ * Poniedziałki rzędów siatki. Kotwicą jest poniedziałek tygodnia [today]
+ * cofnięty o [weekIndexInBlock] tygodni — silnik liczy tygodnie bloku jako
+ * pełne 7-dniowe okna od `plan.createdAt`, więc w kalendarzu (który zaczyna
+ * tydzień w poniedziałek) blok kotwiczymy przez bieżący tydzień, nie przez
+ * dokładną datę utworzenia planu.
+ */
+fun blockWeekMondays(
+    today: LocalDate,
+    weekIndexInBlock: Int,
+    window: BlockWindow,
+): List<LocalDate> {
+    val blockFirstMonday = weekStartOf(today).minusWeeks(weekIndexInBlock.toLong())
+    return (0 until window.rows).map { row ->
+        blockFirstMonday.plusWeeks((window.startWeek + row).toLong())
     }
 }
 

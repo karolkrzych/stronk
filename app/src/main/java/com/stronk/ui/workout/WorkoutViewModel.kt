@@ -41,8 +41,10 @@ data class WorkoutExerciseUi(
     /** Klucz partii z datasetu (np. "lats") — pod ikony/podpisy z MuscleIcons. */
     val muscle: String?,
     val muscleLabel: String,
-    val targetLabel: String,
-    val lastLabel: String?,
+    /** Cel ćwiczenia jako osobne staty (SERIE / POWTÓRZENIA / CIĘŻAR). */
+    val targetStats: List<SetStat>,
+    /** Ostatni trening z tym ćwiczeniem jako staty; pusta lista = brak historii. */
+    val lastStats: List<SetStat>,
     val badges: List<String>,
     val doneSets: Int,
     val totalSets: Int,
@@ -67,10 +69,14 @@ data class CurrentSetUi(
     val totalSets: Int,
     /** Gotowa seria do zalogowania jednym tapnięciem (i baza do dialogu edycji). */
     val prefill: SetLog,
-    val prefillLabel: String,
-    /** true → pierwsza seria WEIGHT_REPS bez znanego ciężaru: ✓ otwiera edycję. */
+    /** Wartości prefillu jako osobne staty — pierwsza to dominanta ekranu. */
+    val prefillStats: List<SetStat>,
+    /**
+     * true → pierwsza seria WEIGHT_REPS bez znanego ciężaru (SERIA TESTOWA):
+     * ✓ otwiera edycję, a staty pokazują „?" zamiast liczb.
+     */
     val needsInput: Boolean,
-    val lastLabel: String?,
+    val lastStats: List<SetStat>,
     val badges: List<String>,
 )
 
@@ -294,8 +300,8 @@ class WorkoutViewModel(
                 muscle = se.exercise?.primaryMuscles?.firstOrNull(),
                 muscleLabel = se.exercise?.primaryMuscles?.firstOrNull()
                     ?.let(PlLabels::muscle).orEmpty(),
-                targetLabel = WorkoutLabels.proposalTarget(se.proposal),
-                lastLabel = WorkoutLabels.lastTime(se.oldState),
+                targetStats = WorkoutLabels.targetStats(se.proposal),
+                lastStats = WorkoutLabels.lastStats(se.oldState),
                 badges = WorkoutLabels.proposalBadges(se.proposal),
                 doneSets = se.workingLogged.size.coerceAtMost(se.proposal.sets),
                 totalSets = se.proposal.sets,
@@ -319,9 +325,9 @@ class WorkoutViewModel(
                 setNumber = se.nextSetNumber,
                 totalSets = se.proposal.sets,
                 prefill = prefill,
-                prefillLabel = WorkoutLabels.setValue(prefill),
+                prefillStats = WorkoutLabels.setStats(prefill),
                 needsInput = session.currentPrefillNeedsInput,
-                lastLabel = WorkoutLabels.lastTime(se.oldState),
+                lastStats = WorkoutLabels.lastStats(se.oldState),
                 badges = WorkoutLabels.proposalBadges(se.proposal),
             )
         }
@@ -394,7 +400,7 @@ class WorkoutViewModel(
     fun adjustRestLength(deltaSeconds: Int) =
         manager.mutate { it.withRestSeconds(it.restSeconds + deltaSeconds) }
 
-    fun extendRest() = manager.mutate { it.extendRest(WorkoutConstants.REST_STEP_SECONDS) }
+    fun extendRest() = manager.mutate { it.extendRest(WorkoutConstants.REST_EXTEND_SECONDS) }
 
     fun skipRest() = manager.mutate { it.skipRest() }
 

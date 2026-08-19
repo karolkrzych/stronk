@@ -13,6 +13,16 @@ object ScheduleConstants {
 
     const val DAYS_IN_WEEK = 7
 
+    /**
+     * Siatka kwadratów (mock „Tydzień"): 7 kolumn × tyle rzędów, ile ma blok —
+     * ale nigdy mniej niż [GRID_WEEKS_MIN] (za chuda siatka przestaje być
+     * dominantą ekranu) i nigdy więcej niż [GRID_WEEKS_MAX] (dłuższy blok
+     * pokazujemy oknem wokół bieżącego tygodnia).
+     */
+    const val GRID_WEEKS_MIN = 4
+
+    const val GRID_WEEKS_MAX = 6
+
     /** Krótkie polskie nazwy dni tygodnia (nagłówki siatki tygodnia). */
     val DAY_ABBREVIATIONS: Map<DayOfWeek, String> = mapOf(
         DayOfWeek.MONDAY to "Pn",

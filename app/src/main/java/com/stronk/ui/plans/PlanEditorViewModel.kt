@@ -16,11 +16,14 @@ import com.stronk.data.PlanDay
 import com.stronk.data.PlanExercise
 import com.stronk.data.PlanRepository
 import com.stronk.data.ProfileDetails
+import com.stronk.data.StressLevel
 import com.stronk.data.SubstituteMatch
+import com.stronk.data.UserProfile
 import com.stronk.data.UserProfileRepository
 import com.stronk.data.findSubstitutes
 import com.stronk.data.isCompliant
 import com.stronk.progression.ProgressionConstants
+import com.stronk.ui.profile.ProfileDefaults
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -66,13 +69,46 @@ data class SubstitutesUi(
     val replaceIndex: Int?,
 )
 
+/**
+ * Krok kreatora nowego planu (mock `pack-dzis-plany.html`, ekran 3).
+ * Kolejność jest wymuszona logiką: ograniczenia muszą być znane ZANIM
+ * wygenerujemy dni z szablonu, bo to one decydują o doborze ćwiczeń.
+ */
+enum class PlanWizardStep(val title: String, val subtitle: String) {
+    TEMPLATE("Od czego zaczynamy", "Wybierz szablon albo złóż plan od zera."),
+    BLOCK("Długość bloku", "Po tygodniach pracy przychodzi jeden tydzień lekki."),
+    CONSTRAINTS("Twoje ograniczenia", "Zaznacz miejsca, które oszczędzamy."),
+    NAME("Nazwa planu", "Tak zobaczysz go na liście i w harmonogramie."),
+}
+
+/** Stan kreatora nowego planu; null w [PlanEditorUiState] = jesteśmy w edytorze. */
+data class PlanWizardUi(
+    val step: PlanWizardStep,
+    val stepIndex: Int,
+    val stepCount: Int,
+    val presets: List<PlanPreset> = emptyList(),
+    /** null = „zacznij od zera". */
+    val selectedPresetId: String? = null,
+    /** Kroki 1 i 4 wymagają wyboru/nazwy; reszta zawsze przepuszcza dalej. */
+    val canGoNext: Boolean = false,
+    val blockLengthWeeks: Int = ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
+    /** Klucze stawów w kolejności prezentacji (jak w profilu). */
+    val jointKeys: List<String> = emptyList(),
+    val selectedJoints: Set<String> = emptySet(),
+    val name: String = "",
+    /** Podgląd tego, co powstanie — staty DNI / TYGODNIE / ĆWICZENIA. */
+    val summaryDays: Int = 0,
+    val summaryExercises: Int = 0,
+) {
+    val isLastStep: Boolean get() = stepIndex == stepCount - 1
+}
+
 /** Stan edytora planu. */
 data class PlanEditorUiState(
     val loading: Boolean = true,
     val isNew: Boolean = false,
-    /** Nowy plan przed wyborem trybu startu (preset / od zera). */
-    val showStartChooser: Boolean = false,
-    val presets: List<PlanPreset> = emptyList(),
+    /** Niepusty = zamiast edytora rysujemy kreator nowego planu. */
+    val wizard: PlanWizardUi? = null,
     val name: String = "",
     /** Tygodnie PRACY w bloku (ADR-004), bez tygodnia lekkiego. */
     val blockLengthWeeks: Int = ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
@@ -85,6 +121,10 @@ data class PlanEditorUiState(
     val substitutes: SubstitutesUi? = null,
     val suggestions: SuggestionsUi? = null,
     val canSave: Boolean = false,
+    /** Edytowany plan siedzi w archiwum — akcja to „Przywróć", nie „Archiwizuj". */
+    val archived: Boolean = false,
+    /** Archiwizować da się tylko plan, który już istnieje w bazie. */
+    val canArchive: Boolean = false,
     /** true po zleceniu zapisu — ekran woła onBack. */
     val saved: Boolean = false,
 )
@@ -103,8 +143,18 @@ class PlanEditorViewModel(
         val days: List<PlanDay> = emptyList(),
         /** Edytowany istniejący plan (id/createdAt/archived); null = nowy. */
         val base: Plan? = null,
-        /** Nowy plan: czy wybrano już start (preset / od zera). */
+        /** Nowy plan: czy kreator dobiegł końca (dalej pracuje edytor). */
         val started: Boolean = false,
+        /** Krok kreatora; ignorowany, gdy [started]. */
+        val step: PlanWizardStep = PlanWizardStep.TEMPLATE,
+        /** Wybrany szablon; null = plan od zera. */
+        val preset: PlanPreset? = null,
+        /** Czy krok „od czego zaczynamy" ma już rozstrzygnięcie. */
+        val templateChosen: Boolean = false,
+        /** Stawy do oszczędzania, wybrane w kreatorze. */
+        val joints: Set<String> = emptySet(),
+        /** Ograniczenia wczytane z profilu — prefill robimy dokładnie raz. */
+        val jointsPrefilled: Boolean = false,
     )
 
     /** Warstwy UI ponad edytorem (picker, arkusz zamienników, arkusz sugestii). */
@@ -117,6 +167,11 @@ class PlanEditorViewModel(
     private val draft = MutableStateFlow<Draft?>(null)
     private val allExercises = MutableStateFlow<List<Exercise>?>(null)
     private val profile = MutableStateFlow(ProfileDetails())
+
+    /** Pola profilu spoza [ProfileDetails] — potrzebne przy zapisie z kreatora. */
+    private var profileCreatedAt: Long? = null
+    private var profileDisplayName: String = ""
+
     private val overlay = MutableStateFlow(Overlay())
     private val saved = MutableStateFlow(false)
 
@@ -130,8 +185,7 @@ class PlanEditorViewModel(
             PlanEditorUiState(
                 loading = false,
                 isNew = planId == null,
-                showStartChooser = !d.started,
-                presets = PlanPresets.all,
+                wizard = if (d.started) null else wizardUi(d),
                 name = d.name,
                 blockLengthWeeks = d.blockLengthWeeks,
                 days = d.days.map { day ->
@@ -157,6 +211,8 @@ class PlanEditorViewModel(
                 suggestions = ov.suggestions,
                 canSave = d.started && d.name.isNotBlank() &&
                     d.days.any { it.exercises.isNotEmpty() },
+                archived = d.base?.archived == true,
+                canArchive = d.base != null,
                 saved = isSaved,
             )
         }
@@ -166,12 +222,18 @@ class PlanEditorViewModel(
         viewModelScope.launch { allExercises.value = exerciseRepository.getAll() }
         viewModelScope.launch {
             userProfileRepository.observeProfile().collect { userProfile ->
-                profile.value = userProfile?.profile ?: ProfileDetails()
+                val details = userProfile?.profile ?: ProfileDetails()
+                profile.value = details
+                profileCreatedAt = userProfile?.createdAt
+                profileDisplayName = userProfile?.displayName.orEmpty()
+                prefillJoints(details)
             }
         }
         viewModelScope.launch {
             if (planId == null) {
                 draft.value = Draft()
+                // Profil mógł dojść przed draftem — wtedy prefill czekał na ten moment.
+                prefillJoints(profile.value)
             } else {
                 // Cache-first: plan otwierany z listy jest już w cache Firestore.
                 val plan = planRepository.observePlan(planId).filterNotNull().first()
@@ -186,16 +248,133 @@ class PlanEditorViewModel(
         }
     }
 
-    // ---------- start nowego planu ----------
+    // ---------- kreator nowego planu ----------
 
-    fun startFromScratch() {
-        updateDraft { it.copy(started = true, days = listOf(PlanDay(name = dayName(0)))) }
+    /** Widok kroku kreatora — czysta projekcja [Draft], zero stanu własnego. */
+    private fun wizardUi(d: Draft): PlanWizardUi {
+        val steps = PlanWizardStep.entries
+        val stepIndex = steps.indexOf(d.step)
+        return PlanWizardUi(
+            step = d.step,
+            stepIndex = stepIndex,
+            stepCount = steps.size,
+            presets = PlanPresets.all,
+            selectedPresetId = d.preset?.id,
+            canGoNext = when (d.step) {
+                PlanWizardStep.TEMPLATE -> d.templateChosen
+                PlanWizardStep.NAME -> d.name.isNotBlank()
+                else -> true
+            },
+            blockLengthWeeks = d.blockLengthWeeks,
+            jointKeys = ProfileDefaults.JOINT_KEYS,
+            selectedJoints = d.joints,
+            name = d.name,
+            summaryDays = d.preset?.days?.size ?: 1,
+            summaryExercises = d.preset?.slotCount ?: 0,
+        )
     }
 
-    fun applyPreset(preset: PlanPreset) {
+    /**
+     * Krok „ograniczenia" startuje z tym, co już jest w profilu — user niczego
+     * nie klika drugi raz. Robimy to dokładnie raz, żeby nie nadpisać wyboru
+     * przy kolejnym snapshocie z Firestore.
+     */
+    private fun prefillJoints(details: ProfileDetails) = updateDraft { d ->
+        if (d.jointsPrefilled || d.started) {
+            d
+        } else {
+            d.copy(
+                joints = details.constraints
+                    .filterValues { it != ProfileDefaults.NO_LIMIT_WIRE_LEVEL }
+                    .keys.toSet(),
+                jointsPrefilled = true,
+            )
+        }
+    }
+
+    /** [preset] null = „zacznij od zera": jeden pusty dzień, ćwiczenia dobiera user. */
+    fun wizardChooseTemplate(preset: PlanPreset?) = updateDraft { d ->
+        d.copy(
+            preset = preset,
+            templateChosen = true,
+            // Nazwa z szablonu tylko dopóki user jej nie tknął.
+            name = if (d.name.isBlank() || d.name == d.preset?.name) preset?.name.orEmpty() else d.name,
+        )
+    }
+
+    fun wizardToggleJoint(joint: String) = updateDraft { d ->
+        d.copy(joints = if (joint in d.joints) d.joints - joint else d.joints + joint)
+    }
+
+    /** „Nie mam ograniczeń — pomiń": czyści wybór i przechodzi dalej. */
+    fun wizardSkipConstraints() {
+        updateDraft { it.copy(joints = emptySet()) }
+        wizardNext()
+    }
+
+    fun wizardBack() = updateDraft { d ->
+        val steps = PlanWizardStep.entries
+        val index = steps.indexOf(d.step)
+        if (index <= 0) d else d.copy(step = steps[index - 1])
+    }
+
+    /** Ostatni krok domyka kreator: zapisuje ograniczenia i generuje dni. */
+    fun wizardNext() {
+        val d = draft.value ?: return
+        val steps = PlanWizardStep.entries
+        val index = steps.indexOf(d.step)
+        if (index < steps.lastIndex) {
+            updateDraft { it.copy(step = steps[index + 1]) }
+        } else {
+            finishWizard()
+        }
+    }
+
+    private fun finishWizard() {
+        val d = draft.value ?: return
         val all = allExercises.value ?: return
-        val days = generatePresetDays(preset, all, profile.value)
-        updateDraft { it.copy(started = true, name = preset.name, days = days) }
+        val details = saveConstraints(d.joints)
+        val days = d.preset
+            ?.let { generatePresetDays(it, all, details) }
+            ?: listOf(PlanDay(name = dayName(0)))
+        updateDraft {
+            it.copy(
+                started = true,
+                name = it.name.ifBlank { d.preset?.name.orEmpty() },
+                days = days,
+            )
+        }
+    }
+
+    /**
+     * Zapisuje ograniczenia z kreatora do profilu i zwraca profil, którym
+     * generujemy dni (nie czekamy na powrót snapshotu z Firestore, ADR-002).
+     *
+     * Wszystkie 7 stawów zapisujemy jawnie: `SetOptions.merge()` nie kasuje
+     * kluczy mapy, więc „brak ograniczenia" musi mieć własną wartość wire
+     * ([ProfileDefaults.NO_LIMIT_WIRE_LEVEL]). Staw już ograniczony zachowuje
+     * swój dokładniejszy limit z profilu — kreator go nie zgrubia.
+     */
+    private fun saveConstraints(joints: Set<String>): ProfileDetails {
+        val current = profile.value
+        val details = current.copy(
+            constraints = ProfileDefaults.JOINT_KEYS.associateWith { joint ->
+                if (joint !in joints) {
+                    ProfileDefaults.NO_LIMIT_WIRE_LEVEL
+                } else {
+                    current.constraints[joint]?.takeIf { it != StressLevel.HIGH } ?: StressLevel.LOW
+                }
+            },
+        )
+        profile.value = details
+        userProfileRepository.save(
+            UserProfile(
+                displayName = profileDisplayName,
+                createdAt = profileCreatedAt ?: System.currentTimeMillis(),
+                profile = details,
+            ),
+        )
+        return details
     }
 
     // ---------- pola planu ----------
@@ -375,6 +554,27 @@ class PlanEditorViewModel(
             },
         )
         planRepository.save(plan)
+        saved.value = true
+    }
+
+    /**
+     * Archiwizacja / przywrócenie planu — akcja szczegółu, nie listy (na liście
+     * planów są same karty). Zapisuje aktualny stan edycji razem z flagą, żeby
+     * jedno tapnięcie nie gubiło zmian zrobionych przed nim.
+     */
+    fun setArchived(archived: Boolean) {
+        val d = draft.value ?: return
+        val base = d.base ?: return
+        planRepository.save(
+            base.copy(
+                name = d.name.trim().ifEmpty { base.name },
+                blockLengthWeeks = d.blockLengthWeeks,
+                days = d.days.mapIndexed { index, day ->
+                    day.copy(name = day.name.trim().ifEmpty { dayName(index) })
+                },
+                archived = archived,
+            ),
+        )
         saved.value = true
     }
 

@@ -11,8 +11,14 @@ object WorkoutConstants {
     /** Domyślna długość przerwy między seriami. */
     const val DEFAULT_REST_SECONDS = 90
 
-    /** Krok zmiany długości przerwy (stepper w UI i "+15 s" na biegnącym timerze). */
+    /** Krok zmiany domyślnej długości przerwy (stepper w szczegółach ćwiczenia). */
     const val REST_STEP_SECONDS = 15
+
+    /**
+     * Ile dokłada przycisk „+30 s" na biegnącym timerze (mocki `pack-trening`,
+     * ekran 2 — przycisk w proporcji 1:4 obok „Pomiń przerwę").
+     */
+    const val REST_EXTEND_SECONDS = 30
 
     /** Minimalna/maksymalna konfigurowalna długość przerwy. */
     const val REST_MIN_SECONDS = 15

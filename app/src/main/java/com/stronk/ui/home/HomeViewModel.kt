@@ -9,21 +9,18 @@ import com.stronk.StronkApplication
 import com.stronk.data.Exercise
 import com.stronk.data.ExerciseRepository
 import com.stronk.data.Plan
-import com.stronk.data.PlanExercise
 import com.stronk.data.PlanRepository
 import com.stronk.data.ScheduleEntry
 import com.stronk.data.ScheduleRepository
 import com.stronk.data.ScheduleStatus
-import com.stronk.data.SetTarget
-import com.stronk.data.UserProfile
-import com.stronk.data.UserProfileRepository
-import com.stronk.ui.PlLabels
+import com.stronk.progression.ProgressionEngine
+import com.stronk.ui.plans.PlanTexts
 import com.stronk.ui.workout.WorkoutSession
 import com.stronk.ui.workout.WorkoutSessionManager
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,34 +28,38 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** Wiersz ćwiczenia w karcie treningu na Home. */
+/**
+ * Wiersz ćwiczenia w karcie dnia (mock `pack-dzis-plany.html`, `.exrow`):
+ * piktogram + nazwa + JEDEN chip. Bez ciężarów i bez „3×10" — szczegóły
+ * ćwiczenia są za tapnięciem, nie na liście.
+ */
 data class HomeExerciseRow(
     val exerciseId: String,
     val name: String,
-    /** Polska etykieta głównej partii (np. "plecy"); pusta gdy ćwiczenie nieznane. */
-    val muscleLabel: String,
-    /** Skrót celu, np. "3×8", "3×60 s", "3 km". */
-    val targetLabel: String,
-    /** Pełne URI miniaturki (assets); pusta ścieżka gdy ćwiczenie nieznane/bez obrazka. */
-    val imageUri: String,
+    /** Klucz partii z datasetu (np. "chest") — wybiera piktogram kafelka. */
+    val muscleKey: String?,
+    /** Etykieta chipa, np. "3 serie". */
+    val setsChip: String,
 )
 
-/** Zaplanowany trening przygotowany pod kartę na Home. */
+/** Zaplanowany trening przygotowany pod kartę dnia na ekranie „Dziś". */
 data class ScheduledWorkoutUi(
     val scheduleEntryId: String,
     val planId: String,
     val dayIndex: Int,
-    /** "dziś" albo np. "piątek 22 sierpnia". */
-    val dateLabel: String,
+    /** KAPITALIK nad nazwą dnia, np. "Środa · 19.08". */
+    val dateCaption: String,
+    /** Chip bloku progresji, np. "Tydzień 1/6"; null gdy plan nie ma bloku. */
+    val weekChip: String?,
     val planName: String,
-    /** Nazwa dnia planu, np. "Pull". */
+    /** Nazwa dnia planu, np. "Full body B" — dominanta karty. */
     val dayName: String,
     val exercises: List<HomeExerciseRow>,
 )
 
 /**
  * Trwająca sesja treningowa (singleton [WorkoutSessionManager] przeżywa
- * ubicie aktywności przy żywym foreground service) — baner "wróć do treningu".
+ * ubicie aktywności przy żywym foreground service) — notka "wróć do treningu".
  */
 data class ActiveWorkoutUi(
     val planId: String,
@@ -87,12 +88,9 @@ sealed interface HomeContent {
 /** Stan ekranu Home. */
 data class HomeUiState(
     val loading: Boolean = true,
-    val displayName: String? = null,
-    /** Dzisiejsza data po polsku, np. "wtorek, 18 sierpnia". */
-    val todayLabel: String = "",
     /** true, gdy dzisiejszy trening jest już oznaczony jako zrobiony. */
     val todayDone: Boolean = false,
-    /** Niepusty = baner "trening w toku" z nawigacją z powrotem do sesji. */
+    /** Niepusty = notka "trening w toku" z nawigacją z powrotem do sesji. */
     val activeWorkout: ActiveWorkoutUi? = null,
     val content: HomeContent = HomeContent.NoPlans,
 )
@@ -100,7 +98,6 @@ data class HomeUiState(
 class HomeViewModel(
     scheduleRepository: ScheduleRepository,
     planRepository: PlanRepository,
-    userProfileRepository: UserProfileRepository,
     exerciseRepository: ExerciseRepository,
 ) : ViewModel() {
 
@@ -110,12 +107,11 @@ class HomeViewModel(
     val uiState: StateFlow<HomeUiState> = combine(
         scheduleRepository.observeSchedule(),
         planRepository.observePlans(),
-        userProfileRepository.observeProfile(),
         exercisesById,
         WorkoutSessionManager.session,
-    ) { schedule, plans, profile, exercises, session ->
+    ) { schedule, plans, exercises, session ->
         if (exercises == null) HomeUiState(loading = true)
-        else buildState(schedule, plans, profile, exercises, session)
+        else buildState(schedule, plans, exercises, session)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     init {
@@ -127,7 +123,6 @@ class HomeViewModel(
     private fun buildState(
         schedule: List<ScheduleEntry>,
         plans: List<Plan>,
-        profile: UserProfile?,
         exercises: Map<String, Exercise>,
         session: WorkoutSession?,
     ): HomeUiState {
@@ -138,8 +133,8 @@ class HomeViewModel(
         val todayEntry = planned.firstOrNull { it.date == todayKey }
         val upcomingEntry = planned.firstOrNull { it.date > todayKey }
 
-        val todayUi = todayEntry?.let { workoutUi(it, plans, exercises, todayKey) }
-        val upcomingUi = upcomingEntry?.let { workoutUi(it, plans, exercises, todayKey) }
+        val todayUi = todayEntry?.let { workoutUi(it, plans, exercises) }
+        val upcomingUi = upcomingEntry?.let { workoutUi(it, plans, exercises) }
         val content = when {
             todayUi != null -> HomeContent.TodayWorkout(todayUi)
             upcomingUi != null -> HomeContent.UpcomingWorkout(upcomingUi)
@@ -148,8 +143,6 @@ class HomeViewModel(
         }
         return HomeUiState(
             loading = false,
-            displayName = profile?.displayName,
-            todayLabel = headerFormatter.format(today),
             todayDone = schedule.any { it.date == todayKey && it.status == ScheduleStatus.DONE },
             activeWorkout = session?.let {
                 ActiveWorkoutUi(
@@ -170,20 +163,16 @@ class HomeViewModel(
         entry: ScheduleEntry,
         plans: List<Plan>,
         exercises: Map<String, Exercise>,
-        todayKey: String,
     ): ScheduledWorkoutUi? {
         val plan = plans.firstOrNull { it.id == entry.planId } ?: return null
         val day = plan.days.getOrNull(entry.dayIndex) ?: return null
+        val date = runCatching { LocalDate.parse(entry.date) }.getOrNull()
         return ScheduledWorkoutUi(
             scheduleEntryId = entry.id,
             planId = plan.id,
             dayIndex = entry.dayIndex,
-            dateLabel = if (entry.date == todayKey) {
-                "dziś"
-            } else {
-                runCatching { dayFormatter.format(LocalDate.parse(entry.date)) }
-                    .getOrDefault(entry.date)
-            },
+            dateCaption = date?.let(::dateCaption) ?: entry.date,
+            weekChip = date?.let { weekChip(plan, it) },
             planName = plan.name,
             dayName = day.name,
             exercises = day.exercises.map { planExercise ->
@@ -191,32 +180,37 @@ class HomeViewModel(
                 HomeExerciseRow(
                     exerciseId = planExercise.exerciseId,
                     name = exercise?.namePl ?: planExercise.exerciseId,
-                    muscleLabel = exercise?.primaryMuscles?.firstOrNull()
-                        ?.let { PlLabels.muscle(it) }.orEmpty(),
-                    targetLabel = targetLabel(planExercise),
-                    imageUri = ExerciseRepository.IMAGES_BASE_URI +
-                        exercise?.images?.firstOrNull().orEmpty(),
+                    muscleKey = exercise?.primaryMuscles?.firstOrNull(),
+                    setsChip = PlanTexts.setsChip(planExercise.sets),
                 )
             },
         )
     }
 
-    private fun targetLabel(exercise: PlanExercise): String = when (val target = exercise.target) {
-        is SetTarget.WeightReps -> "${exercise.sets}×${target.reps}"
-        is SetTarget.Reps -> "${exercise.sets}×${target.reps}"
-        is SetTarget.Time -> "${exercise.sets}×${target.seconds} s"
-        is SetTarget.DistanceTime -> metersLabel(target.meters)
-    }
-
-    private fun metersLabel(meters: Double): String {
-        val rounded = meters.roundToInt()
-        return if (rounded >= 1000 && rounded % 1000 == 0) "${rounded / 1000} km" else "$rounded m"
-    }
-
     companion object {
         private val polish = Locale.forLanguageTag("pl")
-        private val headerFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM", polish)
-        private val dayFormatter = DateTimeFormatter.ofPattern("EEEE d MMMM", polish)
+
+        /** "środa" — dzień tygodnia; kapitaliki robi komponent. */
+        private val weekdayFormatter = DateTimeFormatter.ofPattern("EEEE", polish)
+
+        /** "19.08" — data bez roku; rok w apce treningowej to szum. */
+        private val shortDateFormatter = DateTimeFormatter.ofPattern("dd.MM", polish)
+
+        /** KAPITALIK karty dnia z mocka: "Środa · 19.08". */
+        private fun dateCaption(date: LocalDate): String =
+            "${weekdayFormatter.format(date)} · ${shortDateFormatter.format(date)}"
+
+        /**
+         * Chip bloku progresji z mocka: "Tydzień 1/6". Pozycję tygodnia liczy
+         * silnik (ADR-004) — tu tylko ją pokazujemy, niczego nie licząc od nowa.
+         */
+        private fun weekChip(plan: Plan, date: LocalDate): String? {
+            val fullBlock = PlanTexts.fullBlockWeeks(plan)
+            if (fullBlock <= 0) return null
+            val nowMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val index = ProgressionEngine.weekIndexInBlock(plan.createdAt, nowMillis, fullBlock)
+            return "Tydzień ${index + 1}/$fullBlock"
+        }
 
         /** Ręczna kompozycja: zależności z [StronkApplication]. */
         val Factory: ViewModelProvider.Factory = viewModelFactory {
@@ -226,7 +220,6 @@ class HomeViewModel(
                 HomeViewModel(
                     scheduleRepository = app.scheduleRepository,
                     planRepository = app.planRepository,
-                    userProfileRepository = app.userProfileRepository,
                     exerciseRepository = app.exerciseRepository,
                 )
             }

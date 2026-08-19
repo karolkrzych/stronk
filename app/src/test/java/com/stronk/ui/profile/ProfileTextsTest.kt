@@ -61,6 +61,28 @@ class ProfileTextsTest {
     }
 
     @Test
+    fun `miarka kropek rośnie wraz z ostrością limitu i zostawia zapas`() {
+        assertEquals(0, ProfileTexts.severityDots(StressLevel.HIGH))
+        assertEquals(1, ProfileTexts.severityDots(StressLevel.MEDIUM))
+        assertEquals(2, ProfileTexts.severityDots(StressLevel.LOW))
+        ProfileTexts.SEVERITY_OPTIONS.forEach { level ->
+            assertTrue(ProfileTexts.severityDots(level) in 1 until ProfileTexts.SEVERITY_DOTS)
+        }
+    }
+
+    @Test
+    fun `opisy profilu to najwyżej jedno zdanie i nigdy fraza z krzyżykiem`() {
+        val texts = ProfileTexts.SEVERITY_OPTIONS.map { ProfileTexts.severityDescription(it) } +
+            ProfileTexts.returningFromBreakHint(55) +
+            ProfileTexts.equipmentHint(0) +
+            ProfileTexts.equipmentHint(3)
+        texts.forEach { text ->
+            assertEquals(1, text.count { it == '.' })
+            assertTrue(text.none { it == '×' })
+        }
+    }
+
+    @Test
     fun `podpowiedź sprzętu rozróżnia pusty wybór od zaznaczonego`() {
         assertTrue(ProfileTexts.equipmentHint(0).contains("wszystkie"))
         assertTrue(ProfileTexts.equipmentHint(3).contains("3"))

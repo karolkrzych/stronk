@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,7 +53,10 @@ import com.stronk.ui.components.StronkIconBadgeSize
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkInsetCard
 import com.stronk.ui.components.StronkSectionHeader
+import com.stronk.ui.theme.StronkRadius
+import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 
 /**
@@ -91,15 +95,25 @@ internal fun ExercisePicker(
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Szukaj ćwiczenia…") },
-                leadingIcon = { Icon(StronkIcons.database, contentDescription = null) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = null,
+                        tint = StronkTheme.colors.textDim,
+                    )
+                },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
                         IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Wyczyść")
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Wyczyść",
+                                tint = StronkTheme.colors.textDim,
+                            )
                         }
                     }
                 },
-                shape = MaterialTheme.shapes.medium,
+                shape = StronkRadius.innerShape,
                 singleLine = true,
             )
             MuscleFilterChip(
@@ -201,7 +215,9 @@ internal fun ExercisePickerRow(
                 AsyncImage(
                     model = ExerciseRepository.IMAGES_BASE_URI + thumbnail,
                     contentDescription = null,
-                    modifier = Modifier.size(52.dp).clip(MaterialTheme.shapes.medium),
+                    modifier = Modifier
+                        .size(StronkSizes.iconTile)
+                        .clip(StronkRadius.tileShape),
                 )
             } else {
                 StronkIconBadge(icon = MuscleIcons.forExercise(exercise), size = StronkIconBadgeSize.MEDIUM)
@@ -209,17 +225,18 @@ internal fun ExercisePickerRow(
             Column(Modifier.weight(1f)) {
                 Text(
                     text = exercise.namePl,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = StronkTextStyles.h2,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = exercise.primaryMuscles.joinToString { PlLabels.muscle(it) },
-                    style = MaterialTheme.typography.bodySmall,
+                    style = StronkTextStyles.meta,
                     color = StronkTheme.colors.textDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp),
                 )
             }
             if (warning) {
@@ -288,7 +305,9 @@ private fun SubstituteRow(match: SubstituteMatch, onChoose: () -> Unit) {
                 AsyncImage(
                     model = ExerciseRepository.IMAGES_BASE_URI + thumbnail,
                     contentDescription = null,
-                    modifier = Modifier.size(48.dp).clip(MaterialTheme.shapes.medium),
+                    modifier = Modifier
+                        .size(StronkSizes.iconTile)
+                        .clip(StronkRadius.tileShape),
                 )
             } else {
                 StronkIconBadge(icon = MuscleIcons.forExercise(exercise), size = StronkIconBadgeSize.MEDIUM)
@@ -296,7 +315,7 @@ private fun SubstituteRow(match: SubstituteMatch, onChoose: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(
                     text = exercise.namePl,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = StronkTextStyles.h2,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -304,20 +323,22 @@ private fun SubstituteRow(match: SubstituteMatch, onChoose: () -> Unit) {
                 Text(
                     text = exercise.primaryMuscles.joinToString { PlLabels.muscle(it) } +
                         " · " + PlLabels.equipment(exercise.equipment),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = StronkTextStyles.meta,
                     color = StronkTheme.colors.textDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp),
                 )
                 if (match.warnings.isNotEmpty()) {
                     Text(
                         text = match.warnings.joinToString {
                             "${PlLabels.joint(it.joint)} (${PlanTexts.stressLevel(it.exerciseStress)})"
                         },
-                        style = MaterialTheme.typography.bodySmall,
+                        style = StronkTextStyles.meta,
                         color = StronkTheme.colors.warning,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 3.dp),
                     )
                 }
             }
