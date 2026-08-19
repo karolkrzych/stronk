@@ -1,5 +1,7 @@
 package com.stronk.ui.plans
 
+import com.stronk.data.StressLevel
+
 /**
  * Wszystkie progi i wartości domyślne modułu planów w jednym miejscu —
  * zero magic numbers w logice i UI (zasada jak [com.stronk.progression.ProgressionConstants]).
@@ -31,6 +33,13 @@ object PlanDefaults {
 
     /** Ile propozycji zamienników pokazujemy w arkuszu. */
     const val SUBSTITUTE_LIMIT = 8
+
+    /**
+     * Limit ustawiany chipem w kroku „Twoje ograniczenia” — chip jest binarny,
+     * więc bierzemy łagodniejszy z dwóch poziomów profilu (odpadają ćwiczenia
+     * mocno obciążające). Dokładny poziom user dostroi w profilu.
+     */
+    val WIZARD_CONSTRAINT_LEVEL = StressLevel.MEDIUM
 }
 
 /**
