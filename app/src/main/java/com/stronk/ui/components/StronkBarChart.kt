@@ -46,9 +46,15 @@ data class StronkBar(
  * Najniższy słupek ma połowę wysokości najwyższego (jak w mocku), więc wykres
  * czyta się jako przyrost, a nie jako „coś prawie zerowego".
  *
+ * Słupek ma STAŁĄ maksymalną szerokość [maxBarWidth] (mock: `width="34"` przy
+ * pitchu 44,57). Bez tego jedna sesja rozlewała się limonkową płytą na całą
+ * szerokość ekranu i sama zjadała budżet „limonka ≤ ~10% powierzchni".
+ * Przy wielu słupkach szerokość maleje normalnie — cap działa tylko w dół.
+ *
  * @param bars od najstarszej do najnowszej; pusta lista nic nie rysuje
  * @param recentCount ile ostatnich słupków dostaje `--lime-deep` (przeszłość
  *        bliska); wcześniejsze są `--s3`
+ * @param maxBarWidth `width="34"` z mocka — górna granica szerokości słupka
  */
 @Composable
 fun StronkBarChart(
@@ -56,6 +62,7 @@ fun StronkBarChart(
     modifier: Modifier = Modifier,
     height: Dp = StronkSizes.chart,
     recentCount: Int = 4,
+    maxBarWidth: Dp = 34.dp,
 ) {
     if (bars.isEmpty()) return
     val measurer = rememberTextMeasurer()
@@ -87,8 +94,12 @@ fun StronkBarChart(
         )
 
         val gap = 10.dp.toPx()
-        val pitch = (size.width + gap) / bars.size
-        val barWidth = (pitch - gap).coerceAtLeast(2f)
+        val maxWidth = maxBarWidth.toPx()
+        // Pełny podział szerokości, ale nie szerzej niż słupek z mocka —
+        // przy 1–2 sesjach wykres jest wtedy krótszą serią schodków od lewej,
+        // a nie jedną wielką płytą.
+        val pitch = ((size.width + gap) / bars.size).coerceAtMost(maxWidth + gap)
+        val barWidth = (pitch - gap).coerceIn(2f, maxWidth)
 
         val min = bars.minOf { it.value }
         val max = bars.maxOf { it.value }

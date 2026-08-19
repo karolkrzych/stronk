@@ -19,16 +19,22 @@ data class GoalParams(
     val defaultSets: Int,
     /** Domyślna przerwa między seriami w sekundach. */
     val restSeconds: Int,
+    /**
+     * Udział estymowanego 1RM, z którego liczymy ciężar roboczy przy kalibracji
+     * (trening testowy → `Calibration.workingWeightKg`). Im wyższy cel obciążenia,
+     * tym mniej powtórzeń w serii, więc tym wyższy procent 1RM.
+     */
+    val calibrationPercent: Double,
 )
 
 /**
  * Domyślne parametry per cel treningowy.
  *
- * | cel               | powtórzenia | serie | przerwa |
- * |-------------------|-------------|-------|---------|
- * | SIŁA              | 4–6         | 4     | 180 s   |
- * | MASA              | 8–12        | 3     | 90 s    |
- * | POWRÓT DO FORMY   | 10–15       | 3     | 75 s    |
+ * | cel               | powtórzenia | serie | przerwa | % 1RM (kalibracja) |
+ * |-------------------|-------------|-------|---------|--------------------|
+ * | SIŁA              | 4–6         | 4     | 180 s   | 80 %               |
+ * | MASA              | 8–12        | 3     | 90 s    | 72,5 %             |
+ * | POWRÓT DO FORMY   | 10–15       | 3     | 75 s    | 62,5 %             |
  */
 object GoalDefaults {
 
@@ -39,6 +45,7 @@ object GoalDefaults {
         accessoryReps = 8,
         defaultSets = 4,
         restSeconds = 180,
+        calibrationPercent = 0.80,
     )
 
     /** Masa: klasyczna hipertrofia. */
@@ -48,6 +55,7 @@ object GoalDefaults {
         accessoryReps = 12,
         defaultSets = 3,
         restSeconds = 90,
+        calibrationPercent = 0.725,
     )
 
     /** Powrót do formy: lekko, dużo powtórzeń, krótka przerwa — technika przed ciężarem. */
@@ -57,6 +65,7 @@ object GoalDefaults {
         accessoryReps = 15,
         defaultSets = 3,
         restSeconds = 75,
+        calibrationPercent = 0.625,
     )
 
     /** Parametry używane, gdy profil nie ma jeszcze wybranego celu. */
@@ -82,6 +91,9 @@ object GoalDefaults {
 
     /** Domyślna przerwa między seriami w sekundach. */
     fun restSecondsFor(goal: TrainingGoal?): Int = forGoal(goal).restSeconds
+
+    /** Udział estymowanego 1RM na ciężar roboczy (kalibracja treningiem testowym). */
+    fun calibrationPercentFor(goal: TrainingGoal?): Double = forGoal(goal).calibrationPercent
 
     /** Wciąga liczbę powtórzeń w zakres celu — do sugestii, nie do twardej walidacji. */
     fun clampReps(goal: TrainingGoal?, reps: Int): Int = reps.coerceIn(forGoal(goal).repRange)

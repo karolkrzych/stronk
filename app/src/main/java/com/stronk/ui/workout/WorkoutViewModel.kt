@@ -13,6 +13,7 @@ import com.stronk.data.GoalDefaults
 import com.stronk.data.ProfileDetails
 import com.stronk.data.ScheduleStatus
 import com.stronk.data.SetLog
+import com.stronk.data.SetTarget
 import com.stronk.data.Workout
 import com.stronk.data.findSubstitutes
 import com.stronk.progression.ProgressionConstants
@@ -58,6 +59,19 @@ data class WorkoutExerciseUi(
     val instructions: List<String>,
 )
 
+/**
+ * Wynik kalibracji gotowy do pokazania — wartości jako OSOBNE staty
+ * (SZAC. 1RM / CIĘŻAR ROBOCZY), nigdy jako sklejone zdanie z liczbami.
+ */
+data class CalibrationUi(
+    /** SZAC. 1RM i CIĘŻAR ROBOCZY jako stat-bloki. */
+    val stats: List<SetStat>,
+    /** Ciężar w tym treningu obniżony ramp-upem (powrót po przerwie). */
+    val isRampUp: Boolean,
+    /** Uwaga o powtórzeniach poza zakresem wiarygodności; null = test był w normie. */
+    val unreliableNote: String?,
+)
+
 /** Bieżąca seria pod wielki ✓ (ADR-005). */
 data class CurrentSetUi(
     val exerciseIndex: Int,
@@ -76,6 +90,8 @@ data class CurrentSetUi(
      * ✓ otwiera edycję, a staty pokazują „?" zamiast liczb.
      */
     val needsInput: Boolean,
+    /** Wynik kalibracji pokazywany tuż po serii testowej; null poza tym momentem. */
+    val calibration: CalibrationUi? = null,
     val lastStats: List<SetStat>,
     val badges: List<String>,
 )
@@ -151,6 +167,9 @@ class WorkoutViewModel(
     private var allExercises: List<Exercise> = emptyList()
     private var profileDetails: ProfileDetails = ProfileDetails()
     private var statesById: Map<String, ExerciseState> = emptyMap()
+
+    /** Ćwiczenia, których ciężar roboczy z kalibracji trafił już do planu. */
+    private val calibrationsPersisted = mutableSetOf<String>()
 
     private data class Snapshot(
         val session: WorkoutSession?,
@@ -275,6 +294,7 @@ class WorkoutViewModel(
                 fullBlockLengthWeeks = fullBlock,
                 returningFromBreak = returning,
                 exercises = sessionExercises,
+                goal = profileDetails.goal,
                 // Domyślna przerwa zależna od celu z profilu (siła 180 s / masa 90 s /
                 // powrót 75 s); ręczna zmiana w treningu nadal działa.
                 restSeconds = GoalDefaults.restSecondsFor(profileDetails.goal),
@@ -302,7 +322,7 @@ class WorkoutViewModel(
                     ?.let(PlLabels::muscle).orEmpty(),
                 targetStats = WorkoutLabels.targetStats(se.proposal),
                 lastStats = WorkoutLabels.lastStats(se.oldState),
-                badges = WorkoutLabels.proposalBadges(se.proposal),
+                badges = badgesOf(se),
                 doneSets = se.workingLogged.size.coerceAtMost(se.proposal.sets),
                 totalSets = se.proposal.sets,
                 isCurrent = index == session.currentExerciseIndex && !se.isFinished,
@@ -327,8 +347,13 @@ class WorkoutViewModel(
                 prefill = prefill,
                 prefillStats = WorkoutLabels.setStats(prefill),
                 needsInput = session.currentPrefillNeedsInput,
+                // Wynik kalibracji pokazujemy w momencie, w którym coś znaczy:
+                // przy pierwszej serii PO teście (dalej ciężar mówi już sam za siebie).
+                calibration = se.calibration
+                    ?.takeIf { se.workingLogged.size == 1 }
+                    ?.let(::calibrationUi),
                 lastStats = WorkoutLabels.lastStats(se.oldState),
-                badges = WorkoutLabels.proposalBadges(se.proposal),
+                badges = badgesOf(se),
             )
         }
         val nextUp = currentSe?.let { se ->
@@ -358,10 +383,23 @@ class WorkoutViewModel(
         )
     }
 
+    /** Plakietki ćwiczenia: modyfikatory silnika + ślad po kalibracji. */
+    private fun badgesOf(se: SessionExercise): List<String> =
+        WorkoutLabels.proposalBadges(se.proposal) + WorkoutLabels.calibrationBadges(se.calibration)
+
+    private fun calibrationUi(c: CalibrationResult) = CalibrationUi(
+        stats = WorkoutLabels.calibrationStats(c),
+        isRampUp = c.isRampUp,
+        unreliableNote = WorkoutLabels.calibrationRepsNote(c.testReps),
+    )
+
     // ------------------------------------------------------------ akcje serii
 
     /** Wielki ✓ — seria zaliczona z prefillem. */
-    fun completeCurrentSet() = manager.completeCurrentSet()
+    fun completeCurrentSet() {
+        manager.completeCurrentSet()
+        persistCalibrations()
+    }
 
     /** Zalogowanie serii po edycji odstępstwa (dialog steppera). */
     fun logEditedSet(edited: SetLog) {
@@ -388,6 +426,46 @@ class WorkoutViewModel(
                 )
             }
             session.logSet(stamped, now)
+        }
+        persistCalibrations()
+    }
+
+    /**
+     * Ciężar roboczy z serii testowej trafia do PLANU: wszystkie wpisy tego
+     * ćwiczenia, które nie mają jeszcze ciężaru startowego, dostają go na stałe,
+     * żeby kolejne treningi startowały z konkretnej liczby (i żeby silnik miał
+     * od czego liczyć ramp-up). Ręcznie ustawionych wartości NIE ruszamy.
+     * Zapis fire-and-forget (ADR-002) — sync w tle.
+     */
+    private fun persistCalibrations() {
+        val session = manager.session.value ?: return
+        // Znacznik stawiamy od razu: kalibracja per ćwiczenie idzie do planu
+        // dokładnie raz na sesję, nawet jeśli user zaloguje kolejne serie szybciej,
+        // niż wróci odczyt planu.
+        val pending = session.exercises
+            .mapNotNull { se -> se.calibration?.let { se.exerciseId to it.workingWeightKg } }
+            .filter { (exerciseId, _) -> calibrationsPersisted.add(exerciseId) }
+        if (pending.isEmpty()) return
+        viewModelScope.launch {
+            val plan = app.planRepository.observePlan(planId).first() ?: return@launch
+            var changed = false
+            val days = plan.days.map { day ->
+                day.copy(
+                    exercises = day.exercises.map { pe ->
+                        val weight = pending.firstOrNull { it.first == pe.exerciseId }?.second
+                        if (weight != null &&
+                            pe.startWeightKg == null &&
+                            pe.target is SetTarget.WeightReps
+                        ) {
+                            changed = true
+                            pe.copy(startWeightKg = weight)
+                        } else {
+                            pe
+                        }
+                    },
+                )
+            }
+            if (changed) app.planRepository.save(plan.copy(days = days))
         }
     }
 
@@ -523,12 +601,13 @@ class WorkoutViewModel(
             ),
         )
         session.exercises.forEach { se ->
-            if (se.workingLogged.isNotEmpty()) {
+            val setsForState = setsForProgression(se)
+            if (setsForState.any { !it.isWarmup }) {
                 app.exerciseStateRepository.save(
                     ProgressionEngine.updateStateAfterWorkout(
                         oldState = se.oldState,
                         plannedTargets = se.proposal,
-                        loggedSets = se.loggedSets,
+                        loggedSets = setsForState,
                         updatedAtMillis = finishedAt,
                     ),
                 )
@@ -543,6 +622,18 @@ class WorkoutViewModel(
                 )
             }
         }
+    }
+
+    /**
+     * Serie, z których liczymy stan progresji. Seria testowa jest POMIAREM,
+     * nie serią roboczą na wyliczonym ciężarze — gdyby weszła do stanu, jej
+     * surowy ciężar podszyłby się pod poziom ćwiczenia (`currentWeightKg`)
+     * i silnik startowałby w kolejnym treningu od próby, a nie od ciężaru
+     * roboczego z kalibracji. W dokumencie treningu zostaje bez zmian.
+     */
+    private fun setsForProgression(se: SessionExercise): List<SetLog> {
+        val testSet = se.calibration?.let { se.workingLogged.firstOrNull() } ?: return se.loggedSets
+        return se.loggedSets.filterNot { it === testSet }
     }
 
     // ------------------------------------------------- konflikt trwającej sesji

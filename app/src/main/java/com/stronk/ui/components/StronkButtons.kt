@@ -36,6 +36,13 @@ import com.stronk.ui.theme.StronkTheme
 private val CtaContentPadding = PaddingValues(horizontal = StronkSpacing.md)
 
 /**
+ * Ghost bywa wąski (rząd 4:1 w przerwie: ~67 dp na „+30 s"), więc domyślne
+ * 24 dp Materiala z każdej strony nie ma prawa bytu — tekst zawijał się wtedy
+ * na „+3" / „0 s".
+ */
+private val GhostContentPadding = PaddingValues(horizontal = StronkSpacing.xs)
+
+/**
  * Główne CTA ekranu (mocki: `.cta`) — pełna szerokość, limonka, tekst
  * `--lime-ink`, promień `--r-inner` 18, wysokość 66 dp, tekst 19/700.
  *
@@ -86,6 +93,10 @@ fun StronkPrimaryButton(
  * @param accent wariant `.ghost.accent` — obrys `--lime-line`, tło `--lime-dim`,
  *        tekst `--lime`. Dla akcji, która jest „prawie główna" (np. „Pomiń
  *        przerwę" w proporcji 4:1 obok „+30 s"). Nigdy dwa akcentowane obok siebie.
+ *
+ * Etykieta NIGDY się nie zawija: w rzędzie 4:1 wąski ghost ma ~67 dp i domyślny
+ * padding Materiala (2×24 dp) łamał „+30 s" na dwie linie. Stąd własny, ciasny
+ * [GhostContentPadding] i `softWrap = false` — mock ma tu jedną linię.
  */
 @Composable
 fun StronkGhostButton(
@@ -106,6 +117,7 @@ fun StronkGhostButton(
         enabled = enabled,
         shape = StronkRadius.innerShape,
         border = BorderStroke(1.dp, border),
+        contentPadding = GhostContentPadding,
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = container,
             contentColor = content,
@@ -119,6 +131,8 @@ fun StronkGhostButton(
         Text(
             text = text,
             style = StronkTextStyles.h2,
+            maxLines = 1,
+            softWrap = false,
             modifier = if (icon != null) Modifier.padding(start = 9.dp) else Modifier,
         )
     }

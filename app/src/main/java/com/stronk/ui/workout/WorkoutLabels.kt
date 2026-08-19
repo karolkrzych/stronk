@@ -3,6 +3,7 @@ package com.stronk.ui.workout
 import com.stronk.data.ExerciseState
 import com.stronk.data.SetLog
 import com.stronk.data.SetTarget
+import com.stronk.progression.Calibration
 import com.stronk.progression.ExerciseProposal
 import kotlin.math.roundToInt
 
@@ -195,5 +196,61 @@ object WorkoutLabels {
         if (proposal.isLightWeek) add("tydzień lekki −40%")
         if (proposal.isReactiveDeload) add("deload −10%")
         if (proposal.isRampUp) add("ramp-up")
+    }
+
+    // ------------------------------------------------------------- kalibracja
+
+    /** Etykieta serii testowej — pierwsza seria ćwiczenia o nieznanym ciężarze. */
+    const val CALIBRATION_LABEL = "Seria testowa"
+
+    /** Nagłówek karty z wynikiem kalibracji. */
+    const val CALIBRATION_TITLE = "Kalibracja"
+
+    /** KAPITALIK nad estymowanym maksem. */
+    const val LABEL_ONE_REP_MAX = "Szac. 1RM"
+
+    /** KAPITALIK nad ciężarem roboczym wyliczonym z serii testowej. */
+    const val LABEL_WORKING_WEIGHT = "Ciężar roboczy"
+
+    /**
+     * Dolna granica PORADY treningowej do serii testowej — poniżej tylu powtórzeń
+     * test robi się siłowy i mniej bezpieczny. Górną granicę bierzemy wprost z
+     * [Calibration.RELIABLE_REPS], żeby copy nie rozjechało się ze stałą.
+     */
+    private const val CALIBRATION_ADVICE_MIN_REPS = 5
+
+    /** Jedno zdanie instrukcji do serii testowej, np. "Dobierz ciężar na maks. 5–12 powtórzeń". */
+    val CALIBRATION_HINT: String =
+        "Dobierz ciężar na maks. $CALIBRATION_ADVICE_MIN_REPS–${Calibration.RELIABLE_REPS.last} powtórzeń"
+
+    /** Zakres wiarygodności estymacji, np. "2–12" (półpauza, nie myślnik). */
+    fun reliableRepsLabel(): String =
+        "${Calibration.RELIABLE_REPS.first}–${Calibration.RELIABLE_REPS.last}"
+
+    /** Delikatne ostrzeżenie przy wpisywaniu testu; null = wszystko gra. */
+    fun calibrationRepsWarning(reps: Int): String? =
+        if (reps in Calibration.RELIABLE_REPS) null
+        else "Najpewniejszy szacunek wychodzi z ${reliableRepsLabel()} powtórzeń — " +
+            "policzę go tak czy siak."
+
+    /** Ten sam fakt przy gotowym wyniku; null = test był w wiarygodnym zakresie. */
+    fun calibrationRepsNote(reps: Int): String? =
+        if (reps in Calibration.RELIABLE_REPS) null
+        else "Test poza zakresem ${reliableRepsLabel()} powtórzeń — szacunek orientacyjny."
+
+    /**
+     * Wynik kalibracji jako OSOBNE staty (zakaz fraz typu „53 kg → 32,5 kg"):
+     * SZAC. 1RM i CIĘŻAR ROBOCZY stoją obok siebie jak każda inna para wartości.
+     */
+    fun calibrationStats(c: CalibrationResult): List<SetStat> = listOf(
+        SetStat(LABEL_ONE_REP_MAX, kg(c.estimatedOneRepMaxKg), "kg"),
+        SetStat(LABEL_WORKING_WEIGHT, kg(c.workingWeightKg), "kg"),
+    )
+
+    /** Plakietki ćwiczenia po kalibracji (widoczne do końca treningu). */
+    fun calibrationBadges(c: CalibrationResult?): List<String> = buildList {
+        if (c == null) return@buildList
+        add("kalibracja")
+        if (c.isRampUp) add("ramp-up")
     }
 }

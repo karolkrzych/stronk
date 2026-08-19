@@ -71,6 +71,7 @@ import com.stronk.data.ExerciseRepository
 import com.stronk.data.SetLog
 import com.stronk.ui.PlLabels
 import com.stronk.ui.components.MuscleIcons
+import com.stronk.ui.components.StronkAccentCard
 import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkChip
 import com.stronk.ui.components.StronkFooterActions
@@ -461,7 +462,7 @@ private fun SetPane(
         ) {
             muscleChipLabel(current.muscle)?.let { StronkChip(label = it) }
             if (current.needsInput) {
-                StronkChip(label = "Seria testowa", selected = true)
+                StronkChip(label = WorkoutLabels.CALIBRATION_LABEL, selected = true)
             }
             current.badges.firstOrNull()?.let { StronkBadge(text = it, tone = StronkTone.ACCENT) }
         }
@@ -472,6 +473,8 @@ private fun SetPane(
             modifier = Modifier.padding(top = 26.dp),
         )
 
+        current.calibration?.let { CalibrationCard(it) }
+
         // `margin-top:auto` z mocka — staty siedzą tuż nad CTA.
         Spacer(Modifier.weight(1f))
 
@@ -481,7 +484,7 @@ private fun SetPane(
                 modifier = Modifier.clickable(onClick = onEditSet),
             )
             Text(
-                text = "Dobierz ciężar na maks. 5–12 powtórzeń",
+                text = WorkoutLabels.CALIBRATION_HINT,
                 style = StronkTextStyles.hint,
                 color = StronkTheme.colors.textDim,
                 modifier = Modifier.padding(top = StronkSpacing.md),
@@ -506,6 +509,55 @@ private fun SetPane(
             NextSection(next = next, onOpen = { onOpenNextInfo(next.index) })
         } else {
             Spacer(Modifier.height(StronkSpacing.xl))
+        }
+    }
+}
+
+/**
+ * Wynik serii testowej (KALIBRACJA) — pokazywany dokładnie raz, przy pierwszej
+ * serii po teście. Dwa staty obok siebie (SZAC. 1RM / CIĘŻAR ROBOCZY), nigdy
+ * jako sklejone zdanie z liczbami; pod nimi ewentualna jedna linijka uwagi.
+ */
+@Composable
+private fun CalibrationCard(calibration: CalibrationUi) {
+    StronkAccentCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = StronkSpacing.lg),
+        contentPadding = PaddingValues(
+            start = StronkSpacing.md,
+            end = StronkSpacing.md,
+            top = StronkSpacing.sm,
+            bottom = StronkSpacing.sm,
+        ),
+    ) {
+        StronkSectionHeader(title = WorkoutLabels.CALIBRATION_TITLE)
+        StronkStatRow(modifier = Modifier.padding(top = StronkSpacing.xs)) {
+            calibration.stats.forEachIndexed { index, stat ->
+                if (index > 0) StronkStatDivider()
+                StronkStatBlock(
+                    label = stat.label,
+                    value = stat.value,
+                    unit = stat.unit,
+                    size = StronkStatSize.TITLE,
+                    valueColor = if (index == calibration.stats.lastIndex) {
+                        StronkTheme.colors.lime
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        val note = calibration.unreliableNote
+            ?: "Powrót po przerwie — w tym treningu startujesz lżej.".takeIf { calibration.isRampUp }
+        note?.let {
+            Text(
+                text = it,
+                style = StronkTextStyles.hint,
+                color = StronkTheme.colors.textDim,
+                modifier = Modifier.padding(top = StronkSpacing.xs),
+            )
         }
     }
 }
