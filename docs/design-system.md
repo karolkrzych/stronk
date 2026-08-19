@@ -1,5 +1,9 @@
 # Design system "Limonka" (zatwierdzony 2026-08-19)
 
+**2026-08-19 runda 4:** drabinka +3 pkt (wybór Karola, wariant A) — s0 6%→9%,
+s1 10%→13%, s2 14%→17%, s3 19%→22%, `--line`/`--line-soft` o te same +3 pkt;
+saturacja zostaje 0%.
+
 Kierunek wizualny zatwierdzony przez Karola po 2 rundach iteracji; **pełny zestaw
 12 ekranów (runda 3) ZAAKCEPTOWANY 2026-08-19** ("Generalnie mi się podoba wszystko")
 z poprawkami: pierścień-zegar na przerwie, przyciski Pomiń/+30 4:1, nav ujednolicony.
@@ -12,14 +16,14 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
 
 ```css
 /* powierzchnie — jedna rodzina NEUTRALNEJ czerni, saturacja 0 (patrz „Tła plain")
-   jasności bez zmian względem rundy mocków, zmienił się tylko podton */
---page:      hsl(0, 0%, 4%);    /* #0A0A0A — tło poza ekranem (mocki) */
---s0:        hsl(0, 0%, 6%);    /* #0F0F0F — tło ekranu = windowBackground */
---s1:        hsl(0, 0%, 10%);   /* #1A1A1A — karta */
---s2:        hsl(0, 0%, 14%);   /* #242424 — element na karcie / kafelek */
---s3:        hsl(0, 0%, 19%);   /* #303030 — placeholder, tor paska, pusty dzień */
---line:      hsl(0, 0%, 17%);
---line-soft: hsl(0, 0%, 12%);
+   runda 4: cała drabinka +3 pkt jasności (wybór Karola, wariant A) */
+--page:      hsl(0, 0%, 7%);    /* #121212 — tło poza ekranem (mocki) */
+--s0:        hsl(0, 0%, 9%);    /* #171717 — tło ekranu = windowBackground */
+--s1:        hsl(0, 0%, 13%);   /* #212121 — karta */
+--s2:        hsl(0, 0%, 17%);   /* #2B2B2B — element na karcie / kafelek */
+--s3:        hsl(0, 0%, 22%);   /* #383838 — placeholder, tor paska, pusty dzień */
+--line:      hsl(0, 0%, 20%);
+--line-soft: hsl(0, 0%, 15%);
 
 /* tekst — też neutralny, zero podtonu limonki */
 --text:   hsl(0, 0%, 96%);

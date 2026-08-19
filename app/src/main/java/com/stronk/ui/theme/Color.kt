@@ -27,35 +27,35 @@ internal object StronkTokens {
      * `--page` — najciemniejsze tło (za ekranem, paski systemowe). Neutralne.
      * Powierzchnie trzymają hue 0 / saturację 0: jasności jak wcześniej, zero podtonu.
      */
-    val Page = Color.hsl(0f, 0f, 0.04f)
+    val Page = Color.hsl(0f, 0f, 0.07f)
 
     /**
      * `--s0` — tło ekranu i dolnej nawigacji. Ta sama wartość co
      * `@color/stronk_s0` w `res/values/colors.xml` (windowBackground), żeby nie
      * było przeskoku między tłem okna a pierwszą klatką Compose.
      */
-    val S0 = Color.hsl(0f, 0f, 0.06f)
+    val S0 = Color.hsl(0f, 0f, 0.09f)
 
     /** Poziom pośredni między tłem a kartą (nie ma w mockach, potrzebny M3). */
-    val S05 = Color.hsl(0f, 0f, 0.08f)
+    val S05 = Color.hsl(0f, 0f, 0.11f)
 
     /** `--s1` — karta, pole wyszukiwania, kontener tabów. */
-    val S1 = Color.hsl(0f, 0f, 0.10f)
+    val S1 = Color.hsl(0f, 0f, 0.13f)
 
     /** Poziom pośredni między kartą a elementem na karcie. */
-    val S15 = Color.hsl(0f, 0f, 0.12f)
+    val S15 = Color.hsl(0f, 0f, 0.15f)
 
     /** `--s2` — element na karcie: kafelek ikony, chip, tor pierścienia. */
-    val S2 = Color.hsl(0f, 0f, 0.14f)
+    val S2 = Color.hsl(0f, 0f, 0.17f)
 
     /** `--s3` — placeholder, tor paska, pusty dzień, aktywny segment tabów. */
-    val S3 = Color.hsl(0f, 0f, 0.19f)
+    val S3 = Color.hsl(0f, 0f, 0.22f)
 
     /** `--line` — obrys wyraźny (ghost-przycisk, dzielnik statów, dzień „plan"). */
-    val Line = Color.hsl(0f, 0f, 0.17f)
+    val Line = Color.hsl(0f, 0f, 0.20f)
 
     /** `--line-soft` — dzielnik wierszy i linia nad dolną nawigacją. */
-    val LineSoft = Color.hsl(0f, 0f, 0.12f)
+    val LineSoft = Color.hsl(0f, 0f, 0.15f)
 
     /** `--text` — tekst główny i liczby. Neutralny, bez podtonu limonki. */
     val Text = Color.hsl(0f, 0f, 0.96f)

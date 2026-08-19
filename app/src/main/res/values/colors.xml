@@ -2,9 +2,9 @@
 <resources>
     <!--
       Jedyne kolory w zasobach XML: tło okna i splash-screena. Muszą być IDENTYCZNE
-      z tokenem `StronkTokens.S0` (ui/theme/Color.kt, hsl(0,0%,6%)) — inaczej przy
+      z tokenem `StronkTokens.S0` (ui/theme/Color.kt, hsl(0,0%,9%)) — inaczej przy
       starcie mignie inny kolor niż ten, który zaraz namaluje Compose.
       Cała reszta palety żyje wyłącznie w ui/theme.
     -->
-    <color name="stronk_s0">#FF0F0F0F</color>
+    <color name="stronk_s0">#FF171717</color>
 </resources>
