@@ -2,6 +2,8 @@ package com.stronk.ui.components
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.DirectionsRun
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.Accessibility
@@ -15,6 +17,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.Hotel
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PersonalInjury
 import androidx.compose.material.icons.rounded.PrecisionManufacturing
 import androidx.compose.material.icons.rounded.Rowing
@@ -52,6 +55,15 @@ object StronkIcons {
     val delete = Icons.Rounded.Delete
     val close = Icons.Rounded.Close
     val settings = Icons.Rounded.Settings
+
+    /** Chevron „w szczegóły" na końcu wiersza listy. */
+    val chevron = Icons.AutoMirrored.Rounded.KeyboardArrowRight
+
+    /** Chevron wstecz w pasku ekranu. */
+    val back = Icons.AutoMirrored.Rounded.KeyboardArrowLeft
+
+    /** Dyskretne „i" — jak wykonać ćwiczenie, skąd ta liczba. */
+    val info = Icons.Rounded.Info
 
     // domeny
     val rest = Icons.Rounded.Timer

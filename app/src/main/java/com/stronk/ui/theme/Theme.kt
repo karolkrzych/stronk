@@ -8,11 +8,13 @@ import androidx.compose.runtime.ReadOnlyComposable
 
 /**
  * Motyw aplikacji — DARK ONLY, niezależnie od ustawienia systemu.
- * Wygląd jest wzorowany 1:1 na `mocks/alpha-screens.html` (zaakceptowane mocki):
- * jedna rodzina granatu + jeden akcent indygo, zieleń/bursztyn tylko jako semantyka.
+ * Wygląd jest wzorowany 1:1 na mockach „Limonka" (`mocks/limonka/`, sekcje
+ * `:root`): jedna rodzina czerni o hue 80 + JEDEN akcent — stonowana limonka,
+ * maks. ~10% powierzchni ekranu. Zero indygo, zero drugiego hue „na semantykę".
  *
- * Role spoza Material 3 (tekst wygaszony, sukces, ostrzeżenie, badge piktogramu)
- * są w [StronkTheme.colors].
+ * Role spoza Material 3 (limonka i jej odcienie, powierzchnie s1/s2/s3, linie,
+ * tekst wygaszony) są w [StronkTheme.colors]. Skala typograficzna z nazwami
+ * mocków jest w `StronkTextStyles`, promienie w `StronkRadius`.
  */
 @Composable
 fun StronkTheme(content: @Composable () -> Unit) {

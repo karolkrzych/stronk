@@ -7,46 +7,53 @@ import androidx.compose.ui.graphics.Color
 import com.stronk.ui.theme.StronkTheme
 
 /**
- * Semantyka koloru dla badge'y, chipów i komunikatów. Kolor NIGDY nie jest
- * dekoracją — niesie znaczenie danych (mocki: zieleń = zaliczone, bursztyn =
- * ostrzeżenie, indygo = focal point, neutral = zwykła informacja).
+ * Semantyka koloru dla chipów, badge'y i notek — w „Limonce" jest jej celowo
+ * mało: cała apka ma JEDNĄ rodzinę barw, a znaczenie niosą ikona i słowo,
+ * nie tęcza kolorów.
+ *
+ * - jasna limonka = akcja / teraz / dziś / PR
+ * - limonka przygaszona = fakt z przeszłości (zrobione)
+ * - reszta = szarości rodziny hue 80
  */
 enum class StronkTone {
-    /** Zwykła informacja — szarość rodziny granatu. */
+    /** Zwykła informacja — `--s2` + `--text-2`. */
     NEUTRAL,
 
-    /** Wyróżnienie / stan wybrany — akcent indygo. */
+    /** Wyróżnienie / stan wybrany / teraz — limonka. */
     ACCENT,
 
-    /** Zaliczone, PR, sukces — zieleń. */
+    /** Zrobione, PR, fakt z przeszłości — limonka przygaszona. */
     SUCCESS,
 
-    /** Ostrzeżenie: kontuzja, ograniczenie, ryzyko — bursztyn. */
+    /**
+     * Ostrzeżenie: kontuzja, ograniczenie, ryzyko. W mockach „Limonka" NIE ma
+     * własnego koloru — jest neutralne, a uwagę przyciąga ikona ostrzeżenia
+     * i treść. Nie dokładaj tu bursztynu: to złamałoby jedną rodzinę barw.
+     */
     WARNING,
 
-    /** Błąd lub akcja destrukcyjna — czerwień. */
+    /** Błąd lub akcja nieodwracalna — jedyny kolor spoza rodziny. */
     DANGER,
 }
 
-/** Mocny kolor tonu (tekst na tle kontenera, obrys, pasek). */
+/** Mocny kolor tonu (tekst na tle kontenera, obrys, krecha, ikona). */
 @Composable
 @ReadOnlyComposable
 fun StronkTone.accentColor(): Color = when (this) {
     StronkTone.NEUTRAL -> MaterialTheme.colorScheme.onSurfaceVariant
-    StronkTone.ACCENT -> MaterialTheme.colorScheme.primary
-    StronkTone.SUCCESS -> StronkTheme.colors.success
-    StronkTone.WARNING -> StronkTheme.colors.warning
+    StronkTone.ACCENT -> StronkTheme.colors.lime
+    StronkTone.SUCCESS -> StronkTheme.colors.limeDeep
+    StronkTone.WARNING -> MaterialTheme.colorScheme.onSurfaceVariant
     StronkTone.DANGER -> MaterialTheme.colorScheme.error
 }
 
-/** Tło kontenera tonu (badge, chip zaznaczony). */
+/** Tło kontenera tonu (badge, chip zaznaczony, karta rekordu). */
 @Composable
 @ReadOnlyComposable
 fun StronkTone.containerColor(): Color = when (this) {
-    StronkTone.NEUTRAL -> MaterialTheme.colorScheme.surfaceVariant
-    StronkTone.ACCENT -> MaterialTheme.colorScheme.primaryContainer
-    StronkTone.SUCCESS -> StronkTheme.colors.successContainer
-    StronkTone.WARNING -> StronkTheme.colors.warningContainer
+    StronkTone.NEUTRAL -> StronkTheme.colors.surfaceTile
+    StronkTone.ACCENT, StronkTone.SUCCESS -> StronkTheme.colors.limeDim
+    StronkTone.WARNING -> StronkTheme.colors.surfaceTile
     StronkTone.DANGER -> MaterialTheme.colorScheme.errorContainer
 }
 
@@ -55,8 +62,17 @@ fun StronkTone.containerColor(): Color = when (this) {
 @ReadOnlyComposable
 fun StronkTone.onContainerColor(): Color = when (this) {
     StronkTone.NEUTRAL -> MaterialTheme.colorScheme.onSurfaceVariant
-    StronkTone.ACCENT -> MaterialTheme.colorScheme.onPrimaryContainer
-    StronkTone.SUCCESS -> StronkTheme.colors.onSuccessContainer
-    StronkTone.WARNING -> StronkTheme.colors.onWarningContainer
+    StronkTone.ACCENT, StronkTone.SUCCESS -> StronkTheme.colors.lime
+    StronkTone.WARNING -> MaterialTheme.colorScheme.onSurfaceVariant
     StronkTone.DANGER -> MaterialTheme.colorScheme.onErrorContainer
+}
+
+/** Obrys elementu w tym tonie (mocki: `.chip.on` ma `--lime-line`). */
+@Composable
+@ReadOnlyComposable
+fun StronkTone.outlineColor(): Color = when (this) {
+    StronkTone.NEUTRAL -> StronkTheme.colors.line
+    StronkTone.ACCENT, StronkTone.SUCCESS -> StronkTheme.colors.limeLine
+    StronkTone.WARNING -> StronkTheme.colors.line
+    StronkTone.DANGER -> MaterialTheme.colorScheme.error
 }

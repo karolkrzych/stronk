@@ -1,7 +1,6 @@
 package com.stronk.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -13,14 +12,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.MaterialTheme
 import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkTheme
 
 /**
- * Segmentowy pasek postępu (mocki: `.seg-track`, `.wiz-track`) — ile kroków za
- * nami, gdzie jesteśmy. Czytelny jednym rzutem oka, bez procentów i tekstu.
+ * Segmentowy pasek postępu — ile kroków za nami, gdzie jesteśmy. Czytelny jednym
+ * rzutem oka, bez procentów i tekstu. Tor `--s3`, zrobione `--lime-deep`,
+ * bieżący `--lime`.
  *
  * @param total liczba segmentów (ćwiczeń w treningu, kroków kreatora)
  * @param currentIndex indeks bieżącego segmentu liczony od 0; wcześniejsze = zrobione
@@ -32,9 +32,9 @@ fun StronkSegmentedProgress(
     modifier: Modifier = Modifier,
 ) {
     if (total <= 0) return
-    val done = StronkTheme.colors.fillDim
-    val current = MaterialTheme.colorScheme.onSurfaceVariant
-    val rest = MaterialTheme.colorScheme.surfaceVariant
+    val done = StronkTheme.colors.limeDeep
+    val current = StronkTheme.colors.lime
+    val rest = StronkTheme.colors.surfaceMuted
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -56,8 +56,11 @@ fun StronkSegmentedProgress(
 }
 
 /**
- * Kropki serii (mocki: `.dots`) — zaliczona (zieleń), bieżąca (obrys), przyszła.
- * Stan treningu ma być widoczny bez czytania: kropki zamiast "2 z 3 wykonane".
+ * Kropki serii (mocki: `.dots`) — 9 dp, tor `--s3`, bieżąca limonkowa z miękką
+ * poświatą `--lime-dim` (mock: `box-shadow: 0 0 0 5px`). Zrobione dostają
+ * `--lime-deep`: przeszłość jest przygaszona, „teraz" świeci.
+ *
+ * Stan treningu ma być widoczny bez czytania — kropki zamiast „2 z 3 wykonane".
  */
 @Composable
 fun StronkSeriesDots(
@@ -65,34 +68,40 @@ fun StronkSeriesDots(
     currentIndex: Int,
     modifier: Modifier = Modifier,
 ) {
-    val success = StronkTheme.colors.success
-    val outline = MaterialTheme.colorScheme.outline
-    val onSurface = MaterialTheme.colorScheme.onSurface
+    if (total <= 0) return
+    val done = StronkTheme.colors.limeDeep
+    val current = StronkTheme.colors.lime
+    val glow = StronkTheme.colors.limeDim
+    val rest = StronkTheme.colors.surfaceMuted
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(total) { index ->
-            when {
-                index < currentIndex -> Box(
-                    Modifier
-                        .size(8.dp)
-                        .background(success, CircleShape),
-                )
-
-                index == currentIndex -> Box(
-                    Modifier
-                        .size(10.dp)
-                        .border(2.5.dp, onSurface, CircleShape),
-                )
-
-                else -> Box(
-                    Modifier
-                        .size(8.dp)
-                        .border(1.5.dp, outline, CircleShape),
-                )
+            val isCurrent = index == currentIndex
+            val color = when {
+                index < currentIndex -> done
+                isCurrent -> current
+                else -> rest
             }
+            Box(
+                Modifier
+                    .size(StronkSizes.seriesDot)
+                    .then(
+                        if (isCurrent) {
+                            Modifier.drawBehind {
+                                drawCircle(
+                                    color = glow,
+                                    radius = size.minDimension / 2f + 5.dp.toPx(),
+                                )
+                            }
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .background(color, CircleShape),
+            )
         }
     }
 }

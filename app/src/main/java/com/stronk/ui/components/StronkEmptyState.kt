@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 
 /**
@@ -42,7 +43,7 @@ fun StronkEmptyState(
         StronkIconBadge(icon = icon, size = StronkIconBadgeSize.LARGE)
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = StronkTextStyles.h1Small,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = StronkSpacing.md),
@@ -50,7 +51,7 @@ fun StronkEmptyState(
         if (description != null) {
             Text(
                 text = description,
-                style = MaterialTheme.typography.bodyMedium,
+                style = StronkTextStyles.meta,
                 color = StronkTheme.colors.textDim,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
