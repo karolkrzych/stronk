@@ -202,12 +202,12 @@ fun HomeScreen(
                     )
                 }
 
-                // CARDIO — sekcja drugorzędna pod ćwiczeniami: fakty z dziś
-                // (limonka przygaszona) i jedno ciche zaproszenie do wpisu.
+                // CARDIO — sekcja drugorzędna pod ćwiczeniami: same fakty z
+                // dziś (limonka przygaszona). Bez wpisów sekcja się nie
+                // renderuje — jedyny punkt wejścia do dodawania to "+" u góry.
                 CardioSection(
                     rows = state.cardio,
                     modifier = Modifier.padding(top = StronkSpacing.xl),
-                    onAdd = { cardioSheet = CardioSheetTarget.New },
                     onRowClick = { row -> cardioSheet = CardioSheetTarget.Edit(row) },
                 )
 

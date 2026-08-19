@@ -22,7 +22,6 @@ internal object CardioTexts {
     const val LABEL_DISTANCE = "Dystans"
     const val UNIT_MINUTES = "min"
     const val UNIT_KILOMETERS = "km"
-    const val ADD_ROW = "Dodaj cardio"
     const val SHEET_TITLE_ADD = "Dodaj cardio"
     const val SHEET_TITLE_EDIT = "Zmień cardio"
     const val SAVE = "Zapisz"

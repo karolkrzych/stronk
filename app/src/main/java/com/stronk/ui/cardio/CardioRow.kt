@@ -2,28 +2,20 @@ package com.stronk.ui.cardio
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.DirectionsBike
 import androidx.compose.material.icons.automirrored.rounded.DirectionsRun
 import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Timer
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,7 +24,6 @@ import com.stronk.data.CardioType
 import com.stronk.ui.components.StronkIconBadge
 import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkTone
-import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 
@@ -57,19 +48,22 @@ internal fun cardioIcon(type: CardioType): ImageVector = when (type) {
 }
 
 /**
- * Sekcja CARDIO pod listą ćwiczeń (mock: kapitalik `.sechd` + `.crow` +
- * `.addcardio`). Sekcja jest drugorzędna: dominantą ekranu zostaje karta dnia.
+ * Sekcja CARDIO pod listą ćwiczeń (mock: kapitalik `.sechd` + `.crow`).
+ * Sekcja jest drugorzędna: dominantą ekranu zostaje karta dnia. Jedyny punkt
+ * wejścia do dodawania cardio to „+" w górnym pasku „Dziś" — gdy nie ma
+ * żadnych wpisów, sekcja się w ogóle nie renderuje (pusty kapitalik bez
+ * treści wyglądałby jak błąd, nie jak zaproszenie).
  *
- * @param onAdd null = sekcja tylko do czytania (Tydzień) — bez ghost-wiersza
  * @param onRowClick null = wiersze nieklikalne (Tydzień); edycja żyje w „Dziś"
  */
 @Composable
 fun CardioSection(
     rows: List<CardioRowUi>,
     modifier: Modifier = Modifier,
-    onAdd: (() -> Unit)? = null,
     onRowClick: ((CardioRowUi) -> Unit)? = null,
 ) {
+    if (rows.isEmpty()) return
+
     Column(modifier.fillMaxWidth()) {
         StronkSectionHeader(
             title = CardioTexts.SECTION_CARDIO,
@@ -77,9 +71,6 @@ fun CardioSection(
         )
         rows.forEach { row ->
             CardioRow(row = row, onClick = onRowClick?.let { click -> { click(row) } })
-        }
-        if (onAdd != null) {
-            AddCardioRow(onClick = onAdd)
         }
     }
 }
@@ -162,65 +153,5 @@ private fun CardioStat(label: String, value: String, unit: String) {
                 modifier = Modifier.padding(start = 3.dp),
             )
         }
-    }
-}
-
-/**
- * Ghost-wiersz „+ Dodaj cardio" (mock: `.addcardio`) — kreskowana linia u góry
- * i kreskowane kółko z plusem. Nic tu nie krzyczy: to zaproszenie, nie CTA.
- */
-@Composable
-private fun AddCardioRow(onClick: () -> Unit) {
-    val line = StronkTheme.colors.lineSoft
-    val outline = StronkTheme.colors.line
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .drawBehind {
-                drawLine(
-                    color = line,
-                    start = Offset(0f, 0f),
-                    end = Offset(size.width, 0f),
-                    strokeWidth = 1.dp.toPx(),
-                    pathEffect = PathEffect.dashPathEffect(
-                        floatArrayOf(4.dp.toPx(), 4.dp.toPx()),
-                    ),
-                )
-            }
-            .clickable(onClick = onClick)
-            .padding(vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(24.dp)
-                .drawBehind {
-                    drawCircle(
-                        color = outline,
-                        radius = size.minDimension / 2f - 0.75.dp.toPx(),
-                        style = Stroke(
-                            width = 1.5.dp.toPx(),
-                            pathEffect = PathEffect.dashPathEffect(
-                                floatArrayOf(3.dp.toPx(), 3.dp.toPx()),
-                            ),
-                        ),
-                    )
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Add,
-                contentDescription = null,
-                tint = StronkTheme.colors.textDim,
-                modifier = Modifier.size(14.dp),
-            )
-        }
-        Text(
-            text = CardioTexts.ADD_ROW,
-            style = StronkTextStyles.bodyStrong,
-            color = StronkTheme.colors.textDim,
-            maxLines = 1,
-        )
     }
 }
