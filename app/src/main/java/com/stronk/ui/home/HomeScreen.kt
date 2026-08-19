@@ -24,11 +24,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.stronk.ui.cardio.CardioRowUi
+import com.stronk.ui.cardio.CardioSection
+import com.stronk.ui.cardio.CardioSheet
 import com.stronk.ui.components.StronkCard
 import com.stronk.ui.components.StronkEmptyState
 import com.stronk.ui.components.StronkExerciseRow
@@ -65,6 +71,9 @@ fun HomeScreen(
     viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsState()
+
+    // null = sheet zamknięty; CardioSheetTarget.New = nowy wpis, Edit = prefill.
+    var cardioSheet by remember { mutableStateOf<CardioSheetTarget?>(null) }
 
     Scaffold { innerPadding ->
         if (state.loading) {
@@ -177,6 +186,15 @@ fun HomeScreen(
                     )
                 }
 
+                // CARDIO — sekcja drugorzędna pod ćwiczeniami: fakty z dziś
+                // (limonka przygaszona) i jedno ciche zaproszenie do wpisu.
+                CardioSection(
+                    rows = state.cardio,
+                    modifier = Modifier.padding(top = StronkSpacing.xl),
+                    onAdd = { cardioSheet = CardioSheetTarget.New },
+                    onRowClick = { row -> cardioSheet = CardioSheetTarget.Edit(row) },
+                )
+
                 Spacer(Modifier.height(StronkSpacing.lg))
             }
 
@@ -185,6 +203,29 @@ fun HomeScreen(
             }
         }
     }
+
+    cardioSheet?.let { target ->
+        val edited = (target as? CardioSheetTarget.Edit)?.row
+        CardioSheet(
+            initial = edited,
+            onDismiss = { cardioSheet = null },
+            onSave = { type, minutes, distanceKm ->
+                viewModel.onSaveCardio(edited?.id, type, minutes, distanceKm)
+                cardioSheet = null
+            },
+            onDelete = { entryId ->
+                viewModel.onDeleteCardio(entryId)
+                cardioSheet = null
+            },
+        )
+    }
+}
+
+/** Po co otwarto sheet cardio: nowy wpis czy zmiana istniejącego. */
+private sealed interface CardioSheetTarget {
+    data object New : CardioSheetTarget
+
+    data class Edit(val row: CardioRowUi) : CardioSheetTarget
 }
 
 /** Karta dnia + sekcja ćwiczeń — jedyna treść ekranu, gdy trening jest zaplanowany. */

@@ -33,6 +33,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stronk.data.ScheduleStatus
+import com.stronk.ui.cardio.CardioSection
+import com.stronk.ui.cardio.CardioTexts
 import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkCard
@@ -144,7 +146,10 @@ fun ScheduleScreen(
             BlockCalendar(weeks = state.weeks, onSelectDay = viewModel::onSelectDay)
 
             Spacer(Modifier.height(LegendGap))
-            StronkDayLegend()
+            // Trzecia pozycja legendy pojawia się tylko wtedy, gdy w siatce
+            // faktycznie jest cardio — inaczej legenda puchnie bez powodu.
+            val anyCardio = state.weeks.any { week -> week.days.any { it.hasCardio } }
+            StronkDayLegend(cardioLabel = if (anyCardio) CardioTexts.SECTION_CARDIO else null)
 
             Spacer(Modifier.height(BlockGap))
             if (state.scheduleEmpty) {
@@ -167,6 +172,18 @@ fun ScheduleScreen(
                         onCancel = viewModel::onCancelEntry,
                         onRestore = viewModel::onRestoreEntry,
                     )
+                }
+            }
+
+            // Cardio wybranego dnia — także w dniach przeszłych i przyszłych.
+            // Tydzień pokazuje fakty; wpisuje się je w „Dziś", więc tu wiersze
+            // są bez ghost-wiersza i bez edycji.
+            if (state.selectedCardio.isNotEmpty()) {
+                StronkCard(
+                    modifier = Modifier.padding(top = StronkSpacing.sm),
+                    contentPadding = PaddingValues(DayCardPadding),
+                ) {
+                    CardioSection(rows = state.selectedCardio)
                 }
             }
         }
@@ -213,12 +230,14 @@ private fun BlockCalendar(
                 horizontalArrangement = Arrangement.spacedBy(DaySquareGap),
             ) {
                 week.days.forEach { day ->
+                    val marker = CalendarMarkers.marker(day.status, day.hasCardio)
                     StronkDaySquare(
                         day = day.dayOfMonth.toString(),
-                        state = day.status.toSquareState(),
+                        state = marker.toSquareState(),
                         // Ring = punkt odniesienia: dziś (mock) i dzień, którego
                         // kartę widać pod siatką. Domyślnie to ten sam kwadrat.
                         today = day.isToday || day.isSelected,
+                        cardio = marker == DayMarker.CARDIO || marker == DayMarker.DONE_WITH_CARDIO,
                         onClick = { onSelectDay(day.date) },
                         modifier = Modifier.weight(1f),
                     )
@@ -229,13 +248,15 @@ private fun BlockCalendar(
 }
 
 /**
- * Zaplanowany dzień w przeszłości bez zaliczenia rysuje się jak plan — legenda
- * zostaje przy dwóch pozycjach, a pusty obrys w przeszłości mówi sam za siebie.
+ * Znacznik → wygląd kwadratu. Zaplanowany dzień w przeszłości bez zaliczenia
+ * rysuje się jak plan (pusty obrys w przeszłości mówi sam za siebie), a cardio
+ * niesie własny obrys — stąd stan bazowy [StronkDayState.OFF] plus flaga
+ * `cardio` w [StronkDaySquare].
  */
-private fun ScheduleDayStatus.toSquareState(): StronkDayState = when (this) {
-    ScheduleDayStatus.DONE -> StronkDayState.DONE
-    ScheduleDayStatus.PLANNED, ScheduleDayStatus.MISSED -> StronkDayState.PLANNED
-    ScheduleDayStatus.FREE -> StronkDayState.OFF
+private fun DayMarker.toSquareState(): StronkDayState = when (this) {
+    DayMarker.DONE, DayMarker.DONE_WITH_CARDIO -> StronkDayState.DONE
+    DayMarker.PLANNED -> StronkDayState.PLANNED
+    DayMarker.CARDIO, DayMarker.FREE -> StronkDayState.OFF
 }
 
 /** Karta wybranego dnia (mock: `.daycard`). */

@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.stronk.StronkApplication
+import com.stronk.data.CardioEntry
+import com.stronk.data.CardioRepository
 import com.stronk.data.Exercise
 import com.stronk.data.ExerciseRepository
 import com.stronk.data.Plan
@@ -15,6 +17,7 @@ import com.stronk.data.ScheduleRepository
 import com.stronk.data.ScheduleStatus
 import com.stronk.progression.ProgressionConstants
 import com.stronk.progression.ProgressionEngine
+import com.stronk.ui.cardio.CardioRowUi
 import java.time.DayOfWeek
 import java.time.LocalDate
 import kotlin.math.abs
@@ -78,6 +81,8 @@ data class ScheduleDayUi(
     val isToday: Boolean,
     val isSelected: Boolean,
     val status: ScheduleDayStatus,
+    /** Czy tego dnia jest wpis cardio — znacznik nakłada [CalendarMarkers]. */
+    val hasCardio: Boolean = false,
 )
 
 /** Jeden rząd siatki = tydzień bloku (7 kwadratów, poniedziałek–niedziela). */
@@ -113,6 +118,8 @@ data class ScheduleUiState(
     val selectedDayLabel: String = "",
     val todaySelected: Boolean = true,
     val selectedEntries: List<ScheduleEntryUi> = emptyList(),
+    /** Cardio wybranego dnia — także w dniach przeszłych i przyszłych. */
+    val selectedCardio: List<CardioRowUi> = emptyList(),
     val planOptions: List<PlanOption> = emptyList(),
     /** true = zero wpisów w całym harmonogramie → pusty stan z zachętą. */
     val scheduleEmpty: Boolean = true,
@@ -122,6 +129,7 @@ class ScheduleViewModel(
     private val scheduleRepository: ScheduleRepository,
     planRepository: PlanRepository,
     exerciseRepository: ExerciseRepository,
+    cardioRepository: CardioRepository,
 ) : ViewModel() {
 
     /** Dataset z assets — null do końca pierwszego ładowania. */
@@ -138,10 +146,11 @@ class ScheduleViewModel(
         planRepository.observePlans(),
         exercisesById,
         selectedDate,
-    ) { schedule, plans, exercises, selected ->
+        cardioRepository.observeCardio(),
+    ) { schedule, plans, exercises, selected, cardio ->
         latestEntries = schedule
         if (exercises == null) ScheduleUiState(loading = true)
-        else buildState(schedule, plans, exercises, selected)
+        else buildState(schedule, plans, exercises, selected, cardio)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScheduleUiState())
 
     init {
@@ -227,9 +236,11 @@ class ScheduleViewModel(
         plans: List<Plan>,
         exercises: Map<String, Exercise>,
         selected: LocalDate,
+        cardio: List<CardioEntry>,
     ): ScheduleUiState {
         val today = LocalDate.now()
         val entriesByDate = schedule.groupBy { it.date }
+        val cardioByDate = cardio.groupBy { it.date }
         val plansById = plans.associateBy { it.id }
         val plan = activePlan(schedule, plansById, today)
 
@@ -269,6 +280,7 @@ class ScheduleViewModel(
                         isToday = date == today,
                         isSelected = date == selected,
                         status = dayStatus(entriesByDate[date.toString()].orEmpty(), date, today),
+                        hasCardio = cardioByDate.containsKey(date.toString()),
                     )
                 },
             )
@@ -293,6 +305,14 @@ class ScheduleViewModel(
             selectedEntries = entriesByDate[selected.toString()].orEmpty()
                 .sortedBy { it.dayIndex }
                 .map { entryUi(it, selected, plansById, exercises) },
+            selectedCardio = cardioByDate[selected.toString()].orEmpty().map { entry ->
+                CardioRowUi(
+                    id = entry.id,
+                    type = entry.type,
+                    durationMin = entry.durationMin,
+                    distanceKm = entry.distanceKm,
+                )
+            },
             planOptions = plans
                 .filter { !it.archived && it.days.isNotEmpty() }
                 .sortedByDescending { it.createdAt }
@@ -391,6 +411,7 @@ class ScheduleViewModel(
                     scheduleRepository = app.scheduleRepository,
                     planRepository = app.planRepository,
                     exerciseRepository = app.exerciseRepository,
+                    cardioRepository = app.cardioRepository,
                 )
             }
         }

@@ -121,6 +121,23 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
   wolne = `--s3` ledwie widoczne. Legenda maks 2 pozycje, znaczniki to
   KWADRACIKI 12px o promieniu `--r-swatch` (miniatury kwadratu dnia, nie kółka):
   „zrobione" wypełniony `--lime-deep`, „plan" sam obrys `--line`.
+- **Cardio w kalendarzu** (runda 4, mock `round4/cardio-l1.html`): sam dzień
+  cardio = OBRYS `--lime-deep` (fakt, ale nie trening siłowy); dzień siłowy
+  zostaje wypełniony; oba naraz = wypełnienie + wewnętrzny ring `--lime` (inset
+  3px, radius 4). Wypełnienie znaczy więc dalej dokładnie jedno: trening
+  zrobiony. Legenda dostaje TRZECIĄ pozycję „Cardio" (kwadracik z obrysem
+  `--lime-deep`) — tylko wtedy, gdy w siatce faktycznie jest cardio.
+  Compose: `CalendarMarkers.marker(status, hasCardio)` → `StronkDaySquare(cardio = …)`.
+- **Wiersz cardio** (mock `.crow`): kafelek z piktogramem typu (ikona w
+  `--lime-deep`), nazwa typu `--fs-h2`, po prawej OSOBNE staty CZAS │ DYSTANS —
+  każdy z własnym kapitalikiem, liczby w `--lime-deep` (fakt przeszły), dystans
+  tylko gdy podany. Pod listą ghost-wiersz „+ Dodaj cardio" (kreskowana linia
+  i kreskowane kółko, `--text-3`) — zaproszenie, nie CTA.
+- **Duże pole liczbowe** (sheet cardio, zamiast slidera — decyzja Karola):
+  stat-blok, w którym liczba JEST polem: KAPITALIK, pod nim `--fs-hero` 62px
+  z klawiaturą numeryczną, jednostka jako sufiks 19px w `--text-3`, kursor
+  limonkowy, placeholder w `--s3`. Pole opcjonalne (dystans) to mały prostokąt
+  `--s2` 128×46 z etykietą „opcjonalnie" i placeholderem — nigdy nie blokuje CTA.
 - **Wiersz listy ćwiczeń**: miniatura/ikona w `--s2` (radius `--r-tile`) + nazwa
   `--fs-h2` + jeden chip ("3 serie") + ewent. chevron.
 - **Chip/pigułka**: `--s2`, radius `--r-pill`, tekst `--fs-meta` z pierwszą

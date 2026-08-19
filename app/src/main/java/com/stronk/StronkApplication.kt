@@ -2,6 +2,7 @@ package com.stronk
 
 import android.app.Application
 import com.stronk.data.AccessCodeStore
+import com.stronk.data.CardioRepository
 import com.stronk.data.ExerciseRepository
 import com.stronk.data.ExerciseStateRepository
 import com.stronk.data.FirebaseProvider
@@ -38,6 +39,9 @@ class StronkApplication : Application() {
     }
     val workoutRepository: WorkoutRepository by lazy {
         WorkoutRepository(firebaseProvider, accessCodeStore)
+    }
+    val cardioRepository: CardioRepository by lazy {
+        CardioRepository(firebaseProvider, accessCodeStore)
     }
     val exerciseStateRepository: ExerciseStateRepository by lazy {
         ExerciseStateRepository(firebaseProvider, accessCodeStore)

@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,8 +51,13 @@ enum class StronkDayState {
  * `box-shadow: 0 0 0 2px var(--s0), 0 0 0 4px var(--lime)`). Ring rysuje się POZA
  * kwadratem, więc nie zmienia siatki — nie opakowuj go w dodatkowy padding.
  *
+ * Cardio to też nie osobny stan tylko [cardio] = true (mock `round4/cardio-l1`):
+ * sam dzień cardio ma OBRYS `--lime-deep` (fakt przeszły, ale nie trening
+ * siłowy), a dzień „siłowo + cardio" zostaje wypełniony i dostaje wewnętrzny
+ * ring. Dzięki temu wypełnienie dalej znaczy dokładnie jedno: trening zrobiony.
+ *
  * @param day liczba dnia miesiąca jako tekst, np. "6"
- * @param state stan dnia; [today] dokłada ring, nie zastępuje stanu
+ * @param state stan dnia; [today] i [cardio] dokładają znacznik, nie zastępują stanu
  */
 @Composable
 fun StronkDaySquare(
@@ -58,19 +65,23 @@ fun StronkDaySquare(
     state: StronkDayState,
     modifier: Modifier = Modifier,
     today: Boolean = false,
+    cardio: Boolean = false,
     onClick: (() -> Unit)? = null,
 ) {
     val ringColor = StronkTheme.colors.lime
     val gapColor = MaterialTheme.colorScheme.background
-    val background = when (state) {
-        StronkDayState.DONE -> StronkTheme.colors.limeDeep
-        StronkDayState.PLANNED -> Color.Transparent
-        StronkDayState.OFF -> StronkTheme.colors.surfaceCard
+    val cardioOnly = cardio && state != StronkDayState.DONE
+    val background = when {
+        state == StronkDayState.DONE -> StronkTheme.colors.limeDeep
+        cardioOnly -> Color.Transparent
+        state == StronkDayState.PLANNED -> Color.Transparent
+        else -> StronkTheme.colors.surfaceCard
     }
-    val textColor = when (state) {
-        StronkDayState.DONE -> StronkTheme.colors.limeInk
-        StronkDayState.PLANNED -> MaterialTheme.colorScheme.onSurfaceVariant
-        StronkDayState.OFF -> StronkTheme.colors.surfaceMuted
+    val textColor = when {
+        state == StronkDayState.DONE -> StronkTheme.colors.limeInk
+        cardioOnly -> StronkTheme.colors.limeDeep
+        state == StronkDayState.PLANNED -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> StronkTheme.colors.surfaceMuted
     }
     var box = modifier
         .aspectRatio(1f)
@@ -89,17 +100,35 @@ fun StronkDaySquare(
             },
         )
         .background(background, StronkRadius.dayShape)
-    if (state == StronkDayState.PLANNED) {
-        box = box.border(1.5.dp, StronkTheme.colors.line, StronkRadius.dayShape)
+    box = when {
+        // sam dzień cardio: obrys limonką przygaszoną (mock `.day.cardio`)
+        cardioOnly -> box.border(1.5.dp, StronkTheme.colors.limeDeep, StronkRadius.dayShape)
+        state == StronkDayState.PLANNED -> box.border(1.5.dp, StronkTheme.colors.line, StronkRadius.dayShape)
+        else -> box
     }
     if (onClick != null) {
         box = box.clickable(onClick = onClick)
     }
+    val innerRing = StronkTheme.colors.lime
     Box(box, contentAlignment = Alignment.Center) {
+        // trening + cardio (mock `.day.both::after`): wewnętrzny ring 1,5 dp
+        // wpuszczony 3 dp do środka wypełnionego kwadratu.
+        if (cardio && state == StronkDayState.DONE) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .padding(3.dp)
+                    .border(1.5.dp, innerRing, RoundedCornerShape(4.dp)),
+            )
+        }
         Text(
             text = day,
             style = MaterialTheme.typography.labelMedium.copy(
-                fontWeight = if (state == StronkDayState.DONE) FontWeight.Bold else FontWeight.SemiBold,
+                fontWeight = if (state == StronkDayState.DONE || cardioOnly) {
+                    FontWeight.Bold
+                } else {
+                    FontWeight.SemiBold
+                },
             ),
             color = textColor,
             maxLines = 1,
@@ -145,18 +174,21 @@ fun StronkWeekdayHeader(
 }
 
 /**
- * Legenda kalendarza (mocki: `.legend`) — MAKS 2 pozycje: „Zrobione" i „Plan".
- * Trzecia pozycja to znak, że siatka przestała być czytelna sama z siebie.
+ * Legenda kalendarza (mocki: `.legend`) — „Zrobione" i „Plan", a od cardio
+ * poziomu 1 (mock `round4/cardio-l1.html`) opcjonalnie trzecia pozycja
+ * „Cardio". Trzecia pozycja pojawia się TYLKO wtedy, gdy w siatce faktycznie
+ * są dni cardio — inaczej legenda puchnie bez powodu.
  *
  * Znaczniki to KWADRACIKI 12 dp o promieniu 4 dp (miniatury kwadratu dnia), nie
  * kółka: „zrobione" wypełnione `--lime-deep` — dokładnie tym, czym wypełnia się
- * kwadrat dnia — „plan" tylko obrysem `--line`.
+ * kwadrat dnia — „plan" tylko obrysem `--line`, „cardio" obrysem `--lime-deep`.
  */
 @Composable
 fun StronkDayLegend(
     modifier: Modifier = Modifier,
     doneLabel: String = "Zrobione",
     plannedLabel: String = "Plan",
+    cardioLabel: String? = null,
 ) {
     Row(
         modifier = modifier,
@@ -169,6 +201,15 @@ fun StronkDayLegend(
                     .size(12.dp)
                     .background(StronkTheme.colors.limeDeep, StronkRadius.swatchShape),
             )
+        }
+        if (cardioLabel != null) {
+            LegendItem(cardioLabel) {
+                Box(
+                    Modifier
+                        .size(12.dp)
+                        .border(1.5.dp, StronkTheme.colors.limeDeep, StronkRadius.swatchShape),
+                )
+            }
         }
         LegendItem(plannedLabel) {
             Box(
