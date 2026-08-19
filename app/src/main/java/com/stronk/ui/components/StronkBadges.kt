@@ -1,13 +1,12 @@
 package com.stronk.ui.components
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -17,21 +16,86 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkRadius
+import com.stronk.ui.theme.StronkSizes
+import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 
 /**
- * Badge statusu (mocki: `.chip.on`, oznaczenia „zaliczone”/„uwaga”) — krótkie
- * słowo lub sama ikona, kolor niosący znaczenie. Zamiast zdania „ćwiczenie mocno
- * obciąża kolano” daj badge WARNING z tekstem "kolano".
+ * Chip / pigułka (mocki: `.chip`) — 30 dp wysokości, promień `--r-pill`,
+ * tło `--s2`, tekst `--fs-meta` 13 w `--text-2`.
+ *
+ * Wariant limonkowy ([selected] = true, mock `.chip.on` / `.chip.lime`) to TINT,
+ * nie plama: tło `--lime-dim`, obrys `--lime-line`, tekst `--lime`. Rozmiar chipa
+ * nie zmienia się przy zaznaczeniu — obrys jest zawsze rysowany.
+ *
+ * Pierwszą literę etykiety chip pokazuje ZAWSZE wielką (jak w mockach) — ekrany
+ * nie muszą o tym pamiętać i mogą podawać etykiety z danych („pośladki").
+ *
+ * @param label 1–2 słowa, np. "Pośladki", "3 serie"
+ * @param onClick null = chip jest etykietą, nie kontrolką
+ */
+@Composable
+fun StronkChip(
+    label: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    icon: ImageVector? = null,
+    enabled: Boolean = true,
+) {
+    val content = when {
+        !enabled -> StronkTheme.colors.textDim
+        selected -> StronkTheme.colors.lime
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val container = if (selected) StronkTheme.colors.limeDim else StronkTheme.colors.surfaceTile
+    val border = BorderStroke(
+        1.dp,
+        if (selected) StronkTheme.colors.limeLine else StronkTheme.colors.surfaceTile,
+    )
+    val body: @Composable () -> Unit = {
+        Row(
+            modifier = Modifier
+                .defaultMinSize(minHeight = StronkSizes.chip)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(14.dp))
+            }
+            Text(
+                text = label.replaceFirstChar { it.uppercaseChar() },
+                style = MaterialTheme.typography.labelMedium,
+                color = content,
+                maxLines = 1,
+            )
+        }
+    }
+    if (onClick == null) {
+        Surface(modifier = modifier, shape = StronkRadius.pill, color = container, border = border) { body() }
+    } else {
+        Surface(
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            shape = StronkRadius.pill,
+            color = container,
+            border = border,
+        ) { body() }
+    }
+}
+
+/**
+ * Badge statusu — chip niosący znaczenie (mocki: chip partii, „3 serie",
+ * oznaczenie ćwiczenia). Zamiast zdania „ćwiczenie mocno obciąża kolano" daj
+ * badge z ikoną ostrzeżenia i słowem "kolano".
  *
  * @param text 1–2 słowa; dłuższy tekst to znak, że potrzebujesz [StronkNoteCard]
- * @param tone semantyka: NEUTRAL / ACCENT / SUCCESS / WARNING / DANGER
- * @param icon opcjonalna ikona przed tekstem (`Icons.Rounded.*`)
+ * @param tone ACCENT/SUCCESS = limonkowy tint; reszta neutralna (patrz [StronkTone])
  */
 @Composable
 fun StronkBadge(
@@ -39,33 +103,60 @@ fun StronkBadge(
     modifier: Modifier = Modifier,
     tone: StronkTone = StronkTone.NEUTRAL,
     icon: ImageVector? = null,
+) = StronkChip(
+    label = text,
+    modifier = modifier,
+    selected = tone == StronkTone.ACCENT || tone == StronkTone.SUCCESS,
+    icon = icon,
+)
+
+/**
+ * Mocny badge na limonce (mocki: `.record .badge`) — pełne tło `--lime`, tekst
+ * `--lime-ink` KAPITALIKAMI. Maksymalnie jeden na ekran: to jedyna rzecz, która
+ * krzyczy.
+ *
+ * Dziś BEZ UŻYĆ — rekord po przejściu na goły stat ([StronkStatHeadline]) nie
+ * ma już plakietki „PR"; komponent zostaje w słowniku na wypadek realnego
+ * krzyku (np. pierwszy rekord w bloku).
+ */
+@Composable
+fun StronkAccentBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
 ) {
-    val content = tone.onContainerColor()
-    Surface(
-        modifier = modifier,
-        shape = CircleShape,
-        color = tone.containerColor(),
-        border = BorderStroke(1.dp, if (tone == StronkTone.NEUTRAL) MaterialTheme.colorScheme.outline else tone.accentColor()),
-    ) {
+    Surface(modifier = modifier, shape = StronkRadius.pill, color = StronkTheme.colors.lime) {
         Row(
-            modifier = Modifier.padding(horizontal = StronkSpacing.sm, vertical = 6.dp),
+            modifier = Modifier
+                .defaultMinSize(minHeight = 24.dp)
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = tone.accentColor(), modifier = Modifier.size(14.dp))
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = StronkTheme.colors.limeInk,
+                    modifier = Modifier.size(13.dp),
+                )
             }
-            Text(text = text, style = MaterialTheme.typography.labelMedium, color = content, maxLines = 1)
+            Text(
+                text = text.uppercase(),
+                style = StronkTextStyles.cap,
+                color = StronkTheme.colors.limeInk,
+                maxLines = 1,
+            )
         }
     }
 }
 
 /**
- * Chip wyboru (mocki: `.chip` / `.chip.on`) — element klikalny ze stanem.
- * Zaznaczony dostaje kolor [tone]; niezaznaczony jest neutralny i wygaszony.
+ * Chip wyboru ze stanem (mocki: `.chip` / `.chip.on`). Zaznaczony dostaje
+ * limonkowy tint; niezaznaczony jest neutralny.
  *
- * Uwaga UX (znany problem alfy): przy dużej liczbie chipów układaj je tak, żeby
- * zaznaczenie nie zmieniało rozmiaru chipa — obrys i tło tak, szerokość nie.
+ * Uwaga UX (znany problem alfy): układaj chipy tak, żeby zaznaczenie nie
+ * zmieniało ich rozmiaru — tu obrys jest rysowany zawsze, więc szerokość stoi.
  */
 @Composable
 fun StronkChoiceChip(
@@ -75,88 +166,29 @@ fun StronkChoiceChip(
     modifier: Modifier = Modifier,
     tone: StronkTone = StronkTone.ACCENT,
     icon: ImageVector? = null,
-    /**
-     * Rezerwuje z lewej stałe miejsce na ✓ (mocki: `.chip.on b`) — znaczek pojawia
-     * się po zaznaczeniu, ale szerokość chipa się nie zmienia, więc siatka chipów
-     * nie przeskakuje pod palcem.
-     */
-    checkMark: Boolean = false,
     enabled: Boolean = true,
-) {
-    val accent = tone.accentColor()
-    val border = if (selected) accent else MaterialTheme.colorScheme.outline
-    val background = if (selected) accent.copy(alpha = 0.13f) else MaterialTheme.colorScheme.surfaceVariant
-    val content = when {
-        !enabled -> StronkTheme.colors.textDim
-        selected -> tone.onContainerColor()
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val ringModifier = if (selected) {
-        Modifier.border(2.dp, accent.copy(alpha = 0.35f), CircleShape)
-    } else {
-        Modifier
-    }
-    Surface(
-        onClick = onClick,
-        modifier = modifier.then(ringModifier),
-        enabled = enabled,
-        shape = CircleShape,
-        color = background,
-        border = BorderStroke(1.dp, border),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = StronkSpacing.md, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            if (checkMark) {
-                Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
-                    if (selected) {
-                        Icon(
-                            imageVector = StronkIcons.done,
-                            contentDescription = null,
-                            tint = accent,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                }
-            }
-            if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = if (selected) accent else content,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleSmall.copy(
-                    fontSize = 13.5.sp,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                ),
-                color = content,
-                maxLines = 1,
-            )
-        }
-    }
-}
+) = StronkChip(
+    label = label,
+    modifier = modifier,
+    selected = selected && tone != StronkTone.DANGER,
+    onClick = onClick,
+    icon = icon,
+    enabled = enabled,
+)
 
-/** Rozmiary kwadratowego badge'a z piktogramem (mocki: `.mbadge.s30/.s44/.s56`). */
+/** Rozmiary kafelka ikony (mocki: `.next .ico` 34, `.row .ico` 38, `--thumb` 62). */
 enum class StronkIconBadgeSize(internal val box: Dp, internal val glyph: Dp, internal val corner: Dp) {
-    SMALL(30.dp, 18.dp, 9.dp),
-    MEDIUM(44.dp, 26.dp, 13.dp),
-    LARGE(56.dp, 32.dp, 16.dp),
+    SMALL(StronkSizes.iconTileSmall, 18.dp, 10.dp),
+    MEDIUM(StronkSizes.iconTile, 18.dp, StronkRadius.tileSmall),
+    LARGE(StronkSizes.thumb, 26.dp, StronkRadius.tile),
 }
 
 /**
- * Kwadratowy badge z piktogramem (mocki: `.mbadge`) — wizytówka ćwiczenia,
- * partii mięśniowej albo sekcji. To on odróżnia listę „stronk” od listy tekstu:
- * KAŻDY wiersz ćwiczenia i KAŻDA karta ćwiczenia ma taki badge.
+ * Kafelek z piktogramem (mocki: `.ico`, `.thumb`) — kwadrat `--s2` z zaokrąglonym
+ * rogiem i wygaszoną ikoną `--text-3`. BEZ obrysu i bez koloru: to podkładka pod
+ * nazwę ćwiczenia, nie ozdoba. KAŻDY wiersz ćwiczenia ma taki kafelek.
  *
- * @param icon ikona z material-icons-extended, dobrana do partii/roli
- * @param tone domyślnie indygo (paleta piktogramów); WARNING dla ćwiczeń
- *        naruszających ograniczenia, SUCCESS dla zaliczonych
+ * @param tone ACCENT/SUCCESS podbija ikonę limonką — używaj oszczędnie
  */
 @Composable
 fun StronkIconBadge(
@@ -166,14 +198,16 @@ fun StronkIconBadge(
     tone: StronkTone? = null,
     contentDescription: String? = null,
 ) {
-    val background = tone?.containerColor() ?: StronkTheme.colors.iconBadgeBackground
-    val border = tone?.accentColor() ?: StronkTheme.colors.iconBadgeBorder
-    val content = tone?.accentColor() ?: StronkTheme.colors.iconBadgeContent
+    val content = when (tone) {
+        StronkTone.ACCENT -> StronkTheme.colors.lime
+        StronkTone.SUCCESS -> StronkTheme.colors.limeDeep
+        StronkTone.DANGER -> MaterialTheme.colorScheme.error
+        else -> StronkTheme.colors.textDim
+    }
     Surface(
         modifier = modifier.size(size.box),
         shape = RoundedCornerShape(size.corner),
-        color = background,
-        border = BorderStroke(1.dp, border),
+        color = StronkTheme.colors.surfaceTile,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(

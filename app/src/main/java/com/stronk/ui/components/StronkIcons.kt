@@ -2,11 +2,14 @@ package com.stronk.ui.components
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.DirectionsRun
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.Accessibility
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Cable
+import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -15,6 +18,8 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.Hotel
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PersonalInjury
 import androidx.compose.material.icons.rounded.PrecisionManufacturing
 import androidx.compose.material.icons.rounded.Rowing
@@ -53,12 +58,25 @@ object StronkIcons {
     val close = Icons.Rounded.Close
     val settings = Icons.Rounded.Settings
 
+    /** Chevron „w szczegóły" na końcu wiersza listy. */
+    val chevron = Icons.AutoMirrored.Rounded.KeyboardArrowRight
+
+    /** Chevron wstecz w pasku ekranu. */
+    val back = Icons.AutoMirrored.Rounded.KeyboardArrowLeft
+
+    /** Dyskretne „i" — jak wykonać ćwiczenie, skąd ta liczba. */
+    val info = Icons.Rounded.Info
+
     // domeny
     val rest = Icons.Rounded.Timer
     val restDay = Icons.Rounded.Hotel
     val record = Icons.Rounded.EmojiEvents
+
+    /** Wynik przeliczony z serii testowej — kalibracja ciężaru startowego. */
+    val calibration = Icons.Rounded.Calculate
     val injury = Icons.Rounded.PersonalInjury
-    val profile = Icons.Rounded.Accessibility
+    /** Wejście do profilu — sylwetka człowieka, bo „profil” ma być rozpoznawalny na pierwszy rzut oka. */
+    val profile = Icons.Rounded.Person
 }
 
 /**

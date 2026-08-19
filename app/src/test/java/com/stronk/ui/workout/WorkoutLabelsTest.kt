@@ -5,7 +5,7 @@ import com.stronk.data.SetLog
 import com.stronk.data.SetTarget
 import com.stronk.progression.ExerciseProposal
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorkoutLabelsTest {
@@ -37,11 +37,21 @@ class WorkoutLabelsTest {
     }
 
     @Test
-    fun `wartosc serii per typ pomiaru`() {
-        assertEquals("60 kg × 8", WorkoutLabels.setValue(weightSet(60.0, 8)))
+    fun `seria wagowa to dwa osobne staty ciezar i powtorzenia`() {
         assertEquals(
-            "10 powt. (+5 kg)",
-            WorkoutLabels.setValue(
+            listOf(
+                SetStat("Ciężar", "62,5", "kg"),
+                SetStat("Powtórzenia", "8"),
+            ),
+            WorkoutLabels.setStats(weightSet(62.5, 8)),
+        )
+    }
+
+    @Test
+    fun `staty serii per typ pomiaru`() {
+        assertEquals(
+            listOf(SetStat("Powtórzenia", "10"), SetStat("Dociążenie", "5", "kg")),
+            WorkoutLabels.setStats(
                 SetLog.Reps(
                     exerciseId = "pullups", workoutId = "w1", setNumber = 1,
                     isWarmup = false, timestamp = 0L, reps = 10, extraKg = 5.0,
@@ -49,8 +59,8 @@ class WorkoutLabelsTest {
             ),
         )
         assertEquals(
-            "45 s",
-            WorkoutLabels.setValue(
+            listOf(SetStat("Czas", "45", "s")),
+            WorkoutLabels.setStats(
                 SetLog.Time(
                     exerciseId = "plank", workoutId = "w1", setNumber = 1,
                     isWarmup = false, timestamp = 0L, seconds = 45,
@@ -58,8 +68,8 @@ class WorkoutLabelsTest {
             ),
         )
         assertEquals(
-            "1 km · 5:00",
-            WorkoutLabels.setValue(
+            listOf(SetStat("Dystans", "1", "km"), SetStat("Czas", "5:00")),
+            WorkoutLabels.setStats(
                 SetLog.DistanceTime(
                     exerciseId = "run", workoutId = "w1", setNumber = 1,
                     isWarmup = false, timestamp = 0L, meters = 1000.0, seconds = 300,
@@ -69,18 +79,46 @@ class WorkoutLabelsTest {
     }
 
     @Test
-    fun `cel propozycji z ciezarem i bez`() {
-        val withWeight = ExerciseProposal(
-            exerciseId = "bench", sets = 3, target = SetTarget.WeightReps(8), weightKg = 60.0,
-        )
-        assertEquals("3×8 · 60 kg", WorkoutLabels.proposalTarget(withWeight))
-
-        val withoutWeight = withWeight.copy(weightKg = null)
-        assertEquals("3×8", WorkoutLabels.proposalTarget(withoutWeight))
+    fun `zadna etykieta nie sklaja pary wartosci w jedna fraze`() {
+        val stats = WorkoutLabels.setStats(weightSet(60.0, 8)) +
+            WorkoutLabels.targetStats(
+                ExerciseProposal(
+                    exerciseId = "bench", sets = 3,
+                    target = SetTarget.WeightReps(8), weightKg = 60.0,
+                ),
+            )
+        assertTrue(stats.none { it.value.contains("×") || it.value.contains("kg") })
+        assertEquals("60 kg", WorkoutLabels.setValue(weightSet(60.0, 8)))
+        assertEquals("10 powt.", WorkoutLabels.setValue(
+            SetLog.Reps(
+                exerciseId = "pullups", workoutId = "w1", setNumber = 1,
+                isWarmup = false, timestamp = 0L, reps = 10, extraKg = null,
+            ),
+        ))
     }
 
     @Test
-    fun `ostatnio pokazuje maks kg i liste powtorzen serii roboczych`() {
+    fun `cel propozycji jako serie powtorzenia ciezar`() {
+        val withWeight = ExerciseProposal(
+            exerciseId = "bench", sets = 3, target = SetTarget.WeightReps(8), weightKg = 60.0,
+        )
+        assertEquals(
+            listOf(
+                SetStat("Serie", "3"),
+                SetStat("Powtórzenia", "8"),
+                SetStat("Ciężar", "60", "kg"),
+            ),
+            WorkoutLabels.targetStats(withWeight),
+        )
+
+        assertEquals(
+            listOf(SetStat("Serie", "3"), SetStat("Powtórzenia", "8")),
+            WorkoutLabels.targetStats(withWeight.copy(weightKg = null)),
+        )
+    }
+
+    @Test
+    fun `ostatnio pokazuje maks ciezar i powtorzenia serii roboczych`() {
         val state = ExerciseState(
             exerciseId = "bench",
             lastSets = listOf(
@@ -91,9 +129,15 @@ class WorkoutLabelsTest {
             ),
             updatedAt = 0L,
         )
-        assertEquals("Ostatnio: 60 kg × 8, 7", WorkoutLabels.lastTime(state))
-        assertNull(WorkoutLabels.lastTime(null))
-        assertNull(WorkoutLabels.lastTime(state.copy(lastSets = emptyList())))
+        assertEquals(
+            listOf(SetStat("Ciężar", "60", "kg"), SetStat("Powtórzenia", "8, 7")),
+            WorkoutLabels.lastStats(state),
+        )
+        assertEquals(emptyList<SetStat>(), WorkoutLabels.lastStats(null))
+        assertEquals(
+            emptyList<SetStat>(),
+            WorkoutLabels.lastStats(state.copy(lastSets = emptyList())),
+        )
     }
 
     @Test

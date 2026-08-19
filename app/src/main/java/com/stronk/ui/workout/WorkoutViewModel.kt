@@ -16,7 +16,6 @@ import com.stronk.data.SetLog
 import com.stronk.data.SetTarget
 import com.stronk.data.Workout
 import com.stronk.data.findSubstitutes
-import com.stronk.progression.ProgressionConstants
 import com.stronk.progression.ProgressionEngine
 import com.stronk.service.RestTimerService
 import com.stronk.ui.PlLabels
@@ -42,8 +41,10 @@ data class WorkoutExerciseUi(
     /** Klucz partii z datasetu (np. "lats") — pod ikony/podpisy z MuscleIcons. */
     val muscle: String?,
     val muscleLabel: String,
-    val targetLabel: String,
-    val lastLabel: String?,
+    /** Cel ćwiczenia jako osobne staty (SERIE / POWTÓRZENIA / CIĘŻAR). */
+    val targetStats: List<SetStat>,
+    /** Ostatni trening z tym ćwiczeniem jako staty; pusta lista = brak historii. */
+    val lastStats: List<SetStat>,
     val badges: List<String>,
     val doneSets: Int,
     val totalSets: Int,
@@ -58,18 +59,14 @@ data class WorkoutExerciseUi(
 )
 
 /**
- * Wynik kalibracji gotowy do pokazania — liczby osobno od jednostek, żeby
- * ekran mógł je podać jako duże wartości w kafelkach, a nie jako zdanie.
+ * Wynik kalibracji gotowy do pokazania — wartości jako OSOBNE staty
+ * (SZAC. 1RM / CIĘŻAR ROBOCZY), nigdy jako sklejone zdanie z liczbami.
  */
 data class CalibrationUi(
-    /** Sama liczba, np. "53" (jednostkę dokłada komponent). */
-    val oneRepMaxValue: String,
-    /** Sama liczba, np. "35". */
-    val workingWeightValue: String,
-    /** Jednolinijkowa wersja: "Szac. 1RM 53 kg → ciężar roboczy 35 kg". */
-    val summary: String,
-    /** "z serii testowej: 40 kg × 10". */
-    val testLabel: String,
+    /** SZAC. 1RM i CIĘŻAR ROBOCZY jako stat-bloki. */
+    val stats: List<SetStat>,
+    /** Seria testowa jako pigułki: osobno ciężar, osobno powtórzenia. */
+    val testChips: List<String>,
     /** Ciężar w tym treningu obniżony ramp-upem (powrót po przerwie). */
     val isRampUp: Boolean,
     /** Uwaga o powtórzeniach poza zakresem wiarygodności; null = test był w normie. */
@@ -87,14 +84,16 @@ data class CurrentSetUi(
     val totalSets: Int,
     /** Gotowa seria do zalogowania jednym tapnięciem (i baza do dialogu edycji). */
     val prefill: SetLog,
-    val prefillLabel: String,
-    /** true → pierwsza seria WEIGHT_REPS bez znanego ciężaru: ✓ otwiera edycję. */
+    /** Wartości prefillu jako osobne staty — pierwsza to dominanta ekranu. */
+    val prefillStats: List<SetStat>,
+    /**
+     * true → pierwsza seria WEIGHT_REPS bez znanego ciężaru (SERIA TESTOWA):
+     * ✓ otwiera edycję, a staty pokazują „?" zamiast liczb.
+     */
     val needsInput: Boolean,
-    /** true → ta seria jest SERIĄ TESTOWĄ: z niej wyliczymy ciężar roboczy. */
-    val isCalibrationSet: Boolean,
     /** Wynik kalibracji pokazywany tuż po serii testowej; null poza tym momentem. */
-    val calibration: CalibrationUi?,
-    val lastLabel: String?,
+    val calibration: CalibrationUi? = null,
+    val lastStats: List<SetStat>,
     val badges: List<String>,
 )
 
@@ -128,10 +127,6 @@ data class WorkoutUiState(
     val planName: String = "",
     val exercises: List<WorkoutExerciseUi> = emptyList(),
     val current: CurrentSetUi? = null,
-    /** Pozycja w bloku (1-based); null, dopóki sesja nie jest zbudowana — nagłówek wtedy pokazuje nazwę planu. */
-    val weekInBlock: Int? = null,
-    /** Pełna długość bloku (praca + tydzień lekki); null = jak wyżej. */
-    val blockLengthWeeks: Int? = null,
     /** Podgląd tego, co po bieżącej serii ("seria 3 z 3", "następne: Wiosła…"). */
     val nextUp: String? = null,
     val allFinished: Boolean = false,
@@ -264,9 +259,10 @@ class WorkoutViewModel(
             return
         }
         val now = System.currentTimeMillis()
-        // Kontrakt silnika: pełna długość bloku = tygodnie pracy + tydzień lekki.
-        val fullBlock = plan.blockLengthWeeks + ProgressionConstants.BLOCK_LIGHT_WEEKS
-        val weekIdx = ProgressionEngine.weekIndexInBlock(plan.createdAt, now, fullBlock)
+        // Kontrakt silnika: pełna długość bloku = tygodnie pracy + tydzień lekki;
+        // plan bez bloku (null) leci ciągiem, bez tygodnia lekkiego.
+        val fullBlock = ProgressionEngine.fullBlockWeeks(plan.blockLengthWeeks)
+        val weekIdx = ProgressionEngine.weekIndexForBlock(plan.createdAt, now, fullBlock)
         val returning = profileDetails.returningFromBreak
         val byId = allExercises.associateBy { it.id }
         val sessionExercises = day.exercises.mapIndexed { index, planExercise ->
@@ -275,13 +271,13 @@ class WorkoutViewModel(
             SessionExercise(
                 exercise = exercise,
                 planExercise = planExercise,
-                proposal = ProgressionEngine.proposeTargets(
+                proposal = ProgressionEngine.proposeTargetsForBlock(
                     planExercise = planExercise,
                     state = state,
                     returningFromBreak = returning,
                     isCompoundLeg = exercise?.let(ProgressionEngine::isCompoundLeg) ?: false,
-                    weekIndexInBlock = weekIdx,
-                    blockLengthWeeks = fullBlock,
+                    weekIndex = weekIdx,
+                    fullBlockWeeks = fullBlock,
                 ),
                 oldState = state,
                 planExerciseIndex = index,
@@ -326,8 +322,8 @@ class WorkoutViewModel(
                 muscle = se.exercise?.primaryMuscles?.firstOrNull(),
                 muscleLabel = se.exercise?.primaryMuscles?.firstOrNull()
                     ?.let(PlLabels::muscle).orEmpty(),
-                targetLabel = WorkoutLabels.proposalTarget(se.proposal),
-                lastLabel = WorkoutLabels.lastTime(se.oldState),
+                targetStats = WorkoutLabels.targetStats(se.proposal),
+                lastStats = WorkoutLabels.lastStats(se.oldState),
                 badges = badgesOf(se),
                 doneSets = se.workingLogged.size.coerceAtMost(se.proposal.sets),
                 totalSets = se.proposal.sets,
@@ -351,15 +347,14 @@ class WorkoutViewModel(
                 setNumber = se.nextSetNumber,
                 totalSets = se.proposal.sets,
                 prefill = prefill,
-                prefillLabel = WorkoutLabels.setValue(prefill),
+                prefillStats = WorkoutLabels.setStats(prefill),
                 needsInput = session.currentPrefillNeedsInput,
-                isCalibrationSet = session.currentIsCalibrationSet,
                 // Wynik kalibracji pokazujemy w momencie, w którym coś znaczy:
                 // przy pierwszej serii PO teście (dalej ciężar mówi już sam za siebie).
                 calibration = se.calibration
                     ?.takeIf { se.workingLogged.size == 1 }
                     ?.let(::calibrationUi),
-                lastLabel = WorkoutLabels.lastTime(se.oldState),
+                lastStats = WorkoutLabels.lastStats(se.oldState),
                 badges = badgesOf(se),
             )
         }
@@ -378,8 +373,6 @@ class WorkoutViewModel(
             planName = session.planName,
             exercises = rows,
             current = currentUi,
-            weekInBlock = session.weekIndexInBlock + 1,
-            blockLengthWeeks = session.fullBlockLengthWeeks,
             nextUp = nextUp,
             allFinished = session.allFinished,
             completedSets = session.completedSetCount,
@@ -397,10 +390,8 @@ class WorkoutViewModel(
         WorkoutLabels.proposalBadges(se.proposal) + WorkoutLabels.calibrationBadges(se.calibration)
 
     private fun calibrationUi(c: CalibrationResult) = CalibrationUi(
-        oneRepMaxValue = WorkoutLabels.kg(c.estimatedOneRepMaxKg),
-        workingWeightValue = WorkoutLabels.kg(c.workingWeightKg),
-        summary = WorkoutLabels.calibrationSummary(c),
-        testLabel = WorkoutLabels.calibrationTest(c),
+        stats = WorkoutLabels.calibrationStats(c),
+        testChips = WorkoutLabels.calibrationTestChips(c),
         isRampUp = c.isRampUp,
         unreliableNote = WorkoutLabels.calibrationRepsNote(c.testReps),
     )
@@ -490,7 +481,7 @@ class WorkoutViewModel(
     fun adjustRestLength(deltaSeconds: Int) =
         manager.mutate { it.withRestSeconds(it.restSeconds + deltaSeconds) }
 
-    fun extendRest() = manager.mutate { it.extendRest(WorkoutConstants.REST_STEP_SECONDS) }
+    fun extendRest() = manager.mutate { it.extendRest(WorkoutConstants.REST_EXTEND_SECONDS) }
 
     fun skipRest() = manager.mutate { it.skipRest() }
 
@@ -531,13 +522,13 @@ class WorkoutViewModel(
         val replacement = SessionExercise(
             exercise = substitute,
             planExercise = newPlanExercise,
-            proposal = ProgressionEngine.proposeTargets(
+            proposal = ProgressionEngine.proposeTargetsForBlock(
                 planExercise = newPlanExercise,
                 state = newState,
                 returningFromBreak = session.returningFromBreak,
                 isCompoundLeg = ProgressionEngine.isCompoundLeg(substitute),
-                weekIndexInBlock = session.weekIndexInBlock,
-                blockLengthWeeks = session.fullBlockLengthWeeks,
+                weekIndex = session.weekIndexInBlock,
+                fullBlockWeeks = session.fullBlockLengthWeeks,
             ),
             oldState = newState,
             planExerciseIndex = se.planExerciseIndex,

@@ -5,11 +5,10 @@ import com.stronk.data.Plan
 import com.stronk.data.PlanExercise
 import com.stronk.data.SetTarget
 import com.stronk.data.StressLevel
-import com.stronk.progression.ProgressionConstants
+import com.stronk.progression.ProgressionEngine
 import com.stronk.ui.PlLabels
 import java.util.Locale
 import kotlin.math.roundToInt
-import kotlin.math.roundToLong
 
 /**
  * Etykiety i formatowanie tekstów modułu planów. PlLabels jest read-only —
@@ -17,20 +16,10 @@ import kotlin.math.roundToLong
  */
 internal object PlanTexts {
 
-    private val polish = Locale.forLanguageTag("pl")
+    /** Znak planu bez końca — stat TYGODNIE planu bez bloku. */
+    const val INFINITY = "∞"
 
-    /**
-     * Sama liczba kilogramów, bez jednostki — do dużych liczb w kafelkach statystyk,
-     * gdzie „kg” jest osobnym elementem. Np. "80", "82,5" (bez zbędnego ",0").
-     */
-    fun kgValue(kg: Double): String {
-        val rounded = (kg * 10).roundToLong() / 10.0
-        return if (rounded % 1.0 == 0.0) {
-            rounded.toLong().toString()
-        } else {
-            "%.1f".format(polish, rounded)
-        }
-    }
+    private val polishLocale: Locale = Locale.forLanguageTag("pl")
 
     fun stressLevel(level: StressLevel): String = when (level) {
         StressLevel.HIGH -> "wysokie"
@@ -49,22 +38,65 @@ internal object PlanTexts {
         }
     }
 
-    /** Skrót celu ćwiczenia, np. "3×8", "3×60 s", "3× 1 km / 6:00". */
-    fun targetLabel(exercise: PlanExercise): String = when (val target = exercise.target) {
-        is SetTarget.WeightReps -> "${exercise.sets}×${target.reps}"
-        is SetTarget.Reps -> "${exercise.sets}×${target.reps}"
-        is SetTarget.Time -> "${exercise.sets}×${target.seconds} s"
+    /**
+     * SAMA liczba serii — do kolumny pod kapitalikiem „SERIE".
+     *
+     * Zakaz Karola: nigdy nie sklejaj frazy „3×10" ani „40 kg × 10 powt.".
+     * Serie i cel to dwie osobne wartości; nagłówki kolumn stoją RAZ nad sekcją.
+     */
+    fun setsValue(exercise: PlanExercise): String = exercise.sets.toString()
+
+    /**
+     * SAMA wartość celu jednej serii — do kolumny pod kapitalikiem „CEL":
+     * powtórzenia („10"), czas („60 s") albo dystans z czasem („1 km · 6:00").
+     */
+    fun targetValue(exercise: PlanExercise): String = when (val target = exercise.target) {
+        is SetTarget.WeightReps -> target.reps.toString()
+        is SetTarget.Reps -> target.reps.toString()
+        is SetTarget.Time -> "${target.seconds} s"
         is SetTarget.DistanceTime ->
-            "${exercise.sets}× ${metersLabel(target.meters)} / ${minutesLabel(target.seconds)}"
+            "${metersLabel(target.meters)} · ${minutesLabel(target.seconds)}"
     }
 
-    /** Podsumowanie planu na liście, np. "3 dni · 17 ćwiczeń · blok 5 tyg. + 1 lekki". */
-    fun planSummary(plan: Plan): String {
-        val exerciseCount = plan.days.sumOf { it.exercises.size }
-        return "${plan.days.size} ${dayWord(plan.days.size)} · " +
-            "$exerciseCount ${exerciseWord(exerciseCount)} · " +
-            "blok ${plan.blockLengthWeeks} tyg. + ${ProgressionConstants.BLOCK_LIGHT_WEEKS} lekki"
+    /** Nagłówek kolumny celu — zależy od typu pomiaru, więc liczba pod nim jest naga. */
+    fun targetColumnLabel(exercise: PlanExercise): String = when (exercise.target) {
+        is SetTarget.WeightReps, is SetTarget.Reps -> "Powt."
+        is SetTarget.Time -> "Czas"
+        is SetTarget.DistanceTime -> "Dystans"
     }
+
+    /**
+     * Chip liczby serii na liście ćwiczeń dnia (mock: „3 serie"). To ETYKIETA
+     * z odmienionym rzeczownikiem, nie fraza „wartość × wartość".
+     */
+    fun setsChip(sets: Int): String = when {
+        sets == 1 -> "1 seria"
+        sets % 10 in 2..4 && sets % 100 !in 12..14 -> "$sets serie"
+        else -> "$sets serii"
+    }
+
+    /**
+     * Pełna długość bloku razem z tygodniem lekkim (ADR-004) albo null —
+     * plan bez bloku nie ma żadnej długości, biegnie w nieskończoność.
+     */
+    fun fullBlockWeeksOrNull(plan: Plan): Int? =
+        ProgressionEngine.fullBlockWeeks(plan.blockLengthWeeks)
+
+    /**
+     * Wariant liczbowy tego samego: 0 = plan bez bloku. Wołający, który pokazuje
+     * „tydzień X/Y", ma wtedy po prostu nie rysować chipa.
+     */
+    fun fullBlockWeeks(plan: Plan): Int = fullBlockWeeksOrNull(plan) ?: 0
+
+    /** Stat TYGODNIE na karcie planu: liczba albo „∞" dla planu bez bloku. */
+    fun blockWeeksStat(weeks: Int?): String = weeks?.toString() ?: INFINITY
+
+    /** Etykieta chipa z wielkiej litery (mocki kapitalizują etykiety w kreatorze). */
+    fun chipLabel(text: String): String =
+        text.replaceFirstChar { it.titlecase(polishLocale) }
+
+    /** Liczba ćwiczeń we wszystkich dniach planu — do statu ĆWICZENIA. */
+    fun exerciseCount(plan: Plan): Int = plan.days.sumOf { it.exercises.size }
 
     fun metersLabel(meters: Double): String {
         val rounded = meters.roundToInt()
@@ -72,12 +104,4 @@ internal object PlanTexts {
     }
 
     fun minutesLabel(seconds: Int): String = "%d:%02d".format(seconds / 60, seconds % 60)
-
-    private fun dayWord(count: Int): String = if (count == 1) "dzień" else "dni"
-
-    private fun exerciseWord(count: Int): String = when {
-        count == 1 -> "ćwiczenie"
-        count % 10 in 2..4 && count % 100 !in 12..14 -> "ćwiczenia"
-        else -> "ćwiczeń"
-    }
 }

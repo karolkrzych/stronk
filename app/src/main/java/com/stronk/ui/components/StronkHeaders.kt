@@ -1,40 +1,33 @@
 package com.stronk.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 
 /**
- * Nagłówek ekranu (mocki: `.app-head`) — jeden duży tytuł, wygaszony podtytuł
- * i opcjonalny chip meta po prawej. To jedyne miejsce na tytuł ekranu; nie
- * dokładaj `TopAppBar`.
+ * Nagłówek ekranu (mocki: `.h1` w `.navbar`) — jeden tytuł `--fs-h1` 24 i
+ * ewentualnie chip meta albo ikona po prawej. To jedyne miejsce na tytuł ekranu;
+ * nie dokładaj `TopAppBar`.
  *
- * @param title tytuł ekranu, krótki (1–3 słowa), np. "Twój tydzień"
- * @param subtitle drugi wiersz, wygaszony — daty, licznik tygodnia itd.
- * @param meta tekst chipa po prawej, np. "tydzień 2/5"; null = brak chipa
- * @param subtitleActions małe akcje W LINII podtytułu (np. strzałki tygodni) —
- *   trzymają tytuł w jednym wierszu, zamiast tłoczyć się obok chipa meta
- * @param actions slot na ikony akcji po prawej (zamiast/obok chipa meta); trzymaj
- *   go na JEDNEJ ikonie — mock ma po prawej sam chip
+ * @param title tytuł ekranu, krótki (1–3 słowa), np. "Tydzień 1/6"
+ * @param subtitle drugi wiersz, wygaszony — daty, kontekst
+ * @param meta tekst chipa po prawej; null = brak chipa
+ * @param actions slot na ikony akcji po prawej (np. dyskretne „i")
  */
 @Composable
 fun StronkScreenHeader(
@@ -42,77 +35,51 @@ fun StronkScreenHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     meta: String? = null,
-    subtitleActions: (@Composable RowScope.() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineMedium,
+                style = StronkTextStyles.h1,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (subtitle != null || subtitleActions != null) {
-                Row(
-                    modifier = Modifier.padding(top = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xxs),
-                ) {
-                    if (subtitle != null) {
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            ),
-                            color = StronkTheme.colors.textDim,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    subtitleActions?.invoke(this)
-                }
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = StronkTextStyles.meta,
+                    color = StronkTheme.colors.textDim,
+                    modifier = Modifier.padding(top = StronkSpacing.xxs),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         if (meta != null) {
-            StronkMetaChip(meta, Modifier.padding(top = StronkSpacing.xxs))
+            StronkMetaChip(meta)
         }
         actions()
     }
 }
 
-/** Mały chip meta w nagłówku (mocki: `.chip-meta`) — licznik, kontekst, nic więcej. */
+/** Mały chip meta w nagłówku (mocki: `.chip`) — licznik, kontekst, nic więcej. */
 @Composable
-fun StronkMetaChip(text: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = StronkSpacing.sm, vertical = 6.dp),
-            maxLines = 1,
-        )
-    }
-}
+fun StronkMetaChip(text: String, modifier: Modifier = Modifier) =
+    StronkChip(label = text, modifier = modifier)
 
 /**
- * Nagłówek sekcji (mocki: `.sec-k`) — mały, rozstrzelony kicker WERSALIKAMI.
- * Rytm sekcji jest ten sam na każdym ekranie: kicker → odstęp 12 dp → treść.
+ * Kicker sekcji (mocki: `.cap`) — KAPITALIK 11 z trackingiem `.14em` w `--text-3`.
+ * Rytm sekcji jest ten sam na każdym ekranie: kicker → 10–12 dp → treść.
  *
- * @param title tekst kickera podany normalnie; komponent sam robi wersaliki
- * @param icon ikona z `Icons.Rounded.*` (material-icons-extended); null = bez ikony
- * @param trailing slot po prawej — licznik ("zaznaczone: 2"), akcja tekstowa itd.
+ * @param title tekst podany normalnie; wersaliki robi komponent
+ * @param icon ikona z `Icons.Rounded.*`; np. [StronkIcons.info] przy „NASTĘPNE"
+ * @param trailing slot po prawej — akcja tekstowa, licznik, mini-stat
  */
 @Composable
 fun StronkSectionHeader(
@@ -124,8 +91,14 @@ fun StronkSectionHeader(
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
+        Text(
+            text = title.uppercase(),
+            style = StronkTextStyles.cap,
+            color = StronkTheme.colors.textDim,
+            maxLines = 1,
+        )
         if (icon != null) {
             Icon(
                 imageVector = icon,
@@ -134,12 +107,6 @@ fun StronkSectionHeader(
                 modifier = Modifier.size(15.dp),
             )
         }
-        Text(
-            text = title.uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = StronkTheme.colors.textDim,
-            modifier = Modifier.weight(1f, fill = false),
-        )
         if (trailing != null) {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) { trailing() }
         }

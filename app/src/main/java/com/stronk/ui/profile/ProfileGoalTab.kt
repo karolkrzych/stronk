@@ -2,7 +2,7 @@ package com.stronk.ui.profile
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -10,38 +10,41 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
-import androidx.compose.material.icons.rounded.SelfImprovement
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.stronk.data.GoalDefaults
 import com.stronk.data.TrainingGoal
 import com.stronk.progression.ProgressionConstants
+import com.stronk.ui.components.StronkAccentCard
 import com.stronk.ui.components.StronkCard
-import com.stronk.ui.components.StronkIconBadge
-import com.stronk.ui.components.StronkIcons
-import com.stronk.ui.components.StronkMetaChip
 import com.stronk.ui.components.StronkSectionHeader
-import com.stronk.ui.components.StronkStat
+import com.stronk.ui.components.StronkStatBlock
 import com.stronk.ui.components.StronkStatRow
-import com.stronk.ui.components.StronkTone
+import com.stronk.ui.components.StronkStatSize
 import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 import kotlin.math.roundToInt
 
+/** Odstęp między kartami celu — karty stoją gęściej niż sekcje ekranu. */
+private val CardsGap = 10.dp
+
 /**
  * Zakładka „Cel” — wybór celu treningu z liczbami, które ten wybór realnie
- * zmienia (zakres powtórzeń, serie, przerwa), plus tryb powrotu po przerwie.
+ * zmienia (powtórzenia, serie, przerwa), plus tryb powrotu po przerwie.
+ *
+ * Liczby są w stat-blokach z kapitalikowymi nagłówkami: żadnego sklejania
+ * „8–12 powt. × 3 serie” w zdanie.
  */
 @Composable
 internal fun ProfileGoalTab(
@@ -56,53 +59,50 @@ internal fun ProfileGoalTab(
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = StronkSpacing.screen)
-            .padding(top = StronkSpacing.lg, bottom = StronkSpacing.xxl),
+            .padding(top = StronkSpacing.xl, bottom = StronkSpacing.xxl),
         verticalArrangement = Arrangement.spacedBy(StronkSpacing.section),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(StronkSpacing.sm)) {
-            StronkSectionHeader(title = "Cel treningu", icon = StronkIcons.record)
-            TrainingGoal.entries.forEach { option ->
-                GoalCard(
-                    goal = option,
-                    selected = goal == option,
-                    onClick = { onGoalChange(option) },
-                )
+            StronkSectionHeader(title = "Cel treningu")
+            Column(verticalArrangement = Arrangement.spacedBy(CardsGap)) {
+                TrainingGoal.entries.forEach { option ->
+                    GoalCard(
+                        goal = option,
+                        selected = goal == option,
+                        onClick = { onGoalChange(option) },
+                    )
+                }
             }
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(StronkSpacing.sm)) {
-            StronkSectionHeader(title = "Powrót po przerwie", icon = StronkIcons.restDay)
+            StronkSectionHeader(title = "Powrót po przerwie")
             ReturningFromBreakCard(returningFromBreak, onReturningFromBreakChange)
         }
     }
 }
 
 /**
- * Karta celu: wybrany pokazuje parametry jako duże liczby (focal point zakładki),
- * pozostałe te same wartości jako chipy — wybór jest namacalny, a nie deklaratywny.
+ * Karta celu — nazwa, jedna linijka opisu i trzy staty z nagłówkami. Wybrany cel
+ * dostaje limonkowy tint (jedyna akcentowana karta zakładki), więc widać go
+ * z drugiego końca pokoju.
  */
 @Composable
 private fun GoalCard(goal: TrainingGoal, selected: Boolean, onClick: () -> Unit) {
     val params = GoalDefaults.forGoal(goal)
-    StronkCard(onClick = onClick) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
-        ) {
-            StronkIconBadge(
-                icon = goalIcon(goal),
-                tone = if (selected) StronkTone.ACCENT else StronkTone.NEUTRAL,
-            )
+    val body: @Composable ColumnScope.() -> Unit = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
                     text = GoalDefaults.label(goal),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = StronkTextStyles.h1Small,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = GoalDefaults.description(goal),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = StronkTextStyles.meta,
                     color = StronkTheme.colors.textDim,
+                    modifier = Modifier.padding(top = 3.dp),
                 )
             }
             Icon(
@@ -113,79 +113,86 @@ private fun GoalCard(goal: TrainingGoal, selected: Boolean, onClick: () -> Unit)
                 },
                 contentDescription = null,
                 tint = if (selected) {
-                    MaterialTheme.colorScheme.primary
+                    StronkTheme.colors.lime
                 } else {
-                    MaterialTheme.colorScheme.outline
+                    StronkTheme.colors.line
                 },
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier
+                    .padding(start = StronkSpacing.sm)
+                    .size(22.dp),
             )
         }
 
-        if (selected) {
-            StronkStatRow(Modifier.padding(top = StronkSpacing.md)) {
-                StronkStat(
-                    label = "powt.",
-                    value = GoalDefaults.repRangeLabel(goal),
-                    modifier = Modifier.weight(1.2f),
-                )
-                StronkStat(
-                    label = "serie",
-                    value = params.defaultSets.toString(),
-                    modifier = Modifier.weight(0.8f),
-                )
-                StronkStat(
-                    label = "przerwa",
-                    value = ProfileTexts.restValue(params.restSeconds),
-                    modifier = Modifier.weight(1f),
-                    unit = ProfileTexts.restUnit(params.restSeconds),
-                )
-            }
+        val valueColor = if (selected) {
+            StronkTheme.colors.lime
         } else {
-            FlowRow(
-                modifier = Modifier.padding(top = StronkSpacing.sm),
-                horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
-                verticalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
-            ) {
-                StronkMetaChip("${GoalDefaults.repRangeLabel(goal)} powt.")
-                StronkMetaChip(ProfileTexts.setsChip(params.defaultSets))
-                StronkMetaChip(ProfileTexts.restChip(params.restSeconds))
-            }
+            MaterialTheme.colorScheme.onSurface
         }
+        StronkStatRow(Modifier.padding(top = StronkSpacing.md)) {
+            StronkStatBlock(
+                label = "Powtórzenia",
+                value = GoalDefaults.repRangeLabel(goal),
+                size = StronkStatSize.TITLE,
+                valueColor = valueColor,
+                weight = 1.15f,
+            )
+            StronkStatBlock(
+                label = "Serie",
+                value = params.defaultSets.toString(),
+                size = StronkStatSize.TITLE,
+                valueColor = valueColor,
+                weight = 0.85f,
+            )
+            StronkStatBlock(
+                label = "Przerwa",
+                value = ProfileTexts.restValue(params.restSeconds),
+                unit = ProfileTexts.restUnit(params.restSeconds),
+                size = StronkStatSize.TITLE,
+                valueColor = valueColor,
+            )
+        }
+    }
+
+    if (selected) {
+        StronkAccentCard(modifier = Modifier.fillMaxWidth(), onClick = onClick, content = body)
+    } else {
+        StronkCard(modifier = Modifier.fillMaxWidth(), onClick = onClick, content = body)
     }
 }
 
 @Composable
 private fun ReturningFromBreakCard(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     val startPercent = (ProgressionConstants.RAMP_UP_START_FACTOR * 100).roundToInt()
-    StronkCard {
+    StronkCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
         ) {
-            StronkIconBadge(
-                icon = StronkIcons.injury,
-                tone = if (checked) StronkTone.ACCENT else StronkTone.NEUTRAL,
-            )
             Column(Modifier.weight(1f)) {
                 Text(
                     text = "Wracam po przerwie",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = StronkTextStyles.h2,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "Start od ok. $startPercent% docelowych ciężarów, " +
-                        "potem szybsza progresja, aż dogonisz plan.",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = ProfileTexts.returningFromBreakHint(startPercent),
+                    style = StronkTextStyles.meta,
                     color = StronkTheme.colors.textDim,
+                    modifier = Modifier.padding(top = 3.dp),
                 )
             }
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = StronkTheme.colors.limeInk,
+                    checkedTrackColor = StronkTheme.colors.lime,
+                    checkedBorderColor = StronkTheme.colors.lime,
+                    uncheckedThumbColor = StronkTheme.colors.textDim,
+                    uncheckedTrackColor = Color.Transparent,
+                    uncheckedBorderColor = StronkTheme.colors.line,
+                ),
+            )
         }
     }
-}
-
-private fun goalIcon(goal: TrainingGoal): ImageVector = when (goal) {
-    TrainingGoal.STRENGTH -> Icons.Rounded.Bolt
-    TrainingGoal.MASS -> Icons.Rounded.FitnessCenter
-    TrainingGoal.RETURN_TO_FORM -> Icons.Rounded.SelfImprovement
 }

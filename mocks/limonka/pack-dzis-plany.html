@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stronk · runda 3 · nawigacja + Dziś + Plany</title>
+<style>
+/* =========================================================================
+   stronk — RUNDA 3 · PAKIET "NAWIGACJA + DZIŚ + PLANY"
+   Wariant C2 "Limonka" — tokeny skopiowane 1:1 z pliku kanonicznego.
+   Zero zasobów zewnętrznych. Ikony = inline SVG stroke 2px.
+   Wszystko przekładalne na Jetpack Compose M3 (NavigationBar, Card, Row).
+   ========================================================================= */
+:root{
+  /* ---- powierzchnie ----------------------------------------------------- */
+  --page:      hsl(80, 4%, 4%);
+  --s0:        hsl(80, 4%, 6%);
+  --s1:        hsl(80, 4%, 10%);
+  --s2:        hsl(75, 4%, 14%);
+  --s3:        hsl(75, 4%, 19%);
+  --line:      hsl(75, 4%, 17%);
+  --line-soft: hsl(75, 4%, 12%);
+
+  /* ---- tekst ------------------------------------------------------------ */
+  --text:   hsl(70, 8%, 96%);
+  --text-2: hsl(70, 5%, 70%);
+  --text-3: hsl(70, 4%, 46%);
+
+  /* ---- akcent ----------------------------------------------------------- */
+  --lime:      hsl(75, 70%, 52%);
+  --lime-deep: hsl(75, 55%, 40%);
+  --lime-ink:  hsl(80, 60%,  7%);
+  --lime-dim:  hsla(75, 70%, 52%, .13);
+  --lime-line: hsla(75, 70%, 52%, .30);
+
+  /* ---- typografia ------------------------------------------------------- */
+  --font: "Segoe UI", "Segoe UI Variable", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --fs-hero:   62px;
+  --fs-big:    40px;
+  --fs-title:  27px;
+  --fs-h1:     24px;
+  --fs-h2:     17px;
+  --fs-body:   15px;
+  --fs-meta:   13px;
+  --fs-cap:    11px;
+  --tr-cap:    .14em;
+
+  /* ---- promienie -------------------------------------------------------- */
+  --r-card:  24px;
+  --r-inner: 18px;
+  --r-tile:  14px;
+  --r-day:    7px;
+  --r-pill:  999px;
+
+  /* ---- rytm ------------------------------------------------------------- */
+  --pad-screen: 22px;
+  --pad-card:   20px;
+
+  /* ---- dolna nawigacja (wzorzec dla całej apki) ------------------------- */
+  --nav-h:      64px;
+}
+
+*{ margin:0; padding:0; box-sizing:border-box; }
+html,body{ background:var(--page); }
+body{
+  font-family:var(--font); color:var(--text);
+  padding:44px 56px 72px; overflow-x:auto;
+  -webkit-font-smoothing:antialiased;
+}
+.num{ font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.cap{
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap);
+  text-transform:uppercase; color:var(--text-3);
+}
+
+/* ---------------- strona ------------------------------------------------ */
+.page-head{ margin-bottom:34px; max-width:860px; }
+.page-head h1{ font-size:21px; font-weight:700; letter-spacing:-.02em; }
+.page-head h1 em{ font-style:normal; color:var(--lime); }
+.page-head p{ margin-top:8px; font-size:13.5px; line-height:1.55; color:var(--text-3); }
+.rail{ display:flex; gap:54px; align-items:flex-start; width:max-content; }
+.col{ width:390px; flex:none; }
+.caption{
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap);
+  text-transform:uppercase; color:var(--text-3); margin:0 6px 14px;
+  display:flex; align-items:center; gap:10px;
+}
+.caption b{ color:var(--text-2); font-weight:700; }
+.caption i{ flex:1; height:1px; background:var(--line-soft); }
+
+/* ---------------- ramka telefonu ---------------------------------------- */
+.phone{
+  width:390px; height:844px; background:var(--s0);
+  border-radius:38px; overflow:hidden; position:relative;
+  box-shadow:0 0 0 8px hsl(80,4%,9%), 0 0 0 9px hsl(75,4%,20%), 0 26px 60px hsla(0,0%,0%,.55);
+}
+.screen{ height:100%; display:flex; flex-direction:column; padding:0 var(--pad-screen); }
+
+.sysbar{
+  height:52px; flex:none; display:flex; align-items:center; justify-content:space-between;
+  font-size:12px; color:var(--text-3); font-weight:600;
+}
+.sysdots{ display:flex; gap:4px; align-items:center; }
+.sysdots span{ width:5px; height:5px; border-radius:50%; background:var(--text-3); opacity:.55; }
+.sysdots span:last-child{ width:16px; height:8px; border-radius:2px; }
+
+.navbar{ height:44px; flex:none; display:flex; align-items:center; justify-content:space-between; }
+.iconbtn{
+  width:36px; height:36px; margin-left:-8px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; color:var(--text-2);
+}
+.iconbtn.right{ margin-left:0; margin-right:-8px; color:var(--text-3); }
+.h1{ font-size:var(--fs-h1); font-weight:700; letter-spacing:-.01em; }
+
+.chip{
+  display:inline-flex; align-items:center; height:26px; padding:0 11px;
+  border-radius:var(--r-pill); background:var(--s2); color:var(--text-2);
+  font-size:var(--fs-meta); font-weight:600; letter-spacing:-.005em;
+}
+
+.cta{
+  height:66px; border-radius:20px; background:var(--lime); color:var(--lime-ink);
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  font-size:19px; font-weight:700; letter-spacing:-.01em;
+}
+.cta.sm{ height:54px; border-radius:16px; font-size:16px; }
+
+/* =========================================================================
+   WZORZEC: DOLNA NAWIGACJA (Compose: NavigationBar, 5 × NavigationBarItem)
+   1:1 z pakietem „Progres + Baza” — delikatna: tło --s0, linia --line-soft
+   u góry, ikona 22px stroke 2px + etykieta 10,5px / 600, bez wersalików.
+   Aktywna pozycja = limonka (ikona + etykieta), reszta --text-3.
+   Wysokość 64px. Występuje TYLKO na 5 ekranach zakładek.
+   ========================================================================= */
+.nav{
+  margin:auto calc(var(--pad-screen) * -1) 0; flex:none;
+  height:var(--nav-h); border-top:1px solid var(--line-soft); background:var(--s0);
+  display:grid; grid-template-columns:repeat(5,1fr); align-items:center;
+}
+.nav a{
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  color:var(--text-3); text-decoration:none;
+}
+.nav a span{ font-size:10.5px; font-weight:600; letter-spacing:.01em; }
+.nav a.on{ color:var(--lime); }
+
+/* =========================================================================
+   EKRAN 1 — DZIŚ (home).  Dominanta: karta dzisiejszego treningu + CTA.
+   ========================================================================= */
+.todaycard{
+  margin-top:6px; background:var(--s1); border-radius:var(--r-card);
+  padding:var(--pad-card);
+}
+.todaycard .hd{ display:flex; align-items:center; justify-content:space-between; }
+.todaycard .nm{
+  margin-top:14px; font-size:var(--fs-title); font-weight:700; letter-spacing:-.01em;
+  line-height:1.1;
+}
+.todaycard .plan{ margin-top:6px; font-size:var(--fs-meta); color:var(--text-3); font-weight:600; }
+.todaycard .cta{ margin-top:18px; }
+
+.sechd{
+  margin-top:24px; display:flex; align-items:center; justify-content:space-between;
+}
+.exlist{ margin-top:2px; }
+.exrow{ display:flex; align-items:center; gap:13px; padding:13px 0; border-bottom:1px solid var(--line-soft); }
+.exrow:last-child{ border-bottom:0; }
+.exrow .ico{
+  width:38px; height:38px; border-radius:12px; background:var(--s2);
+  display:flex; align-items:center; justify-content:center; color:var(--text-3); flex:none;
+}
+.exrow .nm{ flex:1; font-size:var(--fs-h2); font-weight:600; letter-spacing:-.01em; }
+.grow{ flex:1; }
+
+/* =========================================================================
+   EKRAN 2 — PLANY (lista).  Dominanta: karta planu aktywnego.
+   ========================================================================= */
+.plans{ margin-top:6px; display:flex; flex-direction:column; gap:14px; }
+.plancard{
+  background:var(--s1); border-radius:var(--r-card); padding:18px var(--pad-card);
+  position:relative; overflow:hidden;
+}
+.plancard.active{ border:1px solid var(--lime-line); background:var(--s1); }
+.plancard.active::before{
+  content:""; position:absolute; left:0; top:18px; bottom:18px; width:3px;
+  border-radius:0 3px 3px 0; background:var(--lime);
+}
+.plancard .hd{ display:flex; align-items:center; gap:10px; }
+.plancard .nm{ font-size:21px; font-weight:700; letter-spacing:-.01em; }
+.plancard.arch .nm{ color:var(--text-2); }
+.badge{
+  display:inline-flex; align-items:center; height:22px; padding:0 9px; border-radius:var(--r-pill);
+  background:var(--lime-dim); color:var(--lime);
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap); text-transform:uppercase;
+}
+.plancard .chev{ color:var(--text-3); flex:none; margin-left:auto; }
+
+.ministats{ margin-top:16px; display:flex; align-items:flex-end; }
+.ms{ flex:1; }
+.ms .cap{ display:block; margin-bottom:5px; }
+.ms .v{ font-size:var(--fs-h1); font-weight:700; line-height:1; }
+.plancard.arch .ms .v{ color:var(--text-2); }
+.ms-div{ width:1px; align-self:stretch; background:var(--line); margin:0 14px; }
+
+.archlink{
+  margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;
+  color:var(--text-3);
+}
+/* dyskretny skok do Tygodnia — jedyny link na ekranie Dziś */
+.weeklink{
+  margin-top:auto; margin-bottom:14px;
+  display:flex; align-items:center; justify-content:center; gap:7px; color:var(--text-3);
+}
+.weeklink u{
+  font-size:var(--fs-meta); font-weight:600;
+  text-underline-offset:4px; text-decoration-thickness:1px;
+}
+.archlink u{
+  font-size:var(--fs-meta); font-weight:600; text-underline-offset:4px;
+  text-decoration-thickness:1px;
+}
+.ctafoot{ margin-top:auto; padding-bottom:16px; }
+
+/* =========================================================================
+   EKRAN 3 — KREATOR PLANU · krok 3/4 (bez dolnej nawigacji).
+   ========================================================================= */
+.wizhd{ display:flex; align-items:center; justify-content:space-between; }
+.steps{ margin-top:10px; display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+.steps i{ height:4px; border-radius:2px; background:var(--s3); }
+.steps i.done{ background:var(--lime-deep); }
+.steps i.now{ background:var(--lime); }
+
+.wiztitle{ margin-top:22px; font-size:var(--fs-title); font-weight:700; letter-spacing:-.01em; }
+.wizsub{ margin-top:8px; font-size:var(--fs-body); color:var(--text-3); line-height:1.45; }
+
+.chipcard{
+  margin-top:22px; background:var(--s1); border-radius:var(--r-card); padding:18px var(--pad-card);
+}
+.chipcard .hd{ display:flex; align-items:baseline; justify-content:space-between; }
+.chips{ margin-top:15px; display:flex; flex-wrap:wrap; gap:10px; }
+.jchip{
+  display:inline-flex; align-items:center; gap:7px; height:38px; padding:0 14px;
+  border-radius:var(--r-pill); background:var(--s2); border:1px solid var(--line-soft);
+  color:var(--text-2); font-size:var(--fs-body); font-weight:600; letter-spacing:-.01em;
+}
+.jchip.on{ background:var(--lime-dim); border-color:var(--lime-line); color:var(--lime); }
+.jchip .tick{ flex:none; }
+
+.note{
+  margin-top:14px; background:var(--s2); border-radius:var(--r-inner); padding:14px 16px;
+  display:flex; align-items:flex-start; gap:11px;
+}
+.note .ico{ color:var(--text-3); flex:none; margin-top:1px; }
+.note p{ font-size:var(--fs-meta); color:var(--text-2); line-height:1.45; }
+
+.skip{ margin-top:20px; display:flex; justify-content:center; }
+.skip u{
+  font-size:var(--fs-meta); font-weight:600; color:var(--text-3);
+  text-underline-offset:4px; text-decoration-thickness:1px;
+}
+
+.wiznav{ margin-top:auto; padding-bottom:24px; display:flex; gap:12px; }
+.btn-ghost{
+  flex:1; height:54px; border-radius:16px; border:1px solid var(--line);
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  font-size:16px; font-weight:600; color:var(--text-2);
+}
+.btn-next{ flex:1.7; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>stronk · runda 3 · pakiet <em>nawigacja + Dziś + Plany</em></h1>
+  <p>Wzorzec dolnej nawigacji (5 zakładek, 64px, aktywna limonkowa) na ekranach zakładkowych; ekrany wewnętrzne bez niej.
+     Jedna dominanta per ekran, szczegóły schowane za chevronem. Wartości z jednostką zawsze jako osobne staty z micro-nagłówkiem.</p>
+</div>
+
+<div class="rail">
+
+  <!-- =====================================================================
+       1 — DZIŚ (home)
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>1 · Dziś</b><i></i>home</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">07:12</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="h1">Dziś</div>
+        <div class="iconbtn right">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.7"/><path d="M4.6 20c1.1-3.6 4-5.4 7.4-5.4S18.3 16.4 19.4 20"/></svg>
+        </div>
+      </div>
+
+      <div class="todaycard">
+        <div class="hd">
+          <span class="cap">Środa · 19.08</span>
+          <span class="chip">Tydzień 1/6</span>
+        </div>
+        <div class="nm">Full body B</div>
+        <div class="plan">Powrót do formy</div>
+        <div class="cta">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 5.2 18.6 12 7.5 18.8Z"/></svg>
+          Zacznij trening
+        </div>
+      </div>
+
+      <div class="sechd">
+        <span class="cap">Ćwiczenia</span>
+        <span class="cap num">6</span>
+      </div>
+
+      <div class="exlist">
+        <div class="exrow">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Przysiad goblet</div>
+          <span class="chip">3 serie</span>
+        </div>
+        <div class="exrow">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Mostek biodrowy</div>
+          <span class="chip">3 serie</span>
+        </div>
+        <div class="exrow">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Wyciskanie hantli</div>
+          <span class="chip">3 serie</span>
+        </div>
+        <div class="exrow">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Wiosłowanie hantlem</div>
+          <span class="chip">3 serie</span>
+        </div>
+        <div class="exrow">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Wykrok w miejscu</div>
+          <span class="chip">2 serie</span>
+        </div>
+        <div class="exrow">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Deska</div>
+          <span class="chip">3 serie</span>
+        </div>
+      </div>
+
+      <div class="weeklink">
+        <u>Cały tydzień</u>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+      </div>
+
+      <!-- WZORZEC dolnej nawigacji (1:1 z pakietem Progres + Baza) -->
+      <div class="nav">
+        <a class="on">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.2 12 5l8 6.2V19a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1z"/></svg>
+          <span>Dziś</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
+          <span>Tydzień</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>
+          <span>Plany</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5 9.5 11l3.5 3.5L20 7"/><path d="M15 7h5v5"/></svg>
+          <span>Progres</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>
+          <span>Baza</span>
+        </a>
+      </div>
+
+    </div></div>
+  </div>
+
+  <!-- =====================================================================
+       2 — PLANY (lista)
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>2 · Plany</b><i></i>lista</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">07:14</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="h1">Plany</div>
+        <div class="iconbtn right">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.6v.1"/></svg>
+        </div>
+      </div>
+
+      <div class="plans">
+
+        <div class="plancard active">
+          <div class="hd">
+            <div class="nm">Powrót do formy</div>
+            <span class="badge">Aktywny</span>
+            <div class="chev">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+          <div class="ministats">
+            <div class="ms">
+              <span class="cap">Dni</span>
+              <div class="v num">3</div>
+            </div>
+            <div class="ms-div"></div>
+            <div class="ms">
+              <span class="cap">Tygodnie</span>
+              <div class="v num">6</div>
+            </div>
+            <div class="ms-div"></div>
+            <div class="ms">
+              <span class="cap">Ćwiczenia</span>
+              <div class="v num">18</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="plancard">
+          <div class="hd">
+            <div class="nm">Full body 3×</div>
+            <div class="chev">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+          <div class="ministats">
+            <div class="ms">
+              <span class="cap">Dni</span>
+              <div class="v num">3</div>
+            </div>
+            <div class="ms-div"></div>
+            <div class="ms">
+              <span class="cap">Tygodnie</span>
+              <div class="v num">5</div>
+            </div>
+            <div class="ms-div"></div>
+            <div class="ms">
+              <span class="cap">Ćwiczenia</span>
+              <div class="v num">15</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="plancard">
+          <div class="hd">
+            <div class="nm">Góra / dół</div>
+            <div class="chev">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+          <div class="ministats">
+            <div class="ms">
+              <span class="cap">Dni</span>
+              <div class="v num">4</div>
+            </div>
+            <div class="ms-div"></div>
+            <div class="ms">
+              <span class="cap">Tygodnie</span>
+              <div class="v num">6</div>
+            </div>
+            <div class="ms-div"></div>
+            <div class="ms">
+              <span class="cap">Ćwiczenia</span>
+              <div class="v num">22</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="archlink">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="4.4" width="17.2" height="4.6" rx="1.8"/><path d="M5.2 9v9a1.8 1.8 0 0 0 1.8 1.8h10a1.8 1.8 0 0 0 1.8-1.8V9"/><path d="M10 13h4"/></svg>
+        <u>Archiwum · 2</u>
+      </div>
+
+      <div class="ctafoot">
+        <div class="cta sm">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Nowy plan
+        </div>
+      </div>
+
+      <div class="nav">
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.2 12 5l8 6.2V19a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1z"/></svg>
+          <span>Dziś</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
+          <span>Tydzień</span>
+        </a>
+        <a class="on">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>
+          <span>Plany</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5 9.5 11l3.5 3.5L20 7"/><path d="M15 7h5v5"/></svg>
+          <span>Progres</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>
+          <span>Baza</span>
+        </a>
+      </div>
+
+    </div></div>
+  </div>
+
+  <!-- =====================================================================
+       3 — KREATOR PLANU · krok 3/4 (ekran wewnętrzny, bez dolnej nawigacji)
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>3 · Kreator planu</b><i></i>ograniczenia</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">07:16</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="iconbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>
+        </div>
+      </div>
+
+      <div class="wizhd">
+        <span class="cap">Nowy plan</span>
+        <span class="cap num">Krok 3/4</span>
+      </div>
+      <div class="steps">
+        <i class="done"></i><i class="done"></i><i class="now"></i><i></i>
+      </div>
+
+      <div class="wiztitle">Twoje ograniczenia</div>
+      <div class="wizsub">Zaznacz miejsca, które oszczędzamy.</div>
+
+      <div class="chipcard">
+        <div class="hd">
+          <span class="cap">Partie i stawy</span>
+          <span class="cap num">2</span>
+        </div>
+        <div class="chips">
+          <span class="jchip on">
+            <svg class="tick" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19 7"/></svg>
+            Kolano
+          </span>
+          <span class="jchip on">
+            <svg class="tick" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19 7"/></svg>
+            Dolny odcinek kręgosłupa
+          </span>
+          <span class="jchip">Bark</span>
+          <span class="jchip">Biodro</span>
+          <span class="jchip">Łokieć</span>
+          <span class="jchip">Nadgarstek</span>
+          <span class="jchip">Szyja / kark</span>
+        </div>
+        <div class="note">
+          <div class="ico">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.6v.1"/></svg>
+          </div>
+          <p>Ćwiczenia obciążające te miejsca zamienimy na bezpieczniejsze.</p>
+        </div>
+      </div>
+
+      <div class="skip">
+        <u>Nie mam ograniczeń — pomiń</u>
+      </div>
+
+      <div class="wiznav">
+        <div class="btn-ghost">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>
+          Wstecz
+        </div>
+        <div class="cta sm btn-next">
+          Dalej
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+        </div>
+      </div>
+
+    </div></div>
+  </div>
+
+</div>
+</body>
+</html>

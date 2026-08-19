@@ -1,8 +1,10 @@
 package com.stronk.ui.plans
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,255 +13,500 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.stronk.data.StressLevel
 import com.stronk.ui.PlLabels
 import com.stronk.ui.components.StronkCard
-import com.stronk.ui.components.StronkChoiceChip
-import com.stronk.ui.components.StronkFooterActions
 import com.stronk.ui.components.StronkGhostButton
-import com.stronk.ui.components.StronkNoteCard
+import com.stronk.ui.components.StronkIcons
+import com.stronk.ui.components.StronkInsetCard
 import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkSegmentedProgress
-import com.stronk.ui.components.StronkTone
-import com.stronk.ui.components.StronkUnderlinedTextAction
-import com.stronk.ui.profile.ProfileDefaults
+import com.stronk.ui.components.StronkStatDivider
+import com.stronk.ui.components.StronkStatRow
+import com.stronk.ui.theme.StronkRadius
+import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 
 /**
- * Kroki kreatora nowego planu (mocki: „Ekran 3 · Kreator planu — krok 3/4”).
- * Kolejność enuma JEST kolejnością kroków — pasek postępu i nawigacja liczą
- * z [ordinal], więc nie przestawiaj wartości bez powodu.
- */
-enum class PlanWizardStep {
-    /** Skąd bierzemy plan: gotowy preset albo pusty plan. */
-    START,
-
-    /** Nazwa planu i długość bloku progresji. */
-    BASICS,
-
-    /** Miejsca, które oszczędzamy (zapis do profilu). */
-    LIMITS,
-
-    /** Dni i ćwiczenia — pełny edytor, na końcu zapis planu. */
-    DAYS,
-    ;
-
-    /** Numer kroku dla użytkownika (1-based). */
-    val number: Int get() = ordinal + 1
-
-    companion object {
-        val TOTAL: Int get() = entries.size
-    }
-}
-
-/**
- * Rama każdego kroku kreatora (mocki: `.wiz-head` + `.wiz-title` + `.wiz-nav`):
- * pasek kontekstu z numerem kroku i segmentowym postępem, tytuł kroku, treść
- * przewijalna, a na dole stała nawigacja.
+ * Kreator nowego planu — 1:1 z mockiem `mocks/limonka/pack-dzis-plany.html`
+ * (ekran 3). Ekran wewnętrzny: BEZ dolnej nawigacji.
  *
- * @param nav stopka nawigacji — użyj [PlanWizardNav]; null = krok bez stopki
+ * Stały szkielet każdego kroku: kapitalik „Nowy plan" + „Krok N/4", pasek
+ * kroków z semantyką (zrobione `--lime-deep`, bieżący `--lime`, przyszłe
+ * `--s3`), tytuł 27, jedno zdanie podtytułu, JEDNA karta z treścią kroku i
+ * stopka Wstecz / Dalej w proporcji 1 : 1,7.
  */
 @Composable
-internal fun PlanWizardScaffold(
-    step: PlanWizardStep,
-    title: String,
-    subtitle: String?,
-    modifier: Modifier = Modifier,
-    nav: (@Composable () -> Unit)? = null,
-    content: @Composable ColumnScope.() -> Unit,
+internal fun PlanWizard(
+    wizard: PlanWizardUi,
+    viewModel: PlanEditorViewModel,
+    onBack: () -> Unit,
 ) {
-    Column(modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = StronkSpacing.screen),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(StronkSizes.topBar),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = { if (wizard.stepIndex == 0) onBack() else viewModel.wizardBack() },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = StronkIcons.back,
+                    contentDescription = "Wstecz",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+
+        StronkSectionHeader(
+            title = "Nowy plan",
+            modifier = Modifier.fillMaxWidth(),
+            trailing = {
+                Text(
+                    text = "Krok ${wizard.stepIndex + 1}/${wizard.stepCount}",
+                    style = StronkTextStyles.cap,
+                    color = StronkTheme.colors.textDim,
+                )
+            },
+        )
+        StronkSegmentedProgress(
+            total = wizard.stepCount,
+            currentIndex = wizard.stepIndex,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+
+        Text(
+            text = wizard.step.title,
+            style = StronkTextStyles.title,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = StronkSpacing.section),
+        )
+        Text(
+            text = wizard.step.subtitle,
+            style = StronkTextStyles.body,
+            color = StronkTheme.colors.textDim,
+            modifier = Modifier.padding(top = StronkSpacing.xs),
+        )
+
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState()),
         ) {
-            PlanWizardIntro(
-                step = step,
-                title = title,
-                subtitle = subtitle,
-                modifier = Modifier.padding(horizontal = StronkSpacing.screen, vertical = 14.dp),
-            )
-            content()
-            Spacer(Modifier.height(StronkSpacing.xl))
+            when (wizard.step) {
+                PlanWizardStep.TEMPLATE -> TemplateStep(wizard, viewModel::wizardChooseTemplate)
+                PlanWizardStep.BLOCK -> BlockStep(
+                    wizard = wizard,
+                    onChange = viewModel::onBlockLengthChange,
+                    onEnabledChange = viewModel::onBlockEnabledChange,
+                )
+                PlanWizardStep.CONSTRAINTS -> ConstraintsStep(
+                    wizard = wizard,
+                    onToggle = viewModel::wizardToggleJoint,
+                    onSkip = viewModel::wizardSkipConstraints,
+                )
+                PlanWizardStep.NAME -> NameStep(wizard, viewModel::onNameChange)
+            }
+            Spacer(Modifier.height(StronkSpacing.lg))
         }
-        nav?.invoke()
-    }
-}
 
-/**
- * Pasek kontekstu kreatora + tytuł kroku (mocki: `.wiz-head` + `.wiz-title` +
- * `.wiz-sub`). Wydzielony, bo krok 4 mieszka w LazyColumn edytora dni.
- */
-@Composable
-internal fun PlanWizardIntro(
-    step: PlanWizardStep,
-    title: String,
-    subtitle: String?,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier) {
-        PlanWizardHead(step)
-        Spacer(Modifier.height(28.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        if (subtitle != null) {
-            Spacer(Modifier.height(StronkSpacing.xs))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/** Pasek kontekstu kreatora (mocki: `.wiz-head`) — nazwa kreatora, numer kroku, postęp. */
-@Composable
-private fun PlanWizardHead(step: PlanWizardStep, modifier: Modifier = Modifier) {
-    Column(modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "KREATOR PLANU",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.7.sp,
-                ),
-                color = StronkTheme.colors.textDim,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = "krok ${step.number}/${PlanWizardStep.TOTAL}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(Modifier.height(11.dp))
-        StronkSegmentedProgress(total = PlanWizardStep.TOTAL, currentIndex = step.ordinal)
-    }
-}
-
-/** Stopka kreatora (mocki: `.wiz-nav`) — ghost „Wstecz” + akcent, proporcje 1 : 1,7. */
-@Composable
-internal fun PlanWizardNav(
-    onBack: () -> Unit,
-    nextLabel: String,
-    onNext: () -> Unit,
-    nextEnabled: Boolean = true,
-    backLabel: String = "Wstecz",
-) {
-    StronkFooterActions(
-        modifier = Modifier.padding(
-            start = StronkSpacing.screen,
-            end = StronkSpacing.screen,
-            top = StronkSpacing.lg,
-            bottom = 26.dp,
-        ),
-    ) {
-        StronkGhostButton(text = backLabel, onClick = onBack, modifier = Modifier.weight(1f))
-        StronkPrimaryButton(
-            text = nextLabel,
-            onClick = onNext,
-            enabled = nextEnabled,
-            modifier = Modifier.weight(1.7f),
-        )
-    }
-}
-
-/**
- * Krok „Twoje ograniczenia” (mocki: `.limit-panel`) — panel z siatką chipów
- * stawów, licznikiem zaznaczonych i stopką, pod nim pasek informacyjny i link
- * pominięcia. Zaznaczenie zapisuje się od razu do profilu (autosave, ADR-002).
- *
- * @param constraints realne limity z profilu (klucz stawu → poziom)
- */
-@Composable
-internal fun PlanWizardLimitsStep(
-    constraints: Map<String, StressLevel>,
-    onToggle: (joint: String) -> Unit,
-    onSkip: () -> Unit,
-    onBack: () -> Unit,
-    onNext: () -> Unit,
-) {
-    PlanWizardScaffold(
-        step = PlanWizardStep.LIMITS,
-        title = "Twoje ograniczenia",
-        subtitle = "Zaznacz miejsca, które musimy oszczędzać podczas treningu.",
-        nav = { PlanWizardNav(onBack = onBack, nextLabel = "Dalej", onNext = onNext) },
-    ) {
-        StronkCard(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = StronkSpacing.screen)
-                .padding(top = StronkSpacing.xl),
-            contentPadding = PaddingValues(18.dp),
+                .padding(bottom = StronkSpacing.xl),
+            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            StronkSectionHeader(
-                title = "Partie i stawy",
-                trailing = {
-                    Text(
-                        text = "zaznaczone: ${constraints.size}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
+            StronkGhostButton(
+                text = "Wstecz",
+                onClick = { if (wizard.stepIndex == 0) onBack() else viewModel.wizardBack() },
+                modifier = Modifier.weight(1f),
+                icon = StronkIcons.back,
+                height = StronkSizes.ctaSmall,
             )
-            FlowRow(
-                modifier = Modifier.padding(top = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                ProfileDefaults.JOINT_KEYS.forEach { joint ->
-                    StronkChoiceChip(
-                        label = PlLabels.joint(joint),
-                        selected = joint in constraints,
-                        onClick = { onToggle(joint) },
-                        tone = StronkTone.WARNING,
-                        checkMark = true,
-                    )
-                }
-            }
-            Text(
-                text = "Poziom każdego ograniczenia dostroisz później w profilu.",
-                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
-                color = StronkTheme.colors.textDim,
-                modifier = Modifier.padding(top = 14.dp),
+            StronkPrimaryButton(
+                text = if (wizard.isLastStep) "Gotowe" else "Dalej",
+                onClick = viewModel::wizardNext,
+                modifier = Modifier.weight(1.7f),
+                enabled = wizard.canGoNext,
+                height = StronkSizes.ctaSmall,
             )
         }
+    }
+}
 
-        StronkNoteCard(
-            text = "Ćwiczenia mocno obciążające te miejsca oznaczymy i zaproponujemy zamienniki.",
-            modifier = Modifier
-                .padding(horizontal = StronkSpacing.screen)
-                .padding(top = StronkSpacing.md),
-        )
+// ---------- krok 1: szablon ----------
 
-        // Podkreślenie jak `.wiz-skip`/`.sec-actions u` w mocku — spójnie z
-        // "przesuń"/"odwołaj" w ScheduleScreen (ten sam komponent).
-        StronkUnderlinedTextAction(
-            text = "Nie mam ograniczeń — pomiń ten krok",
-            onClick = onSkip,
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(top = StronkSpacing.sm),
+@Composable
+private fun TemplateStep(wizard: PlanWizardUi, onChoose: (PlanPreset?) -> Unit) {
+    Column(
+        modifier = Modifier.padding(top = StronkSpacing.section),
+        verticalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+    ) {
+        wizard.presets.forEach { preset ->
+            TemplateOption(
+                title = preset.name,
+                description = preset.description,
+                selected = wizard.selectedPresetId == preset.id,
+                onClick = { onChoose(preset) },
+            )
+        }
+        TemplateOption(
+            title = "Od zera",
+            description = "Pusty plan — ćwiczenia dobierasz sam z bazy.",
+            selected = wizard.selectedPresetId == null,
+            onClick = { onChoose(null) },
         )
     }
+}
+
+@Composable
+private fun TemplateOption(
+    title: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = StronkRadius.cardShape,
+        color = if (selected) StronkTheme.colors.limeDim else StronkTheme.colors.surfaceCard,
+        border = if (selected) BorderStroke(1.dp, StronkTheme.colors.limeLine) else null,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = StronkSpacing.card, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = StronkTextStyles.h2,
+                    color = if (selected) {
+                        StronkTheme.colors.lime
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = description,
+                    style = StronkTextStyles.meta,
+                    color = StronkTheme.colors.textDim,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            if (selected) {
+                Icon(
+                    imageVector = StronkIcons.done,
+                    contentDescription = null,
+                    tint = StronkTheme.colors.lime,
+                    modifier = Modifier
+                        .padding(start = StronkSpacing.sm)
+                        .size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+// ---------- krok 2: długość bloku ----------
+
+@Composable
+private fun BlockStep(
+    wizard: PlanWizardUi,
+    onChange: (Int) -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
+) {
+    val weeks = wizard.blockLengthWeeks
+    StronkCard(modifier = Modifier.padding(top = StronkSpacing.section)) {
+        StronkSectionHeader(
+            title = "Blok treningowy",
+            modifier = Modifier.fillMaxWidth(),
+            trailing = {
+                Switch(checked = weeks != null, onCheckedChange = onEnabledChange)
+            },
+        )
+        if (weeks != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = StronkSpacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StepperButton(
+                    icon = Icons.Rounded.Remove,
+                    description = "Mniej tygodni",
+                    enabled = weeks > PlanDefaults.BLOCK_WEEKS_MIN,
+                    onClick = { onChange(weeks - 1) },
+                )
+                Text(
+                    text = weeks.toString(),
+                    style = StronkTextStyles.big,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = StronkSpacing.md),
+                )
+                StepperButton(
+                    icon = Icons.Rounded.Add,
+                    description = "Więcej tygodni",
+                    enabled = weeks < PlanDefaults.BLOCK_WEEKS_MAX,
+                    onClick = { onChange(weeks + 1) },
+                )
+            }
+        }
+        WizardNote(
+            text = if (weeks == null) {
+                "Bez bloku plan biegnie w nieskończoność: progresja idzie ciągiem, " +
+                    "a tydzień lekki nie wypada nigdy."
+            } else {
+                "Po tygodniach pracy dokładamy jeden tydzień lekki — ciężary spadają, " +
+                    "żeby ciało nadążyło."
+            },
+            modifier = Modifier.padding(top = StronkSpacing.md),
+        )
+    }
+}
+
+@Composable
+private fun StepperButton(
+    icon: ImageVector,
+    description: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = StronkRadius.tileShape,
+        color = StronkTheme.colors.surfaceTile,
+    ) {
+        Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                tint = if (enabled) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    StronkTheme.colors.textDim
+                },
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+// ---------- krok 3: ograniczenia ----------
+
+@Composable
+private fun ConstraintsStep(
+    wizard: PlanWizardUi,
+    onToggle: (String) -> Unit,
+    onSkip: () -> Unit,
+) {
+    StronkCard(modifier = Modifier.padding(top = StronkSpacing.section)) {
+        StronkSectionHeader(
+            title = "Partie i stawy",
+            modifier = Modifier.fillMaxWidth(),
+            trailing = {
+                Text(
+                    text = wizard.selectedJoints.size.toString(),
+                    style = StronkTextStyles.cap,
+                    color = StronkTheme.colors.textDim,
+                )
+            },
+        )
+        FlowRow(
+            modifier = Modifier.padding(top = 15.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            wizard.jointKeys.forEach { joint ->
+                JointChip(
+                    // Mocki kapitalizują etykiety chipów — „Kolano", nie „kolano".
+                    label = PlanTexts.chipLabel(PlLabels.joint(joint)),
+                    selected = joint in wizard.selectedJoints,
+                    onClick = { onToggle(joint) },
+                )
+            }
+        }
+        WizardNote(
+            text = "Ćwiczenia obciążające te miejsca zamienimy na bezpieczniejsze.",
+            modifier = Modifier.padding(top = 14.dp),
+        )
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = StronkSpacing.lg),
+        contentAlignment = Alignment.Center,
+    ) {
+        WizardSkipLink(text = "Nie mam ograniczeń — pomiń", onClick = onSkip)
+    }
+}
+
+/**
+ * Chip stawu (mock: `.jchip`) — 38 dp, tekst 15. Zaznaczony to TINT z ptaszkiem:
+ * `--lime-dim` + obrys `--lime-line` + tekst `--lime`. Obrys jest rysowany
+ * zawsze, więc zaznaczenie nie przesuwa sąsiadów.
+ */
+@Composable
+private fun JointChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = StronkRadius.pill,
+        color = if (selected) StronkTheme.colors.limeDim else StronkTheme.colors.surfaceTile,
+        border = BorderStroke(
+            1.dp,
+            if (selected) StronkTheme.colors.limeLine else StronkTheme.colors.lineSoft,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .height(38.dp)
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            if (selected) {
+                Icon(
+                    imageVector = StronkIcons.done,
+                    contentDescription = null,
+                    tint = StronkTheme.colors.lime,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
+            Text(
+                text = label,
+                style = StronkTextStyles.bodyStrong,
+                color = if (selected) {
+                    StronkTheme.colors.lime
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+// ---------- krok 4: nazwa ----------
+
+@Composable
+private fun NameStep(wizard: PlanWizardUi, onNameChange: (String) -> Unit) {
+    StronkCard(modifier = Modifier.padding(top = StronkSpacing.section)) {
+        OutlinedTextField(
+            value = wizard.name,
+            onValueChange = onNameChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Nazwa planu") },
+            shape = StronkRadius.innerShape,
+            singleLine = true,
+        )
+        StronkStatRow(modifier = Modifier.padding(top = StronkSpacing.lg)) {
+            WizardStat("Dni", wizard.summaryDays.toString(), Modifier.weight(1f))
+            StronkStatDivider(horizontalMargin = 14.dp)
+            // Plan bez bloku nie ma liczby tygodni — biegnie bez końca.
+            WizardStat(
+                label = "Tygodnie",
+                value = PlanTexts.blockWeeksStat(wizard.blockLengthWeeks),
+                modifier = Modifier.weight(1f),
+            )
+            StronkStatDivider(horizontalMargin = 14.dp)
+            WizardStat("Ćwiczenia", wizard.summaryExercises.toString(), Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun WizardStat(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(
+            text = label.uppercase(),
+            style = StronkTextStyles.cap,
+            color = StronkTheme.colors.textDim,
+            maxLines = 1,
+        )
+        Text(
+            text = value,
+            style = StronkTextStyles.h1,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            modifier = Modifier.padding(top = 5.dp),
+        )
+    }
+}
+
+// ---------- wspólne drobiazgi kreatora ----------
+
+/** Notka w karcie kroku (mock: `.note`) — kafelek `--s2` z ikoną i jedną myślą. */
+@Composable
+private fun WizardNote(text: String, modifier: Modifier = Modifier) {
+    StronkInsetCard(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = StronkSpacing.md, vertical = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(
+                imageVector = StronkIcons.info,
+                contentDescription = null,
+                tint = StronkTheme.colors.textDim,
+                modifier = Modifier
+                    .padding(end = 11.dp, top = 1.dp)
+                    .size(17.dp),
+            )
+            Text(
+                text = text,
+                style = StronkTextStyles.meta,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Podkreślony „pomiń" (mock: `.skip u`) — wygaszony, ale bez wątpliwości klikalny. */
+@Composable
+private fun WizardSkipLink(text: String, onClick: () -> Unit) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = StronkTheme.colors.textDim,
+        textDecoration = TextDecoration.Underline,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp, horizontal = 4.dp),
+    )
 }

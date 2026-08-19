@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stronk · runda 2 · wariant C2 — Limonka</title>
+<style>
+/* =========================================================================
+   stronk — WARIANT C2 "LIMONKA"  (runda 2)
+
+   Czerń z ledwie zielonkawym podtonem + JEDEN akcent: stonowana limonka.
+   Limonka pokrywa ok. 8-10% ekranu — CTA, wypełnione dni, słupek rekordu.
+   Cała reszta: czernie, ciepłe szarości, biały tekst.
+
+   Typografia 1:1 z wariantu B (humanistyczna, zero condensed, zero uppercase
+   poza micro-nagłówkami statów).
+
+   Docelowy font w APK: Figtree (400/500/600/700), alternatywa Inter.
+   Tu przybliżony fontami systemowymi.
+
+   Wszystko przekładalne na Jetpack Compose M3: Surface/Card, Row/Column,
+   Canvas na wykres i kropki. Zero blura, zdjęć, gradientów 3D.
+   ========================================================================= */
+:root{
+  /* ---- powierzchnie: jedna rodzina, hue 80, minimalna saturacja ---------- */
+  --page:      hsl(80, 4%, 4%);    /* tło strony z mockami */
+  --s0:        hsl(80, 4%, 6%);    /* tło ekranu telefonu */
+  --s1:        hsl(80, 4%, 10%);   /* karta */
+  --s2:        hsl(75, 4%, 14%);   /* element na karcie / kafelek */
+  --s3:        hsl(75, 4%, 19%);   /* placeholder ikony, tor / pusty dzień */
+  --line:      hsl(75, 4%, 17%);
+  --line-soft: hsl(75, 4%, 12%);
+
+  /* ---- tekst ------------------------------------------------------------ */
+  --text:   hsl(70, 8%, 96%);
+  --text-2: hsl(70, 5%, 70%);
+  --text-3: hsl(70, 4%, 46%);
+
+  /* ---- akcent: limonka UJARZMIONA (z 85%/55% -> 70%/52%) ----------------- */
+  --lime:      hsl(75, 70%, 52%);
+  --lime-deep: hsl(75, 55%, 40%);
+  --lime-ink:  hsl(80, 60%,  7%);   /* tekst NA limonce */
+  --lime-dim:  hsla(75, 70%, 52%, .13);
+  --lime-line: hsla(75, 70%, 52%, .30);
+
+  /* ---- typografia (wariant B, skopiowana 1:1) --------------------------- */
+  --font: "Segoe UI", "Segoe UI Variable", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --fs-hero:   62px;
+  --fs-big:    40px;
+  --fs-title:  27px;
+  --fs-h1:     24px;
+  --fs-h2:     17px;
+  --fs-body:   15px;
+  --fs-meta:   13px;
+  --fs-cap:    11px;
+  --tr-cap:    .14em;
+
+  /* ---- promienie -------------------------------------------------------- */
+  --r-card:  24px;
+  --r-inner: 18px;
+  --r-tile:  14px;
+  --r-day:    7px;
+  --r-pill:  999px;
+
+  /* ---- rytm ------------------------------------------------------------- */
+  --pad-screen: 22px;
+  --pad-card:   20px;
+}
+
+*{ margin:0; padding:0; box-sizing:border-box; }
+html,body{ background:var(--page); }
+body{
+  font-family:var(--font); color:var(--text);
+  padding:44px 56px 72px; overflow-x:auto;
+  -webkit-font-smoothing:antialiased;
+}
+.num{ font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.cap{
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap);
+  text-transform:uppercase; color:var(--text-3);
+}
+
+/* ---------------- strona ------------------------------------------------ */
+.page-head{ margin-bottom:34px; max-width:840px; }
+.page-head h1{ font-size:21px; font-weight:700; letter-spacing:-.02em; }
+.page-head h1 em{ font-style:normal; color:var(--lime); }
+.page-head p{ margin-top:8px; font-size:13.5px; line-height:1.55; color:var(--text-3); }
+.rail{ display:flex; gap:54px; align-items:flex-start; width:max-content; }
+.col{ width:390px; flex:none; }
+.caption{
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap);
+  text-transform:uppercase; color:var(--text-3); margin:0 6px 14px;
+  display:flex; align-items:center; gap:10px;
+}
+.caption b{ color:var(--text-2); font-weight:700; }
+.caption i{ flex:1; height:1px; background:var(--line-soft); }
+
+/* ---------------- ramka telefonu ---------------------------------------- */
+.phone{
+  width:390px; height:844px; background:var(--s0);
+  border-radius:38px; overflow:hidden; position:relative;
+  box-shadow:0 0 0 8px hsl(80,4%,9%), 0 0 0 9px hsl(75,4%,20%), 0 26px 60px hsla(0,0%,0%,.55);
+}
+.screen{ height:100%; display:flex; flex-direction:column; padding:0 var(--pad-screen); }
+
+/* pasek systemowy — tylko sygnał, nie treść */
+.sysbar{
+  height:52px; flex:none; display:flex; align-items:center; justify-content:space-between;
+  font-size:12px; color:var(--text-3); font-weight:600;
+}
+.sysdots{ display:flex; gap:4px; align-items:center; }
+.sysdots span{ width:5px; height:5px; border-radius:50%; background:var(--text-3); opacity:.55; }
+.sysdots span:last-child{ width:16px; height:8px; border-radius:2px; }
+
+/* pasek nawigacji ekranu: chevron wstecz + dyskretne "i" */
+.navbar{ height:44px; flex:none; display:flex; align-items:center; justify-content:space-between; }
+.iconbtn{
+  width:36px; height:36px; margin-left:-8px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; color:var(--text-2);
+}
+.iconbtn.right{ margin-left:0; margin-right:-8px; color:var(--text-3); }
+
+/* chip partii / serii ----------------------------------------------------- */
+.chip{
+  display:inline-flex; align-items:center; height:26px; padding:0 11px;
+  border-radius:var(--r-pill); background:var(--s2); color:var(--text-2);
+  font-size:var(--fs-meta); font-weight:600; letter-spacing:-.005em;
+}
+
+/* CTA --------------------------------------------------------------------- */
+.cta{
+  height:66px; border-radius:20px; background:var(--lime); color:var(--lime-ink);
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  font-size:19px; font-weight:700; letter-spacing:-.01em;
+}
+.cta.sm{ height:54px; border-radius:16px; font-size:16px; }
+
+/* =========================================================================
+   EKRAN 1 — TRENING (widok serii).  Dominanta: liczba ciężaru.
+   ========================================================================= */
+.ctx{ font-size:var(--fs-cap); color:var(--text-3); font-weight:600; letter-spacing:.01em; }
+.ex-name{
+  margin-top:14px; font-size:var(--fs-title); font-weight:700;
+  letter-spacing:-.01em; line-height:1.15;
+}
+.ex-chip{ margin-top:12px; }
+
+.dots{ margin-top:26px; display:flex; gap:9px; align-items:center; }
+.dots i{ width:9px; height:9px; border-radius:50%; background:var(--s3); }
+.dots i.on{ background:var(--lime); box-shadow:0 0 0 5px var(--lime-dim); }
+
+.stats{ margin-top:auto; display:flex; align-items:flex-end; gap:0; }
+.stat{ flex:1; }
+.stat .cap{ display:block; margin-bottom:6px; }
+.stat .v{
+  font-size:var(--fs-hero); font-weight:700; line-height:.92; color:var(--text);
+}
+.stat.reps .v{ font-size:var(--fs-big); line-height:1.05; padding-bottom:9px; }
+.stat .u{ font-size:19px; font-weight:600; color:var(--text-3); margin-left:5px; letter-spacing:0; }
+.stat-div{ width:1px; align-self:stretch; background:var(--line); margin:0 20px; }
+
+.stats-wrap{ margin-top:auto; }
+.cta-wrap{ margin-top:34px; }
+
+.next{
+  margin-top:26px; margin-bottom:24px; padding-top:16px; border-top:1px solid var(--line-soft);
+}
+.next .cap{ display:block; margin-bottom:10px; }
+.next .row{ display:flex; align-items:center; gap:12px; }
+.next .ico{
+  width:34px; height:34px; border-radius:10px; background:var(--s2);
+  display:flex; align-items:center; justify-content:center; color:var(--text-3); flex:none;
+}
+.next .nm{ flex:1; font-size:var(--fs-h2); font-weight:600; color:var(--text-2); letter-spacing:-.01em; }
+.next .chev{ color:var(--text-3); flex:none; }
+
+/* =========================================================================
+   EKRAN 2 — TYDZIEŃ.  Dominanta: siatka kwadratów.
+   ========================================================================= */
+.h1{ font-size:var(--fs-h1); font-weight:700; letter-spacing:-.01em; }
+
+.cal{ margin-top:18px; }
+.cal .wd{
+  display:grid; grid-template-columns:repeat(7,1fr); gap:8px; margin-bottom:10px;
+}
+.cal .wd span{ text-align:center; }
+.cal .grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+.day{
+  aspect-ratio:1/1; border-radius:var(--r-day); background:var(--s1);
+  display:flex; align-items:center; justify-content:center;
+  font-size:var(--fs-meta); font-weight:600; color:var(--text-3);
+}
+.day.plan{ background:transparent; border:1.5px solid var(--line); color:var(--text-2); }
+/* dni zrobione: limonka PRZYCISZONA (deep), żeby jasna limonka została
+   zarezerwowana dla akcji (CTA) i „dziś”. Siatka nadal dominuje. */
+.day.done{ background:var(--lime-deep); color:var(--lime-ink); font-weight:700; }
+.day.today{ box-shadow:0 0 0 2px var(--s0), 0 0 0 4px var(--lime); }
+.day.off{ color:hsl(70,4%,28%); }
+
+.legend{ margin-top:14px; display:flex; gap:18px; align-items:center; }
+.legend div{ display:flex; align-items:center; gap:8px; }
+.legend b{ width:12px; height:12px; border-radius:4px; background:var(--lime-deep); }
+.legend b.o{ background:transparent; border:1.5px solid var(--line); }
+
+.daycard{
+  margin-top:18px; margin-bottom:20px; background:var(--s1);
+  border-radius:var(--r-card); padding:18px;
+}
+.daycard .hd{ display:flex; align-items:baseline; justify-content:space-between; }
+.daycard .hd .nm{ font-size:21px; font-weight:700; letter-spacing:-.01em; }
+.exlist{ margin-top:6px; }
+.exrow{ display:flex; align-items:center; gap:13px; padding:12px 0; border-bottom:1px solid var(--line-soft); }
+.exrow:last-child{ border-bottom:0; padding-bottom:2px; }
+.exrow .ico{
+  width:38px; height:38px; border-radius:12px; background:var(--s2);
+  display:flex; align-items:center; justify-content:center; color:var(--text-3); flex:none;
+}
+.exrow .nm{ flex:1; font-size:var(--fs-h2); font-weight:600; letter-spacing:-.01em; }
+.mt20{ margin-top:20px; }
+
+/* =========================================================================
+   EKRAN 3 — ĆWICZENIE / HISTORIA.  Dominanta: karta rekordu.
+   ========================================================================= */
+.seg{
+  margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:4px;
+  background:var(--s1); border-radius:var(--r-pill); padding:4px;
+}
+.seg span{
+  height:38px; border-radius:var(--r-pill); display:flex; align-items:center; justify-content:center;
+  font-size:var(--fs-body); font-weight:600; color:var(--text-3);
+}
+.seg span.on{ background:var(--s3); color:var(--text); }
+
+.record{
+  margin-top:22px; background:var(--lime-dim); border:1px solid var(--lime-line);
+  border-radius:var(--r-card); padding:var(--pad-card);
+}
+.record .hd{ display:flex; align-items:center; justify-content:space-between; }
+.record .badge{
+  display:inline-flex; align-items:center; height:24px; padding:0 10px; border-radius:var(--r-pill);
+  background:var(--lime); color:var(--lime-ink);
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap); text-transform:uppercase;
+}
+.record .row{ margin-top:16px; display:flex; align-items:flex-end; }
+.record .stat{ flex:1; }
+.record .stat .cap{ display:block; margin-bottom:5px; }
+.record .stat .v{ font-size:var(--fs-big); font-weight:700; line-height:1; color:var(--lime); }
+.record .stat .u{ font-size:15px; font-weight:600; color:var(--text-3); margin-left:4px; }
+.record .stat.reps .v{ color:var(--text); }
+
+.chart{ margin-top:26px; }
+.chart svg{ display:block; width:100%; height:120px; }
+
+.tbl{ margin-top:24px; }
+.tbl .th{
+  display:grid; grid-template-columns:1fr 82px 82px; align-items:center;
+  padding-bottom:10px; border-bottom:1px solid var(--line);
+}
+.tbl .th span:not(:first-child){ text-align:right; }
+.tbl .tr{
+  display:grid; grid-template-columns:1fr 82px 82px; align-items:center;
+  padding:15px 0; border-bottom:1px solid var(--line-soft);
+}
+.tbl .tr:last-child{ border-bottom:0; }
+.tbl .d{ font-size:var(--fs-body); color:var(--text-2); font-weight:500; }
+.tbl .n{ text-align:right; font-size:21px; font-weight:600; }
+.tbl .tr.top .n{ color:var(--lime); }
+.pb{ padding-bottom:26px; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>stronk · runda 2 · wariant <em>C2 — Limonka</em></h1>
+  <p>Czerń z zielonkawym podtonem, jeden stonowany akcent limonkowy (~10% powierzchni), typografia z wariantu B.
+     Trzy ekrany, nic ponad budżet. Ciężar i powtórzenia zawsze jako dwa osobne staty z micro-nagłówkiem.</p>
+</div>
+
+<div class="rail">
+
+  <!-- =====================================================================
+       1 — TRENING
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>1 · Trening</b><i></i>seria</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">18:42</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="iconbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>
+        </div>
+        <div class="iconbtn right">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.6v.1"/></svg>
+        </div>
+      </div>
+
+      <div class="ctx">Full body B · ćwiczenie 2/6</div>
+
+      <div class="ex-name">Mostek biodrowy<br>ze sztangą</div>
+      <div class="ex-chip"><span class="chip">Pośladki</span></div>
+
+      <div class="dots">
+        <i class="on"></i><i></i><i></i>
+      </div>
+
+      <div class="stats-wrap">
+        <div class="stats">
+          <div class="stat">
+            <span class="cap">Ciężar</span>
+            <div class="v num">32,5<span class="u">kg</span></div>
+          </div>
+          <div class="stat-div"></div>
+          <div class="stat reps">
+            <span class="cap">Powtórzenia</span>
+            <div class="v num">12</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta-wrap">
+        <div class="cta">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19 7"/></svg>
+          Zaliczone
+        </div>
+      </div>
+
+      <div class="next">
+        <span class="cap">Następne</span>
+        <div class="row">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Wyciskanie hantli leżąc</div>
+          <div class="chev">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+      </div>
+
+    </div></div>
+  </div>
+
+  <!-- =====================================================================
+       2 — TYDZIEŃ
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>2 · Tydzień</b><i></i>plan</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">18:41</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="h1" style="margin-left:0">Tydzień 1/6</div>
+        <div class="iconbtn right">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.6v.1"/></svg>
+        </div>
+      </div>
+
+      <div class="cal">
+        <div class="wd cap">
+          <span>P</span><span>W</span><span>Ś</span><span>C</span><span>P</span><span>S</span><span>N</span>
+        </div>
+        <div class="grid">
+          <!-- tydzień -3 -->
+          <div class="day done num">14</div>
+          <div class="day off num">15</div>
+          <div class="day done num">16</div>
+          <div class="day off num">17</div>
+          <div class="day done num">18</div>
+          <div class="day off num">19</div>
+          <div class="day off num">20</div>
+          <!-- tydzień -2 -->
+          <div class="day done num">21</div>
+          <div class="day off num">22</div>
+          <div class="day done num">23</div>
+          <div class="day off num">24</div>
+          <div class="day done num">25</div>
+          <div class="day off num">26</div>
+          <div class="day off num">27</div>
+          <!-- tydzień -1 -->
+          <div class="day done num">28</div>
+          <div class="day off num">29</div>
+          <div class="day done num">30</div>
+          <div class="day off num">31</div>
+          <div class="day done num">1</div>
+          <div class="day off num">2</div>
+          <div class="day off num">3</div>
+          <!-- bieżący -->
+          <div class="day done num">4</div>
+          <div class="day off num">5</div>
+          <div class="day plan today num">6</div>
+          <div class="day off num">7</div>
+          <div class="day plan num">8</div>
+          <div class="day off num">9</div>
+          <div class="day off num">10</div>
+          <!-- następny -->
+          <div class="day plan num">11</div>
+          <div class="day off num">12</div>
+          <div class="day plan num">13</div>
+          <div class="day off num">14</div>
+          <div class="day plan num">15</div>
+          <div class="day off num">16</div>
+          <div class="day off num">17</div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <div><b></b><span class="cap">Zrobione</span></div>
+        <div><b class="o"></b><span class="cap">Plan</span></div>
+      </div>
+
+      <div class="daycard">
+        <div class="hd">
+          <div class="nm">Środa · Full body B</div>
+        </div>
+
+        <div class="cta sm mt20">Zacznij trening</div>
+
+        <div class="exlist">
+          <div class="exrow">
+            <div class="ico">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+            </div>
+            <div class="nm">Przysiad goblet</div>
+            <span class="chip">3 serie</span>
+          </div>
+          <div class="exrow">
+            <div class="ico">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+            </div>
+            <div class="nm">Mostek biodrowy</div>
+            <span class="chip">3 serie</span>
+          </div>
+          <div class="exrow">
+            <div class="ico">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+            </div>
+            <div class="nm">Wyciskanie hantli</div>
+            <span class="chip">3 serie</span>
+          </div>
+          <div class="exrow">
+            <div class="ico">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+            </div>
+            <div class="nm">Wiosłowanie hantlem</div>
+            <span class="chip">3 serie</span>
+          </div>
+        </div>
+      </div>
+
+    </div></div>
+  </div>
+
+  <!-- =====================================================================
+       3 — ĆWICZENIE / TWOJA HISTORIA
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>3 · Ćwiczenie</b><i></i>historia</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">18:39</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="iconbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>
+        </div>
+      </div>
+
+      <div class="h1">Mostek biodrowy<br>ze sztangą</div>
+
+      <div class="seg">
+        <span>Opis</span>
+        <span class="on">Historia</span>
+      </div>
+
+      <div class="record">
+        <div class="hd">
+          <span class="cap">Rekord</span>
+          <span class="badge">PR</span>
+        </div>
+        <div class="row">
+          <div class="stat">
+            <span class="cap">Ciężar</span>
+            <div class="v num">40<span class="u">kg</span></div>
+          </div>
+          <div class="stat reps">
+            <span class="cap">Powtórzenia</span>
+            <div class="v num">8</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart">
+        <svg viewBox="0 0 346 120" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="lgFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"  stop-color="hsl(75,70%,52%)" stop-opacity=".20"/>
+              <stop offset="100%" stop-color="hsl(75,70%,52%)" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d="M6 96 L74 88 L142 66 L210 70 L278 40 L340 22 L340 120 L6 120 Z" fill="url(#lgFill)"/>
+          <path d="M6 96 L74 88 L142 66 L210 70 L278 40 L340 22"
+                fill="none" stroke="hsl(75,70%,52%)" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="340" cy="22" r="5" fill="hsl(75,70%,52%)"/>
+          <circle cx="340" cy="22" r="10" fill="hsl(75,70%,52%)" opacity=".16"/>
+        </svg>
+      </div>
+
+      <div class="tbl">
+        <div class="th">
+          <span class="cap">Data</span>
+          <span class="cap">Ciężar</span>
+          <span class="cap">Powt.</span>
+        </div>
+        <div class="tr top">
+          <span class="d num">16.08</span>
+          <span class="n num">40</span>
+          <span class="n num">8</span>
+        </div>
+        <div class="tr">
+          <span class="d num">12.08</span>
+          <span class="n num">37,5</span>
+          <span class="n num">10</span>
+        </div>
+        <div class="tr">
+          <span class="d num">09.08</span>
+          <span class="n num">35</span>
+          <span class="n num">10</span>
+        </div>
+      </div>
+
+      <div class="pb"></div>
+    </div></div>
+  </div>
+
+</div>
+</body>
+</html>

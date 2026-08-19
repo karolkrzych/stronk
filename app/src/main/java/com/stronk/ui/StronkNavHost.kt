@@ -2,6 +2,12 @@ package com.stronk.ui
 
 import android.net.Uri
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ListAlt
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,7 +23,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.stronk.StronkApplication
 import com.stronk.ui.accesscode.AccessCodeScreen
-import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkNavigationBar
 import com.stronk.ui.components.StronkNavigationBarItem
 import com.stronk.ui.detail.ExerciseDetailScreen
@@ -70,15 +75,26 @@ object Routes {
         "progress/exercise/${Uri.encode(exerciseId)}"
 }
 
-/** Zakładka dolnej nawigacji. */
+/**
+ * Zakładka dolnej nawigacji. [label] nie jest rysowana (pasek ma SAME ikony) —
+ * idzie do `contentDescription` dla czytnika ekranu.
+ */
 private data class BottomTab(val route: String, val label: String, val icon: ImageVector)
 
+/**
+ * Pięć zakładek w kolejności z mocków (`pack-dzis-plany.html`, `.nav`).
+ *
+ * Ikony bierzemy tu WPROST z `Icons.Rounded.*`, a nie ze [StronkIcons]: pasek
+ * mówi „gdzie jestem", a ekrany mówią „co to jest", więc te same pojęcia mają
+ * w nawigacji inne piktogramy niż w treści (Dziś = dom, nie kartka kalendarza;
+ * Baza = hantel, nie lupa).
+ */
 private val bottomTabs = listOf(
-    BottomTab(Routes.HOME, "Dziś", StronkIcons.today),
-    BottomTab(Routes.SCHEDULE, "Tydzień", StronkIcons.week),
-    BottomTab(Routes.PLANS, "Plany", StronkIcons.plans),
-    BottomTab(Routes.PROGRESS, "Progres", StronkIcons.progress),
-    BottomTab(Routes.EXERCISE_LIST, "Baza", StronkIcons.database),
+    BottomTab(Routes.HOME, "Dziś", Icons.Rounded.Home),
+    BottomTab(Routes.SCHEDULE, "Tydzień", Icons.Rounded.CalendarMonth),
+    BottomTab(Routes.PLANS, "Plany", Icons.AutoMirrored.Rounded.ListAlt),
+    BottomTab(Routes.PROGRESS, "Progres", Icons.AutoMirrored.Rounded.TrendingUp),
+    BottomTab(Routes.EXERCISE_LIST, "Baza", Icons.Rounded.FitnessCenter),
 )
 
 @Composable

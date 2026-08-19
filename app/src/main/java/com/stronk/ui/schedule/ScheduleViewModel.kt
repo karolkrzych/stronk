@@ -8,23 +8,16 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.stronk.StronkApplication
 import com.stronk.data.Exercise
 import com.stronk.data.ExerciseRepository
-import com.stronk.data.GoalDefaults
 import com.stronk.data.Plan
-import com.stronk.data.PlanExercise
 import com.stronk.data.PlanRepository
 import com.stronk.data.ScheduleEntry
 import com.stronk.data.ScheduleRepository
 import com.stronk.data.ScheduleStatus
-import com.stronk.data.SetTarget
-import com.stronk.data.UserProfileRepository
 import com.stronk.progression.ProgressionConstants
 import com.stronk.progression.ProgressionEngine
-import com.stronk.ui.PlLabels
 import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
-import kotlin.math.roundToInt
+import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,16 +25,18 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** Wiersz ćwiczenia w karcie wybranego dnia. */
+/**
+ * Wiersz ćwiczenia w karcie wybranego dnia (mock: `.exrow` = ikona + nazwa + chip).
+ * Świadomie NIE ma tu skrótu celu typu „3×8" — liczba serii jedzie jako chip
+ * [setsLabel], a ciężar i powtórzenia pokazuje dopiero ekran treningu w statach.
+ */
 data class ScheduleExerciseRow(
     val exerciseId: String,
     val name: String,
-    /** Polska etykieta głównej partii; pusta gdy ćwiczenie nieznane. */
-    val muscleLabel: String,
     /** Surowy klucz partii z datasetu (np. "lats") pod dobór ikony; null gdy nieznane. */
     val muscleKey: String?,
-    /** Skrót celu, np. "3×8", "3×60 s", "3 km". */
-    val targetLabel: String,
+    /** Chip liczby serii, np. „3 serie". */
+    val setsLabel: String,
 )
 
 /** Wpis harmonogramu przygotowany pod kartę wybranego dnia. */
@@ -49,36 +44,48 @@ data class ScheduleEntryUi(
     val entryId: String,
     val planId: String,
     val dayIndex: Int,
+    /** Tytuł karty, np. „Środa · Full body B". */
+    val title: String,
     /** null, gdy plan nie istnieje (np. usunięty) — UI pokazuje to wprost. */
     val planName: String?,
     /** null, gdy plan nie istnieje albo dayIndex poza zakresem. */
     val dayName: String?,
     val status: ScheduleStatus,
-    /** Przy status=MOVED: etykieta docelowej daty, np. "piątek 22 sierpnia". */
+    /** Przy status=MOVED: etykieta docelowej daty, np. „piątek 22 sierpnia". */
     val movedToLabel: String?,
     val exercises: List<ScheduleExerciseRow>,
-    /** Zaokrąglony do 5 min szacunek czasu treningu (sumaSerii × (przerwa + 40 s)). */
-    val estimatedMinutes: Int,
 ) {
     /** Start treningu tylko z zaplanowanego wpisu wskazującego istniejący dzień planu. */
     val canStart: Boolean
         get() = status == ScheduleStatus.PLANNED && dayName != null
+
+    /** Plan zniknął spod wpisu — karta mówi to wprost zamiast udawać trening. */
+    val planMissing: Boolean
+        get() = dayName == null
 }
 
-/** Stan wizualny komórki dnia w siatce tygodnia. */
-enum class DayBadge { NONE, PLANNED, DONE, SKIPPED, MOVED }
+/**
+ * Stan kwadratu dnia w siatce bloku. Trzy stany widoczne w legendzie (maks 2
+ * pozycje + „dziś" jako ring), [MISSED] rysuje się jak [PLANNED] — zaplanowany
+ * dzień w przeszłości to nadal „plan, którego nie ma w faktach".
+ */
+enum class ScheduleDayStatus { DONE, PLANNED, MISSED, FREE }
 
-/** Komórka dnia w siatce tygodnia. */
+/** Kwadrat dnia w siatce (mock: `.day`). */
 data class ScheduleDayUi(
     val date: LocalDate,
-    /** "Pn", "Wt", … */
-    val abbrev: String,
     val dayOfMonth: Int,
     val isToday: Boolean,
     val isSelected: Boolean,
-    val badge: DayBadge,
-    /** Nazwa dnia planu (np. "Push"); pusta = dzień wolny. */
-    val label: String,
+    val status: ScheduleDayStatus,
+)
+
+/** Jeden rząd siatki = tydzień bloku (7 kwadratów, poniedziałek–niedziela). */
+data class ScheduleWeekUi(
+    /** 1-based pozycja tygodnia w bloku. */
+    val weekNumber: Int,
+    val isCurrentWeek: Boolean,
+    val days: List<ScheduleDayUi>,
 )
 
 /** Plan możliwy do przypisania do tygodnia (niearchiwalny, z co najmniej 1 dniem). */
@@ -89,21 +96,22 @@ data class PlanOption(
     val dayNames: List<String>,
 )
 
-/** Stan ekranu harmonogramu. */
+/** Stan ekranu Tydzień. */
 data class ScheduleUiState(
     val loading: Boolean = true,
-    /** Np. "10–16 sierpnia". */
-    val weekLabel: String = "",
-    val isCurrentWeek: Boolean = true,
-    /** Pozycja w bloku (1-based) wg planu bieżącego wpisu tygodnia; null = brak planu w tygodniu. */
-    val weekInBlock: Int? = null,
-    /** Pełna długość bloku (praca + tydzień lekki); null = brak planu w tygodniu. */
-    val blockLengthWeeks: Int? = null,
-    /** Zawsze 7 komórek (poniedziałek–niedziela). */
-    val days: List<ScheduleDayUi> = emptyList(),
-    /** "Dziś" albo np. "Piątek 22 sierpnia". */
-    val selectedDayLabel: String = "",
+    /**
+     * Nagłówek: „Tydzień 1/6" w planie z blokiem, samo „Tydzień 7" w planie bez
+     * bloku (nie ma mianownika, plan biegnie bez końca); pusty bez planu.
+     */
+    val blockLabel: String = "",
+    /** Podtytuł: miesiąc(-e) objęte siatką, np. „Sierpień – wrzesień". */
+    val monthLabel: String = "",
+    /** Rzędy siatki kwadratów — tygodnie bieżącego bloku. */
+    val weeks: List<ScheduleWeekUi> = emptyList(),
     val selectedDate: LocalDate = LocalDate.now(),
+    /** „Dziś" albo np. „Piątek 22 sierpnia" — dla dnia bez treningu. */
+    val selectedDayLabel: String = "",
+    val todaySelected: Boolean = true,
     val selectedEntries: List<ScheduleEntryUi> = emptyList(),
     val planOptions: List<PlanOption> = emptyList(),
     /** true = zero wpisów w całym harmonogramie → pusty stan z zachętą. */
@@ -114,13 +122,12 @@ class ScheduleViewModel(
     private val scheduleRepository: ScheduleRepository,
     planRepository: PlanRepository,
     exerciseRepository: ExerciseRepository,
-    userProfileRepository: UserProfileRepository,
 ) : ViewModel() {
 
     /** Dataset z assets — null do końca pierwszego ładowania. */
     private val exercisesById = MutableStateFlow<Map<String, Exercise>?>(null)
 
-    /** Jedno źródło pozycji w kalendarzu: tydzień widoku = tydzień wybranego dnia. */
+    /** Jedyne źródło pozycji w kalendarzu: który dzień pokazuje karta pod siatką. */
     private val selectedDate = MutableStateFlow(LocalDate.now())
 
     /** Ostatni znany harmonogram — pod akcje (przesuń/odwołaj/generacja). */
@@ -131,11 +138,10 @@ class ScheduleViewModel(
         planRepository.observePlans(),
         exercisesById,
         selectedDate,
-        userProfileRepository.observeProfile(),
-    ) { schedule, plans, exercises, selected, profile ->
+    ) { schedule, plans, exercises, selected ->
         latestEntries = schedule
         if (exercises == null) ScheduleUiState(loading = true)
-        else buildState(schedule, plans, exercises, selected, GoalDefaults.forProfile(profile).restSeconds)
+        else buildState(schedule, plans, exercises, selected)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScheduleUiState())
 
     init {
@@ -148,14 +154,6 @@ class ScheduleViewModel(
 
     fun onSelectDay(date: LocalDate) {
         selectedDate.value = date
-    }
-
-    fun onPreviousWeek() {
-        selectedDate.value = selectedDate.value.minusWeeks(1)
-    }
-
-    fun onNextWeek() {
-        selectedDate.value = selectedDate.value.plusWeeks(1)
     }
 
     fun onBackToToday() {
@@ -207,7 +205,7 @@ class ScheduleViewModel(
         if (assignments.isEmpty()) return
         val occupied = latestEntries
             .filter { it.status == ScheduleStatus.PLANNED || it.status == ScheduleStatus.DONE }
-            .mapNotNull { entry -> runCatching { LocalDate.parse(entry.date) }.getOrNull() }
+            .mapNotNull { entry -> parseDate(entry.date) }
             .toSet()
         generatePlannedSlots(assignments, startDate, occupiedDates = occupied).forEach { slot ->
             scheduleRepository.save(
@@ -229,81 +227,132 @@ class ScheduleViewModel(
         plans: List<Plan>,
         exercises: Map<String, Exercise>,
         selected: LocalDate,
-        restSeconds: Int,
     ): ScheduleUiState {
         val today = LocalDate.now()
-        val weekStart = weekStartOf(selected)
         val entriesByDate = schedule.groupBy { it.date }
         val plansById = plans.associateBy { it.id }
+        val plan = activePlan(schedule, plansById, today)
 
-        var blockPlan: Plan? = null
-        val days = (0 until ScheduleConstants.DAYS_IN_WEEK).map { offset ->
-            val date = weekStart.plusDays(offset.toLong())
-            val dayEntries = entriesByDate[date.toString()].orEmpty()
-            val badgeEntry = pickBadgeEntry(dayEntries)
-            if (blockPlan == null) {
-                blockPlan = badgeEntry?.let { plansById[it.planId] }
-            }
-            ScheduleDayUi(
-                date = date,
-                abbrev = ScheduleConstants.DAY_ABBREVIATIONS.getValue(date.dayOfWeek),
-                dayOfMonth = date.dayOfMonth,
-                isToday = date == today,
-                isSelected = date == selected,
-                badge = badgeEntry?.let { badgeOf(it.status) } ?: DayBadge.NONE,
-                label = badgeEntry?.let { entry ->
-                    plansById[entry.planId]?.days?.getOrNull(entry.dayIndex)?.name ?: "?"
-                }.orEmpty(),
+        // Pozycja w bloku liczona WYŁĄCZNIE przez silnik progresji (ADR-004).
+        // null = plan bez bloku: tygodnie lecą liniowo, siatka jedzie oknem.
+        // Bez planu w ogóle zostaje domyślny blok — siatka ma znajomy kształt.
+        val blockWeeks = if (plan == null) {
+            ProgressionConstants.BLOCK_LENGTH_WEEKS_DEFAULT
+        } else {
+            ProgressionEngine.fullBlockWeeks(plan.blockLengthWeeks)
+        }
+        val weekIndex = plan?.let {
+            ProgressionEngine.weekIndexForBlock(
+                it.createdAt,
+                System.currentTimeMillis(),
+                blockWeeks,
+            )
+        } ?: 0
+        val window = gridWindow(weekIndex, blockWeeks)
+        val mondays = blockWeekMondays(today, weekIndex, window)
+
+        val weeks = mondays.mapIndexed { row, monday ->
+            val weekIndexOfRow = window.startWeek + row
+            ScheduleWeekUi(
+                // Bez bloku numeracja jest liniowa — nie ma czego zawijać modulo.
+                weekNumber = if (blockWeeks == null) {
+                    weekIndexOfRow + 1
+                } else {
+                    weekIndexOfRow % blockWeeks + 1
+                },
+                isCurrentWeek = weekIndexOfRow == weekIndex,
+                days = (0 until ScheduleConstants.DAYS_IN_WEEK).map { offset ->
+                    val date = monday.plusDays(offset.toLong())
+                    ScheduleDayUi(
+                        date = date,
+                        dayOfMonth = date.dayOfMonth,
+                        isToday = date == today,
+                        isSelected = date == selected,
+                        status = dayStatus(entriesByDate[date.toString()].orEmpty(), date, today),
+                    )
+                },
             )
         }
 
-        val fullBlockLength = blockPlan?.let { it.blockLengthWeeks + ProgressionConstants.BLOCK_LIGHT_WEEKS }
-        val weekInBlock = blockPlan?.let {
-            ProgressionEngine.weekIndexInBlock(it.createdAt, System.currentTimeMillis(), fullBlockLength!!) + 1
-        }
+        val gridFrom = mondays.firstOrNull() ?: weekStartOf(today)
+        val gridTo = mondays.lastOrNull()?.plusDays((ScheduleConstants.DAYS_IN_WEEK - 1).toLong())
+            ?: gridFrom
 
         return ScheduleUiState(
             loading = false,
-            weekLabel = weekLabel(weekStart, today),
-            isCurrentWeek = weekStart == weekStartOf(today),
-            weekInBlock = weekInBlock,
-            blockLengthWeeks = fullBlockLength,
-            days = days,
-            selectedDayLabel = selectedDayLabel(selected, today),
+            blockLabel = if (plan == null) {
+                ""
+            } else {
+                ScheduleTexts.weekHeaderLabel(weekIndex + 1, blockWeeks)
+            },
+            monthLabel = ScheduleTexts.monthRangeLabel(gridFrom, gridTo, today),
+            weeks = weeks,
             selectedDate = selected,
+            selectedDayLabel = ScheduleTexts.selectedDayLabel(selected, today),
+            todaySelected = selected == today,
             selectedEntries = entriesByDate[selected.toString()].orEmpty()
-                .map { entryUi(it, plansById, exercises, restSeconds) },
+                .sortedBy { it.dayIndex }
+                .map { entryUi(it, selected, plansById, exercises) },
             planOptions = plans
                 .filter { !it.archived && it.days.isNotEmpty() }
-                .map { plan -> PlanOption(plan.id, plan.name, plan.days.map { it.name }) },
+                .sortedByDescending { it.createdAt }
+                .map { candidate ->
+                    PlanOption(candidate.id, candidate.name, candidate.days.map { it.name })
+                },
             scheduleEmpty = schedule.isEmpty(),
         )
     }
 
-    /** Najważniejszy wpis dnia pod badge siatki: PLANNED > DONE > MOVED > SKIPPED. */
-    private fun pickBadgeEntry(entries: List<ScheduleEntry>): ScheduleEntry? =
-        entries.minByOrNull { badgePriority.indexOf(it.status) }
-
-    private fun badgeOf(status: ScheduleStatus): DayBadge = when (status) {
-        ScheduleStatus.PLANNED -> DayBadge.PLANNED
-        ScheduleStatus.DONE -> DayBadge.DONE
-        ScheduleStatus.SKIPPED -> DayBadge.SKIPPED
-        ScheduleStatus.MOVED -> DayBadge.MOVED
+    /**
+     * Plan, którego blok pokazuje siatka: plan z wpisu harmonogramu najbliższego
+     * dzisiejszemu dniowi (to on jest „tym, w czym teraz jesteś"), a bez
+     * harmonogramu — najnowszy niearchiwalny plan. Sortowanie po stronie klienta,
+     * zero zapytań z `orderBy` (dokument bez pola wypadałby z takiego zapytania).
+     */
+    private fun activePlan(
+        schedule: List<ScheduleEntry>,
+        plansById: Map<String, Plan>,
+        today: LocalDate,
+    ): Plan? {
+        val nearest = schedule
+            .filter { it.status == ScheduleStatus.PLANNED || it.status == ScheduleStatus.DONE }
+            .mapNotNull { entry -> parseDate(entry.date)?.let { date -> date to entry } }
+            .sortedWith(
+                compareBy<Pair<LocalDate, ScheduleEntry>> {
+                    abs(it.first.toEpochDay() - today.toEpochDay())
+                }.thenBy { it.first },
+            )
+            .firstOrNull()
+            ?.second
+            ?.let { plansById[it.planId] }
+        return nearest
+            ?: plansById.values
+                .filter { !it.archived && it.days.isNotEmpty() }
+                .maxByOrNull { it.createdAt }
     }
 
-    private fun selectedDayLabel(selected: LocalDate, today: LocalDate): String =
-        if (selected == today) {
-            "Dziś"
-        } else {
-            fullDayFormatter.format(selected)
-                .replaceFirstChar { it.titlecase(polishLocale) }
-        }
+    /**
+     * Stan kwadratu z istniejących danych: zaliczony trening wygrywa nad planem,
+     * a plan w przeszłości bez zaliczenia to [ScheduleDayStatus.MISSED].
+     * Odwołany (SKIPPED) i przesunięty (MOVED) zostawiają dzień pusty — fakt
+     * treningu jest wtedy pod inną datą.
+     */
+    private fun dayStatus(
+        entries: List<ScheduleEntry>,
+        date: LocalDate,
+        today: LocalDate,
+    ): ScheduleDayStatus = when {
+        entries.any { it.status == ScheduleStatus.DONE } -> ScheduleDayStatus.DONE
+        entries.none { it.status == ScheduleStatus.PLANNED } -> ScheduleDayStatus.FREE
+        date < today -> ScheduleDayStatus.MISSED
+        else -> ScheduleDayStatus.PLANNED
+    }
 
     private fun entryUi(
         entry: ScheduleEntry,
+        date: LocalDate,
         plansById: Map<String, Plan>,
         exercises: Map<String, Exercise>,
-        restSeconds: Int,
     ): ScheduleEntryUi {
         val plan = plansById[entry.planId]
         val day = plan?.days?.getOrNull(entry.dayIndex)
@@ -311,54 +360,28 @@ class ScheduleViewModel(
             entryId = entry.id,
             planId = entry.planId,
             dayIndex = entry.dayIndex,
+            title = ScheduleTexts.dayCardTitle(date, day?.name),
             planName = plan?.name,
             dayName = day?.name,
             status = entry.status,
             movedToLabel = entry.movedTo?.let { raw ->
-                runCatching { fullDayFormatter.format(LocalDate.parse(raw)) }.getOrDefault(raw)
+                parseDate(raw)?.let(ScheduleTexts::movedToLabel) ?: raw
             },
             exercises = day?.exercises.orEmpty().map { planExercise ->
                 val exercise = exercises[planExercise.exerciseId]
-                val muscleKey = exercise?.primaryMuscles?.firstOrNull()
                 ScheduleExerciseRow(
                     exerciseId = planExercise.exerciseId,
                     name = exercise?.namePl ?: planExercise.exerciseId,
-                    muscleLabel = muscleKey?.let { PlLabels.muscle(it) }.orEmpty(),
-                    muscleKey = muscleKey,
-                    targetLabel = targetLabel(planExercise),
+                    muscleKey = exercise?.primaryMuscles?.firstOrNull(),
+                    setsLabel = ScheduleTexts.setsLabel(planExercise.sets),
                 )
             },
-            estimatedMinutes = estimateMinutes(day?.exercises.orEmpty(), restSeconds),
         )
     }
 
-    /** Szacunek czasu treningu: sumaSerii × (przerwa + 40 s), zaokrąglone do 5 min. */
-    private fun estimateMinutes(exercises: List<PlanExercise>, restSeconds: Int): Int {
-        val totalSets = exercises.sumOf { it.sets }
-        val totalSeconds = totalSets * (restSeconds + 40)
-        val minutes = totalSeconds / 60.0
-        return (minutes / 5).roundToInt() * 5
-    }
-
-    private fun targetLabel(exercise: PlanExercise): String = when (val target = exercise.target) {
-        is SetTarget.WeightReps -> "${exercise.sets}×${target.reps}"
-        is SetTarget.Reps -> "${exercise.sets}×${target.reps}"
-        is SetTarget.Time -> "${exercise.sets}×${target.seconds} s"
-        is SetTarget.DistanceTime -> metersLabel(target.meters)
-    }
-
-    private fun metersLabel(meters: Double): String {
-        val rounded = meters.roundToInt()
-        return if (rounded >= 1000 && rounded % 1000 == 0) "${rounded / 1000} km" else "$rounded m"
-    }
+    private fun parseDate(raw: String): LocalDate? = runCatching { LocalDate.parse(raw) }.getOrNull()
 
     companion object {
-        private val polishLocale = Locale.forLanguageTag("pl")
-        private val fullDayFormatter = DateTimeFormatter.ofPattern("EEEE d MMMM", polishLocale)
-        private val badgePriority = listOf(
-            ScheduleStatus.PLANNED, ScheduleStatus.DONE, ScheduleStatus.MOVED, ScheduleStatus.SKIPPED,
-        )
-
         /** Ręczna kompozycja: zależności z [StronkApplication]. */
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -368,7 +391,6 @@ class ScheduleViewModel(
                     scheduleRepository = app.scheduleRepository,
                     planRepository = app.planRepository,
                     exerciseRepository = app.exerciseRepository,
-                    userProfileRepository = app.userProfileRepository,
                 )
             }
         }

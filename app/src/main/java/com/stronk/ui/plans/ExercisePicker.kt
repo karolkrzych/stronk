@@ -3,7 +3,6 @@ package com.stronk.ui.plans
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,11 +13,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,24 +46,24 @@ import com.stronk.data.filterExercises
 import com.stronk.data.isCompliant
 import com.stronk.ui.PlLabels
 import com.stronk.ui.components.MuscleIcons
-import com.stronk.ui.components.StronkCard
 import com.stronk.ui.components.StronkChoiceChip
 import com.stronk.ui.components.StronkEmptyState
 import com.stronk.ui.components.StronkIconBadge
 import com.stronk.ui.components.StronkIconBadgeSize
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkInsetCard
-import com.stronk.ui.components.StronkListRow
 import com.stronk.ui.components.StronkSectionHeader
-import com.stronk.ui.components.StronkTone
+import com.stronk.ui.theme.StronkRadius
+import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
+import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 
 /**
  * Picker ćwiczeń do planu — pełnoekranowa warstwa edytora (wzorzec listy
  * z ui/list, ale własny: trasa bazy nie ma callbacku wyboru). Wyszukiwarka
- * bez diakrytyków + panel filtra partii (mocki: `.limit-panel`); ćwiczenia
- * niezgodne z profilem są flagowane, ikona ostrzeżenia otwiera zamienniki.
+ * bez diakrytyków + filtr partii; ćwiczenia niezgodne z profilem są flagowane,
+ * ikona ostrzeżenia otwiera zamienniki.
  */
 @Composable
 internal fun ExercisePicker(
@@ -84,41 +90,38 @@ internal fun ExercisePicker(
             modifier = Modifier.padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
         )
         Column(Modifier.padding(horizontal = StronkSpacing.screen)) {
-            PlanSearchField(
+            OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = "Szukaj ćwiczenia…",
                 modifier = Modifier.fillMaxWidth(),
-            )
-            StronkCard(
-                modifier = Modifier.fillMaxWidth().padding(top = StronkSpacing.sm),
-                shape = MaterialTheme.shapes.large,
-                contentPadding = PaddingValues(18.dp),
-            ) {
-                StronkSectionHeader(
-                    title = "Partie",
-                    modifier = Modifier.fillMaxWidth(),
-                    trailing = {
-                        Text(
-                            text = "znaleziono: ${filtered.size}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                )
-                FlowRow(
-                    modifier = Modifier.padding(top = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    muscleOptions.forEach { option ->
-                        StronkChoiceChip(
-                            label = PlLabels.muscle(option),
-                            selected = muscle == option,
-                            onClick = { muscle = if (muscle == option) null else option },
-                        )
+                placeholder = { Text("Szukaj ćwiczenia…") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = null,
+                        tint = StronkTheme.colors.textDim,
+                    )
+                },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Wyczyść",
+                                tint = StronkTheme.colors.textDim,
+                            )
+                        }
                     }
-                }
-            }
+                },
+                shape = StronkRadius.innerShape,
+                singleLine = true,
+            )
+            MuscleFilterChip(
+                selected = muscle,
+                options = muscleOptions,
+                onSelect = { muscle = it },
+                modifier = Modifier.padding(top = StronkSpacing.sm),
+            )
         }
         if (filtered.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -151,9 +154,47 @@ internal fun ExercisePicker(
     }
 }
 
+@Composable
+private fun MuscleFilterChip(
+    selected: String?,
+    options: List<String>,
+    onSelect: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier) {
+        StronkChoiceChip(
+            label = selected?.let(PlLabels::muscle) ?: "Partia",
+            selected = selected != null,
+            onClick = { expanded = true },
+            icon = Icons.Rounded.ArrowDropDown,
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            if (selected != null) {
+                DropdownMenuItem(
+                    text = { Text("Wyczyść filtr") },
+                    onClick = {
+                        expanded = false
+                        onSelect(null)
+                    },
+                )
+            }
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(PlLabels.muscle(option)) },
+                    onClick = {
+                        expanded = false
+                        onSelect(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
 /**
- * Wiersz ćwiczenia w języku design systemu: piktogram + partia pod badge'em,
- * nazwa, ostrzeżenie o naruszeniu profilu jako ikona otwierająca zamienniki.
+ * Wiersz ćwiczenia w języku design systemu: miniaturka, nazwa + partie,
+ * ostrzeżenie o naruszeniu profilu jako ikona otwierająca zamienniki.
  * Współdzielony przez picker i arkusz sugestii ([SuggestionsSheet]).
  */
 @Composable
@@ -163,15 +204,42 @@ internal fun ExercisePickerRow(
     onClick: () -> Unit,
     onWarningClick: (() -> Unit)? = null,
 ) {
-    StronkListRow(
-        title = exercise.namePl,
-        icon = MuscleIcons.forExercise(exercise),
-        iconLabel = MuscleIcons.groupLabel(exercise.primaryMuscles.firstOrNull()),
-        tone = if (warning) StronkTone.WARNING else null,
-        inset = true,
-        onClick = onClick,
-        trailingContent = if (warning) {
-            {
+    val thumbnail = exercise.images.firstOrNull()
+    StronkInsetCard(onClick = onClick, contentPadding = PaddingValues(StronkSpacing.xs)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
+        ) {
+            if (thumbnail != null) {
+                AsyncImage(
+                    model = ExerciseRepository.IMAGES_BASE_URI + thumbnail,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(StronkSizes.iconTile)
+                        .clip(StronkRadius.tileShape),
+                )
+            } else {
+                StronkIconBadge(icon = MuscleIcons.forExercise(exercise), size = StronkIconBadgeSize.MEDIUM)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = exercise.namePl,
+                    style = StronkTextStyles.h2,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = exercise.primaryMuscles.joinToString { PlLabels.muscle(it) },
+                    style = StronkTextStyles.meta,
+                    color = StronkTheme.colors.textDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
+            if (warning) {
                 IconButton(onClick = { onWarningClick?.invoke() }, enabled = onWarningClick != null) {
                     Icon(
                         StronkIcons.injury,
@@ -180,17 +248,14 @@ internal fun ExercisePickerRow(
                     )
                 }
             }
-        } else {
-            null
-        },
-    )
+        }
+    }
 }
 
 /**
  * Arkusz zamienników ([com.stronk.data.findSubstitutes]) — wybór podmienia
  * ćwiczenie w planie albo dodaje je do dnia (kontekst pickera).
  * Zamienniki z naruszeniami limitów stawów są pokazywane, ale oflagowane.
- * To arkusz PODGLĄDU (mocki), stąd miniaturki zostają.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -240,7 +305,9 @@ private fun SubstituteRow(match: SubstituteMatch, onChoose: () -> Unit) {
                 AsyncImage(
                     model = ExerciseRepository.IMAGES_BASE_URI + thumbnail,
                     contentDescription = null,
-                    modifier = Modifier.size(48.dp).clip(MaterialTheme.shapes.medium),
+                    modifier = Modifier
+                        .size(StronkSizes.iconTile)
+                        .clip(StronkRadius.tileShape),
                 )
             } else {
                 StronkIconBadge(icon = MuscleIcons.forExercise(exercise), size = StronkIconBadgeSize.MEDIUM)
@@ -248,7 +315,7 @@ private fun SubstituteRow(match: SubstituteMatch, onChoose: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(
                     text = exercise.namePl,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = StronkTextStyles.h2,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -256,20 +323,22 @@ private fun SubstituteRow(match: SubstituteMatch, onChoose: () -> Unit) {
                 Text(
                     text = exercise.primaryMuscles.joinToString { PlLabels.muscle(it) } +
                         " · " + PlLabels.equipment(exercise.equipment),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = StronkTextStyles.meta,
                     color = StronkTheme.colors.textDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp),
                 )
                 if (match.warnings.isNotEmpty()) {
                     Text(
                         text = match.warnings.joinToString {
                             "${PlLabels.joint(it.joint)} (${PlanTexts.stressLevel(it.exerciseStress)})"
                         },
-                        style = MaterialTheme.typography.bodySmall,
+                        style = StronkTextStyles.meta,
                         color = StronkTheme.colors.warning,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 3.dp),
                     )
                 }
             }

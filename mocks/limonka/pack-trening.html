@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stronk · runda 3 · pakiet TRENING</title>
+<style>
+/* =========================================================================
+   stronk — RUNDA 3 · PAKIET "TRENING"   (kierunek C2 "Limonka", zatwierdzony)
+
+   1 · Trening · seria (final)   — kopia ekranu 1 z C2 + ikona "i" przy NASTĘPNE
+   2 · Trening · przerwa         — pełnoekranowy widok przerwy (ADR-005)
+   3 · Trening · seria testowa   — stan kalibracji ciężaru (ten sam layout)
+
+   Tokeny :root skopiowane 1:1 z wariantu C2 — bez zmian.
+   ========================================================================= */
+:root{
+  /* ---- powierzchnie: jedna rodzina, hue 80, minimalna saturacja ---------- */
+  --page:      hsl(80, 4%, 4%);
+  --s0:        hsl(80, 4%, 6%);
+  --s1:        hsl(80, 4%, 10%);
+  --s2:        hsl(75, 4%, 14%);
+  --s3:        hsl(75, 4%, 19%);
+  --line:      hsl(75, 4%, 17%);
+  --line-soft: hsl(75, 4%, 12%);
+
+  /* ---- tekst ------------------------------------------------------------ */
+  --text:   hsl(70, 8%, 96%);
+  --text-2: hsl(70, 5%, 70%);
+  --text-3: hsl(70, 4%, 46%);
+
+  /* ---- akcent ----------------------------------------------------------- */
+  --lime:      hsl(75, 70%, 52%);
+  --lime-deep: hsl(75, 55%, 40%);
+  --lime-ink:  hsl(80, 60%,  7%);
+  --lime-dim:  hsla(75, 70%, 52%, .13);
+  --lime-line: hsla(75, 70%, 52%, .30);
+
+  /* ---- typografia ------------------------------------------------------- */
+  --font: "Segoe UI", "Segoe UI Variable", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --fs-hero:   62px;
+  --fs-big:    40px;
+  --fs-title:  27px;
+  --fs-h1:     24px;
+  --fs-h2:     17px;
+  --fs-body:   15px;
+  --fs-meta:   13px;
+  --fs-cap:    11px;
+  --tr-cap:    .14em;
+
+  /* ---- promienie -------------------------------------------------------- */
+  --r-card:  24px;
+  --r-inner: 18px;
+  --r-tile:  14px;
+  --r-day:    7px;
+  --r-pill:  999px;
+
+  /* ---- rytm ------------------------------------------------------------- */
+  --pad-screen: 22px;
+  --pad-card:   20px;
+
+  /* ---- runda 3: wartości nowych ekranów (wszystko jako zmienne) --------- */
+  --fs-rest:        88px;  /* countdown przerwy — dominanta ekranu 2 (w pierścieniu) */
+  --fs-rest-w:      40px;  /* ciężar w sekcji NASTĘPNIE */
+  --fs-rest-r:      28px;  /* powtórzenia w sekcji NASTĘPNIE */
+  --h-ghost:        56px;
+  --r-ghost:        18px;
+  --sz-info:        15px;  /* dyskretna ikona "i" */
+  --fs-hint:      12.5px;  /* jedna linijka podpowiedzi w serii testowej */
+  --gap-rest-cap:   14px;
+  --gap-rest-tot:   10px;
+
+  /* ---- pierścień odliczania (ekran 2) ----------------------------------- */
+  --ring-size:     280px;  /* średnica zewnętrzna */
+  --ring-stroke:    12px;  /* grubość toru i paska */
+  --gap-btn:        10px;  /* odstęp w rzędzie przycisków przerwy */
+}
+
+*{ margin:0; padding:0; box-sizing:border-box; }
+html,body{ background:var(--page); }
+body{
+  font-family:var(--font); color:var(--text);
+  padding:44px 56px 72px; overflow-x:auto;
+  -webkit-font-smoothing:antialiased;
+}
+.num{ font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.cap{
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap);
+  text-transform:uppercase; color:var(--text-3);
+}
+
+/* ---------------- strona ------------------------------------------------ */
+.page-head{ margin-bottom:34px; max-width:840px; }
+.page-head h1{ font-size:21px; font-weight:700; letter-spacing:-.02em; }
+.page-head h1 em{ font-style:normal; color:var(--lime); }
+.page-head p{ margin-top:8px; font-size:13.5px; line-height:1.55; color:var(--text-3); }
+.rail{ display:flex; gap:54px; align-items:flex-start; width:max-content; }
+.col{ width:390px; flex:none; }
+.caption{
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap);
+  text-transform:uppercase; color:var(--text-3); margin:0 6px 14px;
+  display:flex; align-items:center; gap:10px;
+}
+.caption b{ color:var(--text-2); font-weight:700; }
+.caption i{ flex:1; height:1px; background:var(--line-soft); }
+
+/* ---------------- ramka telefonu ---------------------------------------- */
+.phone{
+  width:390px; height:844px; background:var(--s0);
+  border-radius:38px; overflow:hidden; position:relative;
+  box-shadow:0 0 0 8px hsl(80,4%,9%), 0 0 0 9px hsl(75,4%,20%), 0 26px 60px hsla(0,0%,0%,.55);
+}
+.screen{ height:100%; display:flex; flex-direction:column; padding:0 var(--pad-screen); }
+
+.sysbar{
+  height:52px; flex:none; display:flex; align-items:center; justify-content:space-between;
+  font-size:12px; color:var(--text-3); font-weight:600;
+}
+.sysdots{ display:flex; gap:4px; align-items:center; }
+.sysdots span{ width:5px; height:5px; border-radius:50%; background:var(--text-3); opacity:.55; }
+.sysdots span:last-child{ width:16px; height:8px; border-radius:2px; }
+
+.navbar{ height:44px; flex:none; display:flex; align-items:center; justify-content:space-between; }
+.iconbtn{
+  width:36px; height:36px; margin-left:-8px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; color:var(--text-2);
+}
+.iconbtn.right{ margin-left:0; margin-right:-8px; color:var(--text-3); }
+
+/* chip partii / serii ----------------------------------------------------- */
+.chip{
+  display:inline-flex; align-items:center; height:26px; padding:0 11px;
+  border-radius:var(--r-pill); background:var(--s2); color:var(--text-2);
+  font-size:var(--fs-meta); font-weight:600; letter-spacing:-.005em;
+}
+/* wariant limonkowy — tylko tint, nie plama */
+.chip.lime{
+  background:var(--lime-dim); color:var(--lime);
+  box-shadow:inset 0 0 0 1px var(--lime-line);
+}
+
+/* CTA --------------------------------------------------------------------- */
+.cta{
+  height:66px; border-radius:20px; background:var(--lime); color:var(--lime-ink);
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  font-size:19px; font-weight:700; letter-spacing:-.01em;
+}
+.cta.sm{ height:54px; border-radius:16px; font-size:16px; }
+
+/* przycisk ghost (przerwa) — szary, nie limonka ---------------------------- */
+.ghost{
+  height:var(--h-ghost); border-radius:var(--r-ghost);
+  border:1px solid var(--line); background:transparent; color:var(--text-2);
+  display:flex; align-items:center; justify-content:center; gap:9px;
+  font-size:16px; font-weight:600; letter-spacing:-.01em;
+}
+/* wariant z delikatnym akcentem limonkowym — tylko obrys + tekst, bez plamy */
+.ghost.accent{
+  border-color:var(--lime-line); background:var(--lime-dim); color:var(--lime);
+}
+/* rząd przycisków w proporcji 4:1 (Compose: Row + Modifier.weight) --------- */
+.btn-row{ display:flex; gap:var(--gap-btn); align-items:stretch; }
+.btn-row .ghost{ flex:1 1 0; min-width:0; }
+.btn-row .ghost.wide{ flex:4 1 0; }
+
+/* =========================================================================
+   EKRAN 1 — TRENING (widok serii).  Dominanta: liczba ciężaru.
+   ========================================================================= */
+.ctx{ font-size:var(--fs-cap); color:var(--text-3); font-weight:600; letter-spacing:.01em; }
+.ex-name{
+  margin-top:14px; font-size:var(--fs-title); font-weight:700;
+  letter-spacing:-.01em; line-height:1.15;
+}
+.ex-chip{ margin-top:12px; display:flex; gap:8px; align-items:center; }
+
+.dots{ margin-top:26px; display:flex; gap:9px; align-items:center; }
+.dots i{ width:9px; height:9px; border-radius:50%; background:var(--s3); }
+.dots i.on{ background:var(--lime); box-shadow:0 0 0 5px var(--lime-dim); }
+
+.stats{ margin-top:auto; display:flex; align-items:flex-end; gap:0; }
+.stat{ flex:1; }
+.stat .cap{ display:block; margin-bottom:6px; }
+.stat .v{
+  font-size:var(--fs-hero); font-weight:700; line-height:.92; color:var(--text);
+}
+.stat.reps .v{ font-size:var(--fs-big); line-height:1.05; padding-bottom:9px; }
+.stat .u{ font-size:19px; font-weight:600; color:var(--text-3); margin-left:5px; letter-spacing:0; }
+.stat-div{ width:1px; align-self:stretch; background:var(--line); margin:0 20px; }
+
+.stats-wrap{ margin-top:auto; }
+.cta-wrap{ margin-top:34px; }
+
+.next{
+  margin-top:26px; margin-bottom:24px; padding-top:16px; border-top:1px solid var(--line-soft);
+}
+.next .cap{ display:block; margin-bottom:10px; }
+/* nagłówek NASTĘPNE z dyskretną ikoną "i" (podgląd jak robić ćwiczenie) */
+.next .hd{ display:flex; align-items:center; gap:7px; margin-bottom:10px; }
+.next .hd .cap{ display:inline; margin-bottom:0; }
+.next .hd .info{
+  width:var(--sz-info); height:var(--sz-info); color:var(--text-3);
+  display:flex; align-items:center; justify-content:center; opacity:.85;
+}
+.next .row{ display:flex; align-items:center; gap:12px; }
+.next .ico{
+  width:34px; height:34px; border-radius:10px; background:var(--s2);
+  display:flex; align-items:center; justify-content:center; color:var(--text-3); flex:none;
+}
+.next .nm{ flex:1; font-size:var(--fs-h2); font-weight:600; color:var(--text-2); letter-spacing:-.01em; }
+.next .chev{ color:var(--text-3); flex:none; }
+
+/* =========================================================================
+   EKRAN 2 — PRZERWA.  Dominanta: countdown w pierścieniu postępu.
+   Pierścień = jedyny limonkowy element ekranu; pokazuje POZOSTAŁY czas.
+   Compose: CircularProgressIndicator / Canvas drawArc, startAngle -90°.
+   ========================================================================= */
+.rest-mid{
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+}
+
+/* pierścień -------------------------------------------------------------- */
+.ring{
+  width:var(--ring-size); height:var(--ring-size);
+  position:relative; flex:none;
+}
+.ring svg{
+  width:100%; height:100%; display:block;
+  transform:rotate(-90deg);            /* start od godziny 12 */
+  transform-origin:50% 50%;
+}
+.ring .track{ fill:none; stroke:var(--s2); stroke-width:var(--ring-stroke); }
+.ring .bar{
+  fill:none; stroke:var(--lime); stroke-width:var(--ring-stroke); stroke-linecap:round;
+  /* obwód 2πr = 2π·134 = 841,95 · pozostało 1:12 z 1:15 = 96% */
+  stroke-dasharray:841.95;
+  stroke-dashoffset:33.68;
+}
+/* treść w środku pierścienia — idealnie wyśrodkowana w obu osiach --------- */
+.ring .inner{
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+.ring .inner .cap{ margin-bottom:var(--gap-rest-cap); }
+.rest-time{
+  font-size:var(--fs-rest); font-weight:700; line-height:.88;
+  color:var(--text); letter-spacing:-.03em;
+}
+.rest-total{
+  margin-top:var(--gap-rest-tot); font-size:var(--fs-meta);
+  font-weight:600; color:var(--text-3);
+}
+
+.rest-next{ padding-top:18px; border-top:1px solid var(--line-soft); }
+.rest-next .cap{ display:block; margin-bottom:12px; }
+.rest-next .nm{ font-size:21px; font-weight:700; letter-spacing:-.01em; line-height:1.2; }
+.rest-next .stats{ margin-top:16px; }
+.rest-next .stat .v{ font-size:var(--fs-rest-w); line-height:1; }
+.rest-next .stat.reps .v{ font-size:var(--fs-rest-r); line-height:1.05; padding-bottom:4px; }
+.rest-next .stat .u{ font-size:15px; margin-left:4px; }
+.rest-foot{ margin-top:28px; margin-bottom:26px; }
+
+/* =========================================================================
+   EKRAN 3 — SERIA TESTOWA.  Ten sam layout co ekran 1, inny stan.
+   ========================================================================= */
+.stat .q{
+  display:inline-block; font-size:var(--fs-hero); font-weight:700; line-height:.92;
+  color:var(--text-3); border-bottom:2px solid var(--lime-line); padding-bottom:8px;
+  min-width:58px; text-align:center;
+}
+.stat.reps .q{ font-size:var(--fs-big); line-height:1.05; min-width:42px; padding-bottom:5px; }
+.hint{
+  margin-top:16px; font-size:var(--fs-hint); color:var(--text-3);
+  letter-spacing:-.005em;
+}
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>stronk · runda 3 · pakiet <em>TRENING</em></h1>
+  <p>Trzy stany jednego ekranu treningu w kierunku C2. Seria (final) = zatwierdzony wzorzec + ikona „i” przy NASTĘPNE.
+     Przerwa = zamienny widok pełnoekranowy, bez zaliczania. Seria testowa = ten sam layout w stanie kalibracji.</p>
+</div>
+
+<div class="rail">
+
+  <!-- =====================================================================
+       1 — TRENING · SERIA (FINAL)
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>1 · Trening</b><i></i>seria (final)</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">18:42</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="iconbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>
+        </div>
+        <div class="iconbtn right">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.6v.1"/></svg>
+        </div>
+      </div>
+
+      <div class="ctx">Full body B · ćwiczenie 2/6</div>
+
+      <div class="ex-name">Mostek biodrowy<br>ze sztangą</div>
+      <div class="ex-chip"><span class="chip">Pośladki</span></div>
+
+      <div class="dots">
+        <i class="on"></i><i></i><i></i>
+      </div>
+
+      <div class="stats-wrap">
+        <div class="stats">
+          <div class="stat">
+            <span class="cap">Ciężar</span>
+            <div class="v num">32,5<span class="u">kg</span></div>
+          </div>
+          <div class="stat-div"></div>
+          <div class="stat reps">
+            <span class="cap">Powtórzenia</span>
+            <div class="v num">12</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta-wrap">
+        <div class="cta">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19 7"/></svg>
+          Zaliczone
+        </div>
+      </div>
+
+      <div class="next">
+        <div class="hd">
+          <span class="cap">Następne</span>
+          <span class="info">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.6v.1"/></svg>
+          </span>
+        </div>
+        <div class="row">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Wyciskanie hantli leżąc</div>
+          <div class="chev">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+      </div>
+
+    </div></div>
+  </div>
+
+  <!-- =====================================================================
+       2 — TRENING · PRZERWA
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>2 · Trening</b><i></i>przerwa</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">18:44</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="iconbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>
+        </div>
+      </div>
+
+      <div class="rest-mid">
+        <div class="ring">
+          <svg viewBox="0 0 280 280" aria-hidden="true">
+            <circle class="track" cx="140" cy="140" r="134"/>
+            <circle class="bar"   cx="140" cy="140" r="134"/>
+          </svg>
+          <div class="inner">
+            <span class="cap">Przerwa</span>
+            <div class="rest-time num">1:12</div>
+            <div class="rest-total num">z 1:15</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rest-next">
+        <span class="cap">Następnie</span>
+        <div class="nm">Mostek biodrowy<br>ze sztangą</div>
+        <div class="stats">
+          <div class="stat">
+            <span class="cap">Ciężar</span>
+            <div class="v num">32,5<span class="u">kg</span></div>
+          </div>
+          <div class="stat-div"></div>
+          <div class="stat reps">
+            <span class="cap">Powtórzenia</span>
+            <div class="v num">12</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rest-foot">
+        <div class="btn-row">
+          <div class="ghost accent wide">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5l9 7-9 7z"/><path d="M18 5v14"/></svg>
+            Pomiń przerwę
+          </div>
+          <div class="ghost num">+30 s</div>
+        </div>
+      </div>
+
+    </div></div>
+  </div>
+
+  <!-- =====================================================================
+       3 — TRENING · SERIA TESTOWA (kalibracja)
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>3 · Trening</b><i></i>seria testowa</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">18:36</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="iconbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>
+        </div>
+        <div class="iconbtn right">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.6v.1"/></svg>
+        </div>
+      </div>
+
+      <div class="ctx">Full body B · ćwiczenie 2/6</div>
+
+      <div class="ex-name">Mostek biodrowy<br>ze sztangą</div>
+      <div class="ex-chip">
+        <span class="chip">Pośladki</span>
+        <span class="chip lime">Seria testowa</span>
+      </div>
+
+      <div class="dots">
+        <i class="on"></i><i></i><i></i>
+      </div>
+
+      <div class="stats-wrap">
+        <div class="stats">
+          <div class="stat">
+            <span class="cap">Ciężar</span>
+            <div class="v"><span class="q num">?</span><span class="u">kg</span></div>
+          </div>
+          <div class="stat-div"></div>
+          <div class="stat reps">
+            <span class="cap">Powtórzenia</span>
+            <div class="v"><span class="q num">?</span></div>
+          </div>
+        </div>
+        <div class="hint">Dobierz ciężar na maks. 5–12 powtórzeń</div>
+      </div>
+
+      <div class="cta-wrap">
+        <div class="cta">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14.5 5.5l4 4"/></svg>
+          Wpisz serię testową
+        </div>
+      </div>
+
+      <div class="next">
+        <div class="hd">
+          <span class="cap">Następne</span>
+          <span class="info">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.6v.1"/></svg>
+          </span>
+        </div>
+        <div class="row">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Wyciskanie hantli leżąc</div>
+          <div class="chev">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+      </div>
+
+    </div></div>
+  </div>
+
+</div>
+</body>
+</html>

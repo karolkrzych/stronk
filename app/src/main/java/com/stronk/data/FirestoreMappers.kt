@@ -1,7 +1,5 @@
 package com.stronk.data
 
-import com.stronk.progression.ProgressionConstants
-
 /**
  * Jawne konwertery model ↔ `Map<String, Any?>` dla Firestore — SDK nie rozumie
  * kotlinx-serialization, więc mapowanie żyje w jednym miejscu i jest symetryczne
@@ -133,26 +131,33 @@ object FirestoreMappers {
 
     // ---------- Plan ----------
 
-    fun planToMap(plan: Plan): Map<String, Any?> = mapOf(
-        "name" to plan.name,
-        "createdAt" to plan.createdAt,
-        "archived" to plan.archived,
-        "blockLengthWeeks" to plan.blockLengthWeeks,
-        "days" to plan.days.map { day ->
-            mapOf(
-                "name" to day.name,
-                "exercises" to day.exercises.map { planExerciseToMap(it) },
-            )
-        },
-    )
+    /**
+     * Plan bez bloku (`blockLengthWeeks == null`) NIE zapisuje tego pola — brak
+     * pola na wire znaczy dokładnie „plan bez bloku, ciągła progresja".
+     */
+    fun planToMap(plan: Plan): Map<String, Any?> = buildMap {
+        put("name", plan.name)
+        put("createdAt", plan.createdAt)
+        put("archived", plan.archived)
+        plan.blockLengthWeeks?.let { put("blockLengthWeeks", it) }
+        put(
+            "days",
+            plan.days.map { day ->
+                mapOf(
+                    "name" to day.name,
+                    "exercises" to day.exercises.map { planExerciseToMap(it) },
+                )
+            },
+        )
+    }
 
     fun planFromMap(id: String, map: Map<String, Any?>): Plan = Plan(
         id = id,
         name = map.stringOrNull("name").orEmpty(),
         createdAt = map.longOrNull("createdAt") ?: 0L,
         archived = map.boolOrNull("archived") ?: false,
-        blockLengthWeeks = map.intOrNull("blockLengthWeeks")
-            ?: ProgressionConstants.BLOCK_WORK_WEEKS_DEFAULT,
+        // Brak pola = plan bez bloku (null), nie „domyślne 5 tygodni".
+        blockLengthWeeks = map.intOrNull("blockLengthWeeks"),
         days = map.mapList("days").map { day ->
             PlanDay(
                 name = day.stringOrNull("name").orEmpty(),
