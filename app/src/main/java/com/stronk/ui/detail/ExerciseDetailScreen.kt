@@ -1,6 +1,7 @@
 package com.stronk.ui.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -176,42 +178,71 @@ private fun DescriptionTab(exercise: Exercise, jointNote: String?) {
     }
 }
 
-/** Obrazki start/koniec (mock `.shots`) — 4:3, promień `--r-inner`, podpis w rogu. */
+/**
+ * Obrazki start/koniec (mock `.shots`) — 4:3, promień `--r-inner`, podpis w rogu.
+ * Tap otwiera pełnoekranowy podgląd ([ExerciseImageViewer]): na telefonie kafelek
+ * 4:3 jest za mały, żeby zobaczyć chwyt czy ustawienie stóp.
+ */
 @Composable
 private fun ExerciseShots(exercise: Exercise) {
     if (exercise.images.isEmpty()) return
+    val shots = exercise.images.take(2)
+    var viewerIndex by rememberSaveable { mutableIntStateOf(NO_VIEWER) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 22.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        exercise.images.take(2).forEachIndexed { index, image ->
+        shots.forEachIndexed { index, image ->
             Shot(
                 imagePath = image,
-                caption = if (exercise.images.size > 1) {
+                caption = if (shots.size > 1) {
                     if (index == 0) "Start" else "Koniec"
                 } else {
                     null
                 },
+                onClick = { viewerIndex = index },
             )
         }
     }
+
+    if (viewerIndex != NO_VIEWER) {
+        ExerciseImageViewer(
+            images = shots,
+            startIndex = viewerIndex,
+            onDismiss = { viewerIndex = NO_VIEWER },
+        )
+    }
 }
 
+/** „Podgląd zamknięty" — trzymamy Int, bo `rememberSaveable` lubi prymitywy. */
+private const val NO_VIEWER = -1
+
 @Composable
-private fun RowScope.Shot(imagePath: String, caption: String?) {
+private fun RowScope.Shot(imagePath: String, caption: String?, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .weight(1f)
             .aspectRatio(4f / 3f)
             .clip(StronkRadius.innerShape)
-            .background(StronkTheme.colors.surfaceTile),
+            .background(StronkTheme.colors.surfaceTile)
+            .clickable(onClick = onClick),
     ) {
         AsyncImage(
             model = ExerciseRepository.IMAGES_BASE_URI + imagePath,
-            contentDescription = null,
+            contentDescription = "Powiększ obrazek",
             modifier = Modifier.fillMaxSize(),
+        )
+        Icon(
+            imageVector = Icons.Rounded.OpenInFull,
+            contentDescription = null,
+            tint = StronkTheme.colors.textDim,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+                .size(16.dp),
         )
         if (caption != null) {
             Text(
@@ -237,11 +268,23 @@ private fun TaxonomyChips(exercise: Exercise) {
         verticalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
     ) {
         exercise.primaryMuscles.firstOrNull()?.let {
-            StronkChip(label = PlLabels.muscle(it), selected = true)
+            StronkChip(label = PlLabels.muscle(it).firstUpper(), selected = true)
         }
-        StronkChip(label = PlLabels.equipment(exercise.equipment))
-        StronkChip(label = PlLabels.level(exercise.level))
+        StronkChip(label = PlLabels.equipment(exercise.equipment).firstUpper())
+        StronkChip(label = levelChipLabel(exercise.level))
     }
+}
+
+/** Chipy w mocku są kapitalizowane, a słownik [PlLabels] trzyma etykiety małą literą. */
+private fun String.firstUpper(): String = replaceFirstChar { it.uppercaseChar() }
+
+/**
+ * Poziom na chipie — „średniozaawansowany" rozpycha wiersz na trzy linijki,
+ * więc w tej jednej roli skracamy go do „Średni" (pełna nazwa zostaje w filtrach Bazy).
+ */
+private fun levelChipLabel(level: String): String = when (level) {
+    "intermediate" -> "Średni"
+    else -> PlLabels.level(level).firstUpper()
 }
 
 /** Ile kroków widać bez rozwijania (mock pokazuje 4 i „Pokaż więcej"). */
