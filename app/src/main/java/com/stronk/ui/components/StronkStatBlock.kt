@@ -1,6 +1,7 @@
 package com.stronk.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -64,7 +65,10 @@ enum class StronkStatSize(
  * @param value sama liczba, np. "32,5"; bez jednostki i bez „×"
  * @param unit sufiks jednostki, np. "kg"; null = liczba bez jednostki
  * @param size [StronkStatSize.HERO] dla dominanty, [StronkStatSize.BIG] dla reszty
- * @param valueColor domyślnie `--text`; `StronkTheme.colors.lime` na karcie rekordu
+ * @param valueColor domyślnie `--text`; `StronkTheme.colors.lime` na liczbie rekordu
+ * @param stretch siatka mocka (`.stats`): blok wypełnia wysokość wiersza, więc
+ *        kapitaliki sąsiednich statów stoją w JEDNYM rzędzie, a liczby o różnej
+ *        wielkości siadają na wspólnej linii u dołu. Wymaga [StronkStatRow].
  */
 @Composable
 fun StronkStatBlock(
@@ -75,9 +79,15 @@ fun StronkStatBlock(
     size: StronkStatSize = StronkStatSize.BIG,
     valueColor: Color = MaterialTheme.colorScheme.onSurface,
     labelColor: Color = StronkTheme.colors.textDim,
+    stretch: Boolean = false,
     trailing: @Composable (() -> Unit)? = null,
 ) {
-    Column(modifier = modifier.padding(bottom = size.bottomInset)) {
+    Column(
+        modifier = modifier
+            .padding(bottom = size.bottomInset)
+            .then(if (stretch) Modifier.fillMaxHeight() else Modifier),
+        verticalArrangement = if (stretch) Arrangement.SpaceBetween else Arrangement.Top,
+    ) {
         Text(
             text = label.uppercase(),
             style = StronkTextStyles.cap,

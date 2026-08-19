@@ -112,8 +112,12 @@ fun StronkBadge(
 
 /**
  * Mocny badge na limonce (mocki: `.record .badge`) — pełne tło `--lime`, tekst
- * `--lime-ink` KAPITALIKAMI. Zarezerwowany dla „PR": to jedyna rzecz, która
- * krzyczy. Jeden na ekran, zawsze wewnątrz [StronkAccentCard].
+ * `--lime-ink` KAPITALIKAMI. Maksymalnie jeden na ekran: to jedyna rzecz, która
+ * krzyczy.
+ *
+ * Dziś BEZ UŻYĆ — rekord po przejściu na goły stat ([StronkStatHeadline]) nie
+ * ma już plakietki „PR"; komponent zostaje w słowniku na wypadek realnego
+ * krzyku (np. pierwszy rekord w bloku).
  */
 @Composable
 fun StronkAccentBadge(

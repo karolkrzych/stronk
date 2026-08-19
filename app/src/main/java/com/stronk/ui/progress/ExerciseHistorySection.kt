@@ -2,7 +2,6 @@ package com.stronk.ui.progress
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,18 +17,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.stronk.ui.components.StronkAccentBadge
-import com.stronk.ui.components.StronkAccentCard
 import com.stronk.ui.components.StronkBar
 import com.stronk.ui.components.StronkBarChart
 import com.stronk.ui.components.StronkEmptyState
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkSectionHeader
-import com.stronk.ui.components.StronkStatBlock
-import com.stronk.ui.components.StronkStatRow
+import com.stronk.ui.components.StronkStatHeadline
+import com.stronk.ui.components.StronkStatItem
 import com.stronk.ui.components.StronkStatSize
 import com.stronk.ui.theme.StronkSizes
-import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 
@@ -39,9 +35,9 @@ import com.stronk.ui.theme.StronkTheme
  * (`ui/detail`) i wejście z Progresu, więc historia wygląda tak samo
  * niezależnie od tego, skąd się w nią weszło.
  *
- * Trzy warstwy, w tej kolejności: karta REKORD (dominanta) → wykres słupkowy
- * z przyrostem → tabela sesji. Nigdzie frazy „kg × powt.": jednostki stoją
- * RAZ w nagłówku, w komórkach są same liczby.
+ * Trzy warstwy, w tej kolejności: REKORD jako goły stat (dominanta, wariant A —
+ * bez karty) → wykres słupkowy z przyrostem → tabela sesji. Nigdzie frazy
+ * „kg × powt.": jednostki stoją RAZ w nagłówku, w komórkach są same liczby.
  */
 @Composable
 fun ExerciseHistorySection(
@@ -60,7 +56,7 @@ fun ExerciseHistorySection(
         return
     }
     Column(modifier = modifier.fillMaxWidth()) {
-        state.record?.let { RecordCard(it) }
+        state.record?.let { RecordHeadline(it) }
         if (state.bars.isNotEmpty()) {
             ChartHead(caption = state.chartCaption, delta = state.delta)
             Spacer(Modifier.height(10.dp))
@@ -80,47 +76,39 @@ fun ExerciseHistorySection(
     }
 }
 
-/** Karta rekordu (mock `.record`) — kapitalik, badge PR i para statów. */
+/**
+ * Rekord jako GOŁY STAT (wariant A) — żadnej karty i żadnego tła: glif trofeum
+ * z kapitalikiem, pod nim CIĘŻAR (hero, w limonce) i POWTÓRZENIA (big), a fakty
+ * poboczne (data, szac. 1RM) w rzędzie chipów.
+ */
 @Composable
-private fun RecordCard(record: ExerciseRecordUi) {
-    StronkAccentCard(
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(
-            start = StronkSpacing.card,
-            end = StronkSpacing.card,
-            top = 14.dp,
-            bottom = StronkSpacing.md,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            StronkSectionHeader(title = "Rekord")
-            StronkAccentBadge(text = "PR", icon = StronkIcons.record)
-        }
-        StronkStatRow(modifier = Modifier.padding(top = 14.dp)) {
-            StronkStatBlock(
-                label = record.primary.label,
-                value = record.primary.value,
-                unit = record.primary.unit,
-                size = StronkStatSize.BIG,
-                valueColor = StronkTheme.colors.lime,
-                modifier = Modifier.weight(1f),
-            )
-            record.secondary?.let { secondary ->
-                StronkStatBlock(
-                    label = secondary.label,
-                    value = secondary.value,
-                    unit = secondary.unit,
-                    size = StronkStatSize.BIG,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
+private fun RecordHeadline(record: ExerciseRecordUi) {
+    StronkStatHeadline(
+        label = "Rekord",
+        icon = StronkIcons.record,
+        stats = recordStats(record.primary, record.secondary),
+        chips = record.chips,
+        modifier = Modifier.padding(top = 18.dp),
+    )
 }
+
+/**
+ * Para statów rekordu: liczba wiodąca HERO w limonce, druga BIG w `--text`.
+ * Wspólna dla Historii i Progresu, żeby rekord wyglądał identycznie w obu.
+ */
+internal fun recordStats(primary: StatValueUi, secondary: StatValueUi?): List<StronkStatItem> =
+    listOfNotNull(
+        StronkStatItem(
+            label = primary.label,
+            value = primary.value,
+            unit = primary.unit,
+            size = StronkStatSize.HERO,
+            accent = true,
+        ),
+        secondary?.let {
+            StronkStatItem(label = it.label, value = it.value, unit = it.unit)
+        },
+    )
 
 /** Nagłówek wykresu (mock `.chart-head`): kapitalik metryki + mini-stat przyrostu. */
 @Composable

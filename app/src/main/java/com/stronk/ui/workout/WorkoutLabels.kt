@@ -247,6 +247,15 @@ object WorkoutLabels {
         SetStat(LABEL_WORKING_WEIGHT, kg(c.workingWeightKg), "kg"),
     )
 
+    /**
+     * Seria testowa jako PIGUŁKI pod statami kalibracji — osobny chip na ciężar
+     * i osobny na powtórzenia. Nigdy jeden string „40 kg × 10".
+     */
+    fun calibrationTestChips(c: CalibrationResult): List<String> = listOf(
+        "Test · ${kg(c.testWeightKg)} kg",
+        "${c.testReps} powt.",
+    )
+
     /** Plakietki ćwiczenia po kalibracji (widoczne do końca treningu). */
     fun calibrationBadges(c: CalibrationResult?): List<String> = buildList {
         if (c == null) return@buildList

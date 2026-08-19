@@ -53,11 +53,13 @@ fun StronkCard(
 }
 
 /**
- * Karta akcentowana (mocki: `.record`) — tło `--lime-dim`, obrys `--lime-line`,
- * promień `--r-card`. Zarezerwowana dla REKORDU / PR-a: dokładnie jedna na ekran,
- * inaczej limonka przekracza budżet ~10% powierzchni.
+ * Karta akcentowana — tło `--lime-dim`, obrys `--lime-line`, promień `--r-card`.
+ * Oznacza WYBRANĄ pozycję w zestawie kart (dziś: zaznaczony cel w profilu):
+ * dokładnie jedna na ekran, inaczej limonka przekracza budżet ~10% powierzchni.
  *
- * Liczby w środku podawaj przez [StronkStatBlock] z `valueColor = colors.lime`.
+ * **NIE dla rekordu ani kalibracji** — te idą przez [StronkStatHeadline] (goły
+ * stat, wariant A). Limonkowy tint jako tło karty rekordu został ODRZUCONY
+ * przez Karola 2026-08-19 („blady zielony, tekst rozjebany, brzydkie").
  */
 @Composable
 fun StronkAccentCard(

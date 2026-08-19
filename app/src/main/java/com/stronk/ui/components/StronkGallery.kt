@@ -131,28 +131,17 @@ private fun StronkGalleryPreview() {
                 }
             }
 
-            // --- karta rekordu + wykres schodkowy ---------------------------
+            // --- rekord jako goły stat (wariant A) + wykres schodkowy --------
             StronkSegmentedTabs(labels = listOf("Opis", "Historia"), selectedIndex = 1, onSelect = {})
-            StronkAccentCard {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("REKORD", style = StronkTextStyles.cap, color = StronkTheme.colors.textDim)
-                    StronkAccentBadge("PR")
-                }
-                StronkStatRow(Modifier.padding(top = StronkSpacing.md)) {
-                    StronkStatBlock(
-                        label = "Ciężar",
-                        value = "40",
-                        unit = "kg",
-                        valueColor = StronkTheme.colors.lime,
-                        modifier = Modifier.weight(1f),
-                    )
-                    StronkStatBlock(
-                        label = "Powtórzenia",
-                        value = "8",
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
+            StronkStatHeadline(
+                label = "Rekord",
+                icon = StronkIcons.record,
+                stats = listOf(
+                    StronkStatItem("Ciężar", "40", "kg", StronkStatSize.HERO, accent = true),
+                    StronkStatItem("Powtórzenia", "8"),
+                ),
+                chips = listOf("16.08", "1RM · 53,3 kg"),
+            )
             StronkBarChart(
                 bars = listOf(
                     StronkBar(32.5f, label = "32,5"),
@@ -164,6 +153,17 @@ private fun StronkGalleryPreview() {
                     StronkBar(37.5f),
                     StronkBar(40f, label = "40", highlight = true),
                 ),
+            )
+
+            // --- ten sam język dla wyniku kalibracji -------------------------
+            StronkStatHeadline(
+                label = "Kalibracja",
+                icon = StronkIcons.calibration,
+                stats = listOf(
+                    StronkStatItem("Szac. 1RM", "53,3", "kg", StronkStatSize.TITLE),
+                    StronkStatItem("Ciężar roboczy", "32,5", "kg", StronkStatSize.TITLE, accent = true),
+                ),
+                chips = listOf("Test · 40 kg", "10 powt."),
             )
 
             // --- chipy, notka, pusty stan -----------------------------------

@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.Accessibility
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Cable
+import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -70,6 +71,9 @@ object StronkIcons {
     val rest = Icons.Rounded.Timer
     val restDay = Icons.Rounded.Hotel
     val record = Icons.Rounded.EmojiEvents
+
+    /** Wynik przeliczony z serii testowej — kalibracja ciężaru startowego. */
+    val calibration = Icons.Rounded.Calculate
     val injury = Icons.Rounded.PersonalInjury
     /** Wejście do profilu — sylwetka człowieka, bo „profil” ma być rozpoznawalny na pierwszy rzut oka. */
     val profile = Icons.Rounded.Person

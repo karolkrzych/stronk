@@ -58,7 +58,8 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
    `--lime-deep` = przeszłość. Nigdy jako tło dużych obszarów poza CTA.
 2. **Ekrany prościuteńkie.** Budżet elementów per ekran; szczegóły za
    chevronem/ikoną "i"/zakładką. Test mrużenia oczu: JEDNA dominanta
-   (trening → liczba ciężaru; tydzień → siatka kalendarza; historia → karta rekordu).
+   (trening → liczba ciężaru; tydzień → siatka kalendarza; historia → rekord
+   jako goły stat).
 3. **Wartość z jednostką = osobny byt.** Nigdy "32,5 kg × 12 powt." jako fraza.
    Zawsze: kapitalik-nagłówek (CIĘŻAR / POWTÓRZENIA) + liczba pod nim.
    W listach: nagłówki kolumn RAZ na sekcję, niżej same liczby.
@@ -82,6 +83,33 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
 
 - **Stat-blok**: kapitalik 11px/.14em w `--text-3` + liczba (40–62px) w `--text`;
   jednostka jako mały sufiks. Pary statów rozdzielone pionową kreską 1px `--line`.
+  W siatce mocka (`.stats`) kapitaliki sąsiednich statów stoją w JEDNYM rzędzie,
+  a liczby o różnej wielkości siadają na wspólnej linii u dołu (Compose:
+  `StronkStatBlock(stretch = true)` w `StronkStatRow`).
+- **Rekord (goły stat, wariant A)** — zatwierdzony 2026-08-19, mock
+  `mocks/limonka/record-card-variants.html` (kolumna A). ŻADNEJ karty, tła ani
+  obrysu; sekcja stoi wprost na tle ekranu:
+  1. wiersz nagłówka: glif trofeum 16px w `--lime` + KAPITALIK „REKORD"
+     (11px/.14em, `--text-3`),
+  2. (opcjonalnie) nazwa ćwiczenia `--fs-h2`…21px — Progres, gdzie rekord nie ma
+     kontekstu z nagłówka ekranu,
+  3. staty: CIĘŻAR `--fs-hero` 62px **z liczbą w `--lime`** │ kreska 1px │
+     POWTÓRZENIA `--fs-big` 40px w `--text`,
+  4. rząd CHIPÓW z faktami pobocznymi: `[16.08]` `[1RM · 53,3 kg]`.
+  Siła idzie z typografii: limonka tylko na glifie i na liczbie ciężaru.
+  **Linijka meta „16.08 · szac. 1RM 53,3 kg" jest ODRZUCONA** („enigmatyczna") —
+  fakty poboczne zawsze pigułkami, jeden fakt = jeden chip.
+  **ODRZUCONE: rekord na karcie akcentowanej** (limonkowy tint `--lime-dim` +
+  obrys `--lime-line`) — werdykt Karola: „blady zielony, tekst rozjebany po
+  karcie bez pomysłu, brzydkie". Tint zostaje wyłącznie dla ZAZNACZONEJ pozycji
+  w zestawie kart (wybrany cel w profilu). Badge „PR" na rekordzie: bez użyć.
+  Compose: `StronkStatHeadline` (+ `StronkStatItem`), użyty w Historii
+  ćwiczenia, w Progresie („Ostatni rekord") i przy kalibracji.
+- **Kalibracja (ten sam język)**: glif kalkulatora + KAPITALIK „KALIBRACJA",
+  staty SZAC. 1RM │ CIĘŻAR ROBOCZY (`--fs-title` 27px, bo HERO należy do liczby
+  bieżącej serii), limonka na ciężarze roboczym — to liczba-akcja. Seria testowa
+  w chipach: `[Test · 40 kg]` `[10 powt.]`, nigdy „40 kg × 10" jako jeden string.
+  Uwaga (ramp-up / test poza zakresem) zostaje osobno, jako notka.
 - **CTA**: pełna szerokość, `--lime` + tekst `--lime-ink`, radius `--r-inner`,
   wysokość ~66px. Ghost-przycisk: transparent + border `--line`.
 - **Kalendarz kwadratów** (Ladder): 7 w rzędzie, radius `--r-day`;

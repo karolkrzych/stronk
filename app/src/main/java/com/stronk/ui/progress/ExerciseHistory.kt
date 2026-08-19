@@ -2,6 +2,7 @@ package com.stronk.ui.progress
 
 import com.stronk.data.SetLog
 import com.stronk.data.Workout
+import com.stronk.progression.Calibration
 import kotlin.math.abs
 
 /**
@@ -33,6 +34,12 @@ data class ExerciseRecordUi(
     val secondary: StatValueUi?,
     val workoutId: String,
     val achievedAt: Long,
+    /**
+     * Fakty poboczne rekordu jako PIGUŁKI (data, szac. 1RM) — nigdy jako jedna
+     * enigmatyczna linijka „16.08 · szac. 1RM 53,3 kg". Renderuje je
+     * `StronkStatHeadline` w rzędzie chipów pod statami.
+     */
+    val chips: List<String> = emptyList(),
 )
 
 /** Jedna komórka tabeli sesji — liczba główna i (opcjonalnie) liczba pod nią. */
@@ -120,6 +127,8 @@ fun exerciseRecord(workouts: List<Workout>, exerciseId: String): ExerciseRecordU
 
     val primary: StatValueUi
     val secondary: StatValueUi?
+    // Szac. 1RM ma sens tylko dla rekordu ciężaru z policzonymi powtórzeniami.
+    var oneRepMaxKg: Double? = null
     when (metric) {
         ChartMetric.WEIGHT, ChartMetric.VOLUME -> {
             primary = StatValueUi("Ciężar", ProgressFormat.decimal(record.value), ProgressFormat.weightUnit)
@@ -127,6 +136,9 @@ fun exerciseRecord(workouts: List<Workout>, exerciseId: String): ExerciseRecordU
                 .filter { abs(it.kg - record.value) < 1e-6 }
                 .maxOfOrNull { it.reps }
             secondary = reps?.let { StatValueUi("Powtórzenia", it.toString()) }
+            if (metric == ChartMetric.WEIGHT && reps != null && record.value > 0) {
+                oneRepMaxKg = Calibration.estimateOneRepMax(record.value, reps)
+            }
         }
 
         ChartMetric.REPS -> {
@@ -170,7 +182,20 @@ fun exerciseRecord(workouts: List<Workout>, exerciseId: String): ExerciseRecordU
         secondary = secondary,
         workoutId = record.workoutId,
         achievedAt = record.achievedAt,
+        chips = recordChips(record.achievedAt, oneRepMaxKg),
     )
+}
+
+/**
+ * Fakty poboczne rekordu jako pigułki: kiedy padł i ile z niego wychodzi
+ * szacowanego maksa. Osobne chipy, bo linijka „16.08 · szac. 1RM 53,3 kg"
+ * nic nie mówi na pierwszy rzut oka.
+ */
+private fun recordChips(achievedAt: Long, oneRepMaxKg: Double?): List<String> = buildList {
+    add(ProgressFormat.shortDate(achievedAt))
+    oneRepMaxKg?.let {
+        add("1RM · ${ProgressFormat.decimal(it)} ${ProgressFormat.weightUnit}")
+    }
 }
 
 /**

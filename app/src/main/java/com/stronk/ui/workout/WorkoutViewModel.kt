@@ -65,6 +65,8 @@ data class WorkoutExerciseUi(
 data class CalibrationUi(
     /** SZAC. 1RM i CIĘŻAR ROBOCZY jako stat-bloki. */
     val stats: List<SetStat>,
+    /** Seria testowa jako pigułki: osobno ciężar, osobno powtórzenia. */
+    val testChips: List<String>,
     /** Ciężar w tym treningu obniżony ramp-upem (powrót po przerwie). */
     val isRampUp: Boolean,
     /** Uwaga o powtórzeniach poza zakresem wiarygodności; null = test był w normie. */
@@ -389,6 +391,7 @@ class WorkoutViewModel(
 
     private fun calibrationUi(c: CalibrationResult) = CalibrationUi(
         stats = WorkoutLabels.calibrationStats(c),
+        testChips = WorkoutLabels.calibrationTestChips(c),
         isRampUp = c.isRampUp,
         unreliableNote = WorkoutLabels.calibrationRepsNote(c.testReps),
     )

@@ -17,13 +17,18 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** Karta „Ostatni rekord" — nazwa ćwiczenia i para statów (mock `.record`). */
+/**
+ * „Ostatni rekord" jako goły stat (wariant A): nazwa ćwiczenia, para statów
+ * i fakty poboczne w chipach — bez karty i bez limonkowego tła.
+ */
 data class LastRecordUi(
     val exerciseId: String,
     val name: String,
     val primary: StatValueUi,
     /** Druga liczba pary; null dla ćwiczeń mierzonych jedną wartością. */
     val secondary: StatValueUi?,
+    /** Pigułki pod statami: data rekordu i szac. 1RM (patrz [ExerciseRecordUi]). */
+    val chips: List<String> = emptyList(),
 )
 
 /** Wiersz „Moje ćwiczenia": nazwa, mini-trend i wejście w historię. */
@@ -94,6 +99,7 @@ class ProgressViewModel(
                     name = exerciseName(record.exerciseId),
                     primary = stats.primary,
                     secondary = stats.secondary,
+                    chips = stats.chips,
                 )
             }
         }

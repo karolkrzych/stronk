@@ -71,7 +71,6 @@ import com.stronk.data.ExerciseRepository
 import com.stronk.data.SetLog
 import com.stronk.ui.PlLabels
 import com.stronk.ui.components.MuscleIcons
-import com.stronk.ui.components.StronkAccentCard
 import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkChip
 import com.stronk.ui.components.StronkExerciseThumb
@@ -81,12 +80,15 @@ import com.stronk.ui.components.StronkIconBadge
 import com.stronk.ui.components.StronkIconBadgeSize
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkListRow
+import com.stronk.ui.components.StronkNoteCard
 import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkRingTimer
 import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkSeriesDots
 import com.stronk.ui.components.StronkStatBlock
 import com.stronk.ui.components.StronkStatDivider
+import com.stronk.ui.components.StronkStatHeadline
+import com.stronk.ui.components.StronkStatItem
 import com.stronk.ui.components.StronkStatRow
 import com.stronk.ui.components.StronkStatSize
 import com.stronk.ui.components.StronkTextAction
@@ -473,7 +475,7 @@ private fun SetPane(
             modifier = Modifier.padding(top = 26.dp),
         )
 
-        current.calibration?.let { CalibrationCard(it) }
+        current.calibration?.let { CalibrationHeadline(it) }
 
         // `margin-top:auto` z mocka — staty siedzą tuż nad CTA.
         Spacer(Modifier.weight(1f))
@@ -514,49 +516,37 @@ private fun SetPane(
 }
 
 /**
- * Wynik serii testowej (KALIBRACJA) — pokazywany dokładnie raz, przy pierwszej
- * serii po teście. Dwa staty obok siebie (SZAC. 1RM / CIĘŻAR ROBOCZY), nigdy
- * jako sklejone zdanie z liczbami; pod nimi ewentualna jedna linijka uwagi.
+ * Wynik serii testowej (KALIBRACJA) jako GOŁY STAT — pokazywany dokładnie raz,
+ * przy pierwszej serii po teście. Ten sam język co rekord: glif z kapitalikiem,
+ * dwa staty (SZAC. 1RM / CIĘŻAR ROBOCZY — ten drugi w limonce, bo to liczba,
+ * z którą się dalej trenuje) i seria testowa w chipach. Żadnej karty i żadnego
+ * sklejonego zdania z liczbami; uwaga (ramp-up / test poza zakresem) idzie
+ * osobno, jako notka.
  */
 @Composable
-private fun CalibrationCard(calibration: CalibrationUi) {
-    StronkAccentCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = StronkSpacing.lg),
-        contentPadding = PaddingValues(
-            start = StronkSpacing.md,
-            end = StronkSpacing.md,
-            top = StronkSpacing.sm,
-            bottom = StronkSpacing.sm,
-        ),
-    ) {
-        StronkSectionHeader(title = WorkoutLabels.CALIBRATION_TITLE)
-        StronkStatRow(modifier = Modifier.padding(top = StronkSpacing.xs)) {
-            calibration.stats.forEachIndexed { index, stat ->
-                if (index > 0) StronkStatDivider()
-                StronkStatBlock(
+private fun CalibrationHeadline(calibration: CalibrationUi) {
+    Column(Modifier.padding(top = StronkSpacing.lg)) {
+        StronkStatHeadline(
+            label = WorkoutLabels.CALIBRATION_TITLE,
+            icon = StronkIcons.calibration,
+            // Limonka na ciężarze roboczym: to z nim wchodzi się w kolejne serie.
+            stats = calibration.stats.mapIndexed { index, stat ->
+                StronkStatItem(
                     label = stat.label,
                     value = stat.value,
                     unit = stat.unit,
                     size = StronkStatSize.TITLE,
-                    valueColor = if (index == calibration.stats.lastIndex) {
-                        StronkTheme.colors.lime
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    modifier = Modifier.weight(1f),
+                    accent = index == calibration.stats.lastIndex,
                 )
-            }
-        }
+            },
+            chips = calibration.testChips,
+        )
         val note = calibration.unreliableNote
             ?: "Powrót po przerwie — w tym treningu startujesz lżej.".takeIf { calibration.isRampUp }
         note?.let {
-            Text(
+            StronkNoteCard(
                 text = it,
-                style = StronkTextStyles.hint,
-                color = StronkTheme.colors.textDim,
-                modifier = Modifier.padding(top = StronkSpacing.xs),
+                modifier = Modifier.padding(top = StronkSpacing.sm),
             )
         }
     }
