@@ -1,8 +1,11 @@
 # Design system "Limonka" (zatwierdzony 2026-08-19)
 
-Kierunek wizualny zatwierdzony przez Karola po 2 rundach iteracji (proces:
-`O:\claude\shared\design-process.md`). Kanoniczny plik komponentów:
-`mocks/limonka/wariant-c2-limonka.html` — przy wątpliwościach on wygrywa z tym dokumentem.
+Kierunek wizualny zatwierdzony przez Karola po 2 rundach iteracji; **pełny zestaw
+12 ekranów (runda 3) ZAAKCEPTOWANY 2026-08-19** ("Generalnie mi się podoba wszystko")
+z poprawkami: pierścień-zegar na przerwie, przyciski Pomiń/+30 4:1, nav ujednolicony.
+Proces: `O:\claude\shared\design-process.md`. Kanoniczne pliki: `mocks/limonka/`
+(wariant-c2-limonka.html = komponenty bazowe + pack-*.html = wszystkie ekrany) —
+przy wątpliwościach mock wygrywa z tym dokumentem.
 Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
 
 ## Tokeny
@@ -81,9 +84,16 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
 - **Wykres trendu**: słupki-schodki, wartości liczbowe nad pierwszym/ostatnim,
   słupek PR `--lime`, reszta `--s3`/`--lime-deep`, dyskretna linia bazowa.
   (Goła linia bez osi = odrzucona przez Karola.)
-- **Bottom nav** (propozycja z rundy 3, czeka na akcept): ~64px, `--s0` +
-  `--line-soft` u góry, ikony stroke 2px, aktywna = limonka; tylko na ekranach
-  zakładek (Dziś/Tydzień/Plany/Progres/Baza).
+- **Bottom nav** (ZATWIERDZONY — wariant z pack-progres-baza): ~64px, `--s0` +
+  `--line-soft` u góry, SAME ikony stroke 2px BEZ etykiet ("delikatne, nie zbyt
+  agresywne"), aktywna = limonka; tylko na ekranach zakładek
+  (Dziś/Tydzień/Plany/Progres/Baza). Compose: NavigationBar z
+  indicatorColor=Transparent, selected=lime.
+- **Przerwa (rest timer)**: countdown wewnątrz OKRĄGŁEGO pierścienia postępu
+  (SVG/Canvas, ~280dp, stroke ~12dp, tor `--s2`, pasek `--lime` = pozostały
+  czas, start od góry). Pod spodem Row przycisków: "Pomiń przerwę" (flex 4,
+  ghost z delikatnym akcentem: border `--lime-line` + tekst `--lime`) i
+  "+30 s" (flex 1, zwykły ghost). W przerwie NIE MA zaliczania serii (ADR-005).
 
 ## Proces implementacji
 

@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stronk · runda 3 · Progres + Baza + Opis</title>
+<style>
+/* =========================================================================
+   stronk — runda 3, pakiet "PROGRES + BAZA + OPIS"   (kierunek C2 „Limonka")
+   Tokeny skopiowane 1:1 z wariant-c2-limonka.html — bez zmian.
+   ========================================================================= */
+:root{
+  /* ---- powierzchnie ------------------------------------------------------ */
+  --page:      hsl(80, 4%, 4%);
+  --s0:        hsl(80, 4%, 6%);
+  --s1:        hsl(80, 4%, 10%);
+  --s2:        hsl(75, 4%, 14%);
+  --s3:        hsl(75, 4%, 19%);
+  --line:      hsl(75, 4%, 17%);
+  --line-soft: hsl(75, 4%, 12%);
+
+  /* ---- tekst ------------------------------------------------------------- */
+  --text:   hsl(70, 8%, 96%);
+  --text-2: hsl(70, 5%, 70%);
+  --text-3: hsl(70, 4%, 46%);
+
+  /* ---- akcent ------------------------------------------------------------ */
+  --lime:      hsl(75, 70%, 52%);
+  --lime-deep: hsl(75, 55%, 40%);
+  --lime-ink:  hsl(80, 60%,  7%);
+  --lime-dim:  hsla(75, 70%, 52%, .13);
+  --lime-line: hsla(75, 70%, 52%, .30);
+
+  /* ---- typografia -------------------------------------------------------- */
+  --font: "Segoe UI", "Segoe UI Variable", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --fs-hero:   62px;
+  --fs-big:    40px;
+  --fs-title:  27px;
+  --fs-h1:     24px;
+  --fs-h2:     17px;
+  --fs-body:   15px;
+  --fs-meta:   13px;
+  --fs-cap:    11px;
+  --tr-cap:    .14em;
+
+  /* ---- promienie --------------------------------------------------------- */
+  --r-card:  24px;
+  --r-inner: 18px;
+  --r-tile:  14px;
+  --r-day:    7px;
+  --r-pill:  999px;
+
+  /* ---- rytm -------------------------------------------------------------- */
+  --pad-screen: 22px;
+  --pad-card:   20px;
+
+  /* ---- miary tego pakietu ------------------------------------------------ */
+  --nav-h:       64px;   /* dolna nawigacja */
+  --row-h:       62px;   /* wiersz „moje ćwiczenia" */
+  --thumb:       62px;   /* miniatura w bazie */
+  --spark-h:     26px;   /* wysokość sparkline */
+  --spark-w:      4px;   /* szerokość słupka */
+  --spark-gap:    3px;
+  --ico-tile:    38px;
+  --search-h:    46px;
+  --seg-h:       38px;
+  --img-ratio:   4 / 3;
+  --step-num:    24px;
+}
+
+*{ margin:0; padding:0; box-sizing:border-box; }
+html,body{ background:var(--page); }
+body{
+  font-family:var(--font); color:var(--text);
+  padding:44px 56px 72px; overflow-x:auto;
+  -webkit-font-smoothing:antialiased;
+}
+.num{ font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.cap{
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap);
+  text-transform:uppercase; color:var(--text-3);
+}
+
+/* ---------------- strona ------------------------------------------------- */
+.page-head{ margin-bottom:34px; max-width:840px; }
+.page-head h1{ font-size:21px; font-weight:700; letter-spacing:-.02em; }
+.page-head h1 em{ font-style:normal; color:var(--lime); }
+.page-head p{ margin-top:8px; font-size:13.5px; line-height:1.55; color:var(--text-3); }
+.rail{ display:flex; gap:54px; align-items:flex-start; width:max-content; }
+.col{ width:390px; flex:none; }
+.caption{
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap);
+  text-transform:uppercase; color:var(--text-3); margin:0 6px 14px;
+  display:flex; align-items:center; gap:10px;
+}
+.caption b{ color:var(--text-2); font-weight:700; }
+.caption i{ flex:1; height:1px; background:var(--line-soft); }
+
+/* ---------------- ramka telefonu ----------------------------------------- */
+.phone{
+  width:390px; height:844px; background:var(--s0);
+  border-radius:38px; overflow:hidden; position:relative;
+  box-shadow:0 0 0 8px hsl(80,4%,9%), 0 0 0 9px hsl(75,4%,20%), 0 26px 60px hsla(0,0%,0%,.55);
+}
+.screen{ height:100%; display:flex; flex-direction:column; padding:0 var(--pad-screen); }
+
+.sysbar{
+  height:52px; flex:none; display:flex; align-items:center; justify-content:space-between;
+  font-size:12px; color:var(--text-3); font-weight:600;
+}
+.sysdots{ display:flex; gap:4px; align-items:center; }
+.sysdots span{ width:5px; height:5px; border-radius:50%; background:var(--text-3); opacity:.55; }
+.sysdots span:last-child{ width:16px; height:8px; border-radius:2px; }
+
+.navbar{ height:44px; flex:none; display:flex; align-items:center; justify-content:space-between; }
+.iconbtn{
+  width:36px; height:36px; margin-left:-8px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; color:var(--text-2);
+}
+.iconbtn.right{ margin-left:0; margin-right:-8px; color:var(--text-3); }
+.h1{ font-size:var(--fs-h1); font-weight:700; letter-spacing:-.01em; }
+
+/* chip ------------------------------------------------------------------- */
+.chip{
+  display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 12px;
+  border-radius:var(--r-pill); background:var(--s2); color:var(--text-2);
+  font-size:var(--fs-meta); font-weight:600; letter-spacing:-.005em; flex:none;
+}
+.chip.on{ background:var(--lime-dim); color:var(--lime); box-shadow:inset 0 0 0 1px var(--lime-line); }
+.chip svg{ opacity:.7; }
+
+/* przełącznik Opis | Historia (1:1 z pliku kanonicznego) ------------------ */
+.seg{
+  margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:4px;
+  background:var(--s1); border-radius:var(--r-pill); padding:4px;
+}
+.seg span{
+  height:var(--seg-h); border-radius:var(--r-pill); display:flex; align-items:center; justify-content:center;
+  font-size:var(--fs-body); font-weight:600; color:var(--text-3);
+}
+.seg span.on{ background:var(--s3); color:var(--text); }
+
+/* =========================================================================
+   DOLNA NAWIGACJA — wspólna dla ekranów 1 i 2
+   ========================================================================= */
+.nav{
+  margin:auto calc(var(--pad-screen) * -1) 0; flex:none;
+  height:var(--nav-h); border-top:1px solid var(--line-soft); background:var(--s0);
+  display:grid; grid-template-columns:repeat(5,1fr); align-items:center;
+}
+.nav a{
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  color:var(--text-3); text-decoration:none;
+}
+.nav a span{ font-size:10.5px; font-weight:600; letter-spacing:.01em; }
+.nav a.on{ color:var(--lime); }
+
+/* =========================================================================
+   EKRAN 1 — PROGRES.  Dominanta: karta ostatniego rekordu.
+   ========================================================================= */
+.record{
+  margin-top:14px; background:var(--lime-dim); border:1px solid var(--lime-line);
+  border-radius:var(--r-card); padding:var(--pad-card);
+}
+.record .hd{ display:flex; align-items:center; justify-content:space-between; }
+.record .badge{
+  display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 10px; border-radius:var(--r-pill);
+  background:var(--lime); color:var(--lime-ink);
+  font-size:var(--fs-cap); font-weight:700; letter-spacing:var(--tr-cap); text-transform:uppercase;
+}
+.record .nm{
+  margin-top:12px; font-size:var(--fs-title); font-weight:700;
+  letter-spacing:-.01em; line-height:1.14;
+}
+.record .row{ margin-top:18px; display:flex; align-items:flex-end; }
+.record .stat{ flex:1; }
+.record .stat .cap{ display:block; margin-bottom:5px; }
+.record .stat .v{ font-size:var(--fs-big); font-weight:700; line-height:1; color:var(--lime); }
+.record .stat .u{ font-size:15px; font-weight:600; color:var(--text-3); margin-left:4px; }
+.record .stat.reps .v{ color:var(--text); }
+
+.sect{ margin-top:26px; display:flex; align-items:center; justify-content:space-between; }
+
+.rows{ margin-top:4px; }
+.row{
+  height:var(--row-h); display:flex; align-items:center; gap:11px;
+  border-bottom:1px solid var(--line-soft);
+}
+.row:last-child{ border-bottom:0; }
+.row .ico{
+  width:var(--ico-tile); height:var(--ico-tile); border-radius:12px; background:var(--s2);
+  display:flex; align-items:center; justify-content:center; color:var(--text-3); flex:none;
+}
+.row .nm{
+  flex:1; min-width:0; font-size:var(--fs-h2); font-weight:600; letter-spacing:-.01em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.row .chev{ color:var(--text-3); flex:none; }
+
+/* mini-trend: 6 słupków, ostatni limonkowy */
+.spark{ display:flex; align-items:flex-end; gap:var(--spark-gap); height:var(--spark-h); flex:none; }
+.spark i{ width:var(--spark-w); height:var(--h); border-radius:2px; background:var(--s3); }
+.spark i.on{ background:var(--lime); }
+
+/* =========================================================================
+   EKRAN 2 — BAZA ĆWICZEŃ.
+   ========================================================================= */
+.search{
+  margin-top:10px; height:var(--search-h); border-radius:var(--r-tile); background:var(--s1);
+  display:flex; align-items:center; gap:10px; padding:0 14px; color:var(--text-3);
+}
+.search span{ font-size:var(--fs-body); font-weight:500; }
+
+.filters{
+  margin:14px calc(var(--pad-screen) * -1) 0; padding:0 var(--pad-screen);
+  display:flex; gap:8px; overflow:hidden;
+}
+
+.lib{ margin-top:16px; }
+.libitem{
+  display:flex; align-items:center; gap:14px; padding:9px 0;
+  border-bottom:1px solid var(--line-soft);
+}
+.libitem:last-child{ border-bottom:0; }
+.libitem .thumb{
+  width:var(--thumb); height:var(--thumb); border-radius:var(--r-tile); background:var(--s2);
+  display:flex; align-items:center; justify-content:center; color:var(--s3); flex:none;
+}
+.libitem .txt{ flex:1; min-width:0; }
+.libitem .nm{
+  font-size:var(--fs-h2); font-weight:600; letter-spacing:-.01em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.libitem .cap{ display:block; margin-top:5px; }
+.libitem .warn{ color:var(--text-3); flex:none; opacity:.85; }
+
+/* =========================================================================
+   EKRAN 3 — ĆWICZENIE / OPIS.
+   ========================================================================= */
+.shots{ margin-top:22px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.shot{
+  aspect-ratio:var(--img-ratio); border-radius:var(--r-inner); background:var(--s2);
+  display:flex; align-items:center; justify-content:center; color:var(--s3);
+  position:relative;
+}
+.shot .cap{ position:absolute; left:12px; bottom:10px; color:var(--text-3); }
+
+.taxo{ margin-top:18px; display:flex; gap:8px; flex-wrap:wrap; }
+
+.steps{ margin-top:26px; }
+.steps .cap{ display:block; margin-bottom:12px; }
+.step{ display:flex; gap:12px; padding:11px 0; align-items:flex-start; }
+.step b{
+  width:var(--step-num); height:var(--step-num); border-radius:50%; background:var(--s2);
+  color:var(--text-2); font-size:var(--fs-cap); font-weight:700;
+  display:flex; align-items:center; justify-content:center; flex:none; margin-top:1px;
+}
+.step p{ font-size:var(--fs-body); line-height:1.45; color:var(--text-2); }
+.more{
+  margin-top:10px; font-size:var(--fs-meta); font-weight:700; color:var(--lime);
+  display:inline-flex; align-items:center; gap:6px;
+}
+
+.note{
+  margin:26px 0 24px; border-left:2px solid var(--s3); padding:2px 0 2px 14px;
+  display:flex; gap:11px; align-items:flex-start;
+}
+.note .ic{ color:var(--text-3); flex:none; margin-top:2px; }
+.note .cap{ display:block; margin-bottom:5px; }
+.note p{ font-size:var(--fs-meta); line-height:1.5; color:var(--text-2); }
+.pb{ padding-bottom:26px; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>stronk · runda 3 · pakiet <em>Progres + Baza + Opis</em></h1>
+  <p>Kierunek C2 „Limonka", tokeny 1:1. Trzy ekrany bez scrolla: jedna dominanta na ekran,
+     szczegóły schowane za chevronem i zakładką. Ciężar i powtórzenia zawsze jako dwa osobne staty.</p>
+</div>
+
+<div class="rail">
+
+  <!-- =====================================================================
+       1 — PROGRES
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>1 · Progres</b><i></i>rekord + moje ćwiczenia</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">18:44</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="h1">Progres</div>
+      </div>
+
+      <!-- DOMINANTA: ostatni rekord -->
+      <div class="record">
+        <div class="hd">
+          <span class="cap">Ostatni rekord</span>
+          <span class="badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12"/><path d="M7 4v5a5 5 0 0 0 10 0V4"/><path d="M12 14v5"/><path d="M8 20h8"/></svg>
+            PR
+          </span>
+        </div>
+        <div class="nm">Mostek biodrowy<br>ze sztangą</div>
+        <div class="row">
+          <div class="stat">
+            <span class="cap">Ciężar</span>
+            <div class="v num">40<span class="u">kg</span></div>
+          </div>
+          <div class="stat reps">
+            <span class="cap">Powtórzenia</span>
+            <div class="v num">8</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sect">
+        <span class="cap">Moje ćwiczenia</span>
+        <span class="cap num">6</span>
+      </div>
+
+      <div class="rows">
+
+        <div class="row">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Mostek biodrowy ze sztangą</div>
+          <div class="spark">
+            <i style="--h:44%"></i><i style="--h:56%"></i><i style="--h:52%"></i><i style="--h:76%"></i><i class="on" style="--h:100%"></i>
+          </div>
+          <div class="chev">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Przysiad goblet</div>
+          <div class="spark">
+            <i style="--h:38%"></i><i style="--h:52%"></i><i style="--h:64%"></i><i style="--h:70%"></i><i class="on" style="--h:88%"></i>
+          </div>
+          <div class="chev">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Wyciskanie hantli leżąc</div>
+          <div class="spark">
+            <i style="--h:58%"></i><i style="--h:54%"></i><i style="--h:66%"></i><i style="--h:66%"></i><i class="on" style="--h:80%"></i>
+          </div>
+          <div class="chev">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Wiosłowanie hantlami w opadzie</div>
+          <div class="spark">
+            <i style="--h:42%"></i><i style="--h:50%"></i><i style="--h:50%"></i><i style="--h:62%"></i><i class="on" style="--h:72%"></i>
+          </div>
+          <div class="chev">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Wyciskanie nogami na suwnicy</div>
+          <div class="spark">
+            <i style="--h:60%"></i><i style="--h:60%"></i><i style="--h:74%"></i><i style="--h:82%"></i><i class="on" style="--h:94%"></i>
+          </div>
+          <div class="chev">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10"/></svg>
+          </div>
+          <div class="nm">Ściąganie drążka wyciągu górnego</div>
+          <div class="spark">
+            <i style="--h:44%"></i><i style="--h:58%"></i><i style="--h:56%"></i><i style="--h:68%"></i><i class="on" style="--h:76%"></i>
+          </div>
+          <div class="chev">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- dolna nawigacja -->
+      <div class="nav">
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.2 12 5l8 6.2V19a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1z"/></svg>
+          <span>Dziś</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
+          <span>Tydzień</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>
+          <span>Plany</span>
+        </a>
+        <a class="on">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5 9.5 11l3.5 3.5L20 7"/><path d="M15 7h5v5"/></svg>
+          <span>Progres</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>
+          <span>Baza</span>
+        </a>
+      </div>
+
+    </div></div>
+  </div>
+
+  <!-- =====================================================================
+       2 — BAZA ĆWICZEŃ
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>2 · Baza</b><i></i>szukaj i filtruj</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">18:45</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="h1">Baza</div>
+        <span class="cap num">873</span>
+      </div>
+
+      <div class="search">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        <span>Szukaj</span>
+      </div>
+
+      <div class="filters">
+        <span class="chip on">
+          Pośladki
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 7 7 7-7"/></svg>
+        </span>
+        <span class="chip">
+          Sprzęt
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 7 7 7-7"/></svg>
+        </span>
+        <span class="chip">
+          Poziom
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 7 7 7-7"/></svg>
+        </span>
+              </div>
+
+      <div class="lib">
+
+        <div class="libitem">
+          <div class="thumb">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="m5 16 4.5-4.5 3 3L17 10l2.5 2.5"/><circle cx="9" cy="9.5" r="1.4"/></svg>
+          </div>
+          <div class="txt">
+            <div class="nm">Mostek biodrowy ze sztangą</div>
+            <span class="cap">Pośladki</span>
+          </div>
+          <div class="chev" style="color:var(--text-3)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="libitem">
+          <div class="thumb">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="m5 16 4.5-4.5 3 3L17 10l2.5 2.5"/><circle cx="9" cy="9.5" r="1.4"/></svg>
+          </div>
+          <div class="txt">
+            <div class="nm">Mostek biodrowy na jednej nodze</div>
+            <span class="cap">Pośladki</span>
+          </div>
+          <div class="chev" style="color:var(--text-3)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="libitem">
+          <div class="thumb">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="m5 16 4.5-4.5 3 3L17 10l2.5 2.5"/><circle cx="9" cy="9.5" r="1.4"/></svg>
+          </div>
+          <div class="txt">
+            <div class="nm">Rumuński martwy ciąg</div>
+            <span class="cap">Dwugłowe uda</span>
+          </div>
+          <div class="warn">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5 2.9 19.5h18.2z"/><path d="M12 10.2v4"/><path d="M12 17.1v.1"/></svg>
+          </div>
+          <div class="chev" style="color:var(--text-3)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="libitem">
+          <div class="thumb">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="m5 16 4.5-4.5 3 3L17 10l2.5 2.5"/><circle cx="9" cy="9.5" r="1.4"/></svg>
+          </div>
+          <div class="txt">
+            <div class="nm">Przysiad goblet</div>
+            <span class="cap">Czworogłowe uda</span>
+          </div>
+          <div class="chev" style="color:var(--text-3)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="libitem">
+          <div class="thumb">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="m5 16 4.5-4.5 3 3L17 10l2.5 2.5"/><circle cx="9" cy="9.5" r="1.4"/></svg>
+          </div>
+          <div class="txt">
+            <div class="nm">Przysiad ze sztangą</div>
+            <span class="cap">Czworogłowe uda</span>
+          </div>
+          <div class="warn">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5 2.9 19.5h18.2z"/><path d="M12 10.2v4"/><path d="M12 17.1v.1"/></svg>
+          </div>
+          <div class="chev" style="color:var(--text-3)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="libitem">
+          <div class="thumb">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="m5 16 4.5-4.5 3 3L17 10l2.5 2.5"/><circle cx="9" cy="9.5" r="1.4"/></svg>
+          </div>
+          <div class="txt">
+            <div class="nm">Wyciskanie nogami na suwnicy</div>
+            <span class="cap">Czworogłowe uda</span>
+          </div>
+          <div class="chev" style="color:var(--text-3)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="libitem">
+          <div class="thumb">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="m5 16 4.5-4.5 3 3L17 10l2.5 2.5"/><circle cx="9" cy="9.5" r="1.4"/></svg>
+          </div>
+          <div class="txt">
+            <div class="nm">Deska</div>
+            <span class="cap">Brzuch</span>
+          </div>
+          <div class="chev" style="color:var(--text-3)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="nav">
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.2 12 5l8 6.2V19a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1z"/></svg>
+          <span>Dziś</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
+          <span>Tydzień</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>
+          <span>Plany</span>
+        </a>
+        <a>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5 9.5 11l3.5 3.5L20 7"/><path d="M15 7h5v5"/></svg>
+          <span>Progres</span>
+        </a>
+        <a class="on">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>
+          <span>Baza</span>
+        </a>
+      </div>
+
+    </div></div>
+  </div>
+
+  <!-- =====================================================================
+       3 — ĆWICZENIE / OPIS
+       ===================================================================== -->
+  <div class="col">
+    <div class="caption"><b>3 · Ćwiczenie</b><i></i>opis</div>
+    <div class="phone"><div class="screen">
+
+      <div class="sysbar">
+        <span class="num">18:46</span>
+        <span class="sysdots"><span></span><span></span><span></span></span>
+      </div>
+
+      <div class="navbar">
+        <div class="iconbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>
+        </div>
+      </div>
+
+      <div class="h1">Mostek biodrowy<br>ze sztangą</div>
+
+      <div class="seg">
+        <span class="on">Opis</span>
+        <span>Historia</span>
+      </div>
+
+      <div class="shots">
+        <div class="shot">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="m5 16 4.5-4.5 3 3L17 10l2.5 2.5"/><circle cx="9" cy="9.5" r="1.4"/></svg>
+          <span class="cap">Start</span>
+        </div>
+        <div class="shot">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="m5 16 4.5-4.5 3 3L17 10l2.5 2.5"/><circle cx="9" cy="9.5" r="1.4"/></svg>
+          <span class="cap">Koniec</span>
+        </div>
+      </div>
+
+      <div class="taxo">
+        <span class="chip on">Pośladki</span>
+        <span class="chip">Sztanga</span>
+        <span class="chip">Średni</span>
+      </div>
+
+      <div class="steps">
+        <span class="cap">Wykonanie</span>
+        <div class="step"><b class="num">1</b><p>Sztanga nad biodrami, podkładka na gryfie.</p></div>
+        <div class="step"><b class="num">2</b><p>Połóż się płasko, oprzyj górę pleców.</p></div>
+        <div class="step"><b class="num">3</b><p>Pchaj przez pięty, wypchnij biodra w górę.</p></div>
+        <div class="step"><b class="num">4</b><p>Pełny wyprost bioder, wróć powoli.</p></div>
+        <span class="more">
+          Pokaż więcej
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 7 7 7-7"/></svg>
+        </span>
+      </div>
+
+      <div class="note">
+        <div class="ic">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5 2.9 19.5h18.2z"/><path d="M12 10.2v4"/><path d="M12 17.1v.1"/></svg>
+        </div>
+        <div>
+          <span class="cap">Twoje stawy</span>
+          <p>Plecy L5-S1 i kolano: obciążenie niskie. Gryf trzymaj na podkładce.</p>
+        </div>
+      </div>
+
+      <div class="pb"></div>
+    </div></div>
+  </div>
+
+</div>
+</body>
+</html>
