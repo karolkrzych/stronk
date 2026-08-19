@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.Hotel
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PersonalInjury
 import androidx.compose.material.icons.rounded.PrecisionManufacturing
 import androidx.compose.material.icons.rounded.Rowing
@@ -70,7 +71,8 @@ object StronkIcons {
     val restDay = Icons.Rounded.Hotel
     val record = Icons.Rounded.EmojiEvents
     val injury = Icons.Rounded.PersonalInjury
-    val profile = Icons.Rounded.Accessibility
+    /** Wejście do profilu — sylwetka człowieka, bo „profil” ma być rozpoznawalny na pierwszy rzut oka. */
+    val profile = Icons.Rounded.Person
 }
 
 /**

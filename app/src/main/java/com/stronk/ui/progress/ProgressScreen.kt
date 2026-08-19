@@ -23,12 +23,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkAccentBadge
 import com.stronk.ui.components.StronkAccentCard
 import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkExerciseRow
 import com.stronk.ui.components.StronkIcons
-import com.stronk.ui.components.StronkListRow
 import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkSparkline
@@ -123,9 +122,9 @@ private fun ProgressContent(
             )
         }
         items(state.exercises, key = { it.exerciseId }) { exercise ->
-            StronkListRow(
+            StronkExerciseRow(
+                exerciseId = exercise.exerciseId,
                 title = exercise.name,
-                icon = MuscleIcons.forMuscle(exercise.primaryMuscle),
                 trailingContent = {
                     StronkSparkline(
                         values = exercise.trend,

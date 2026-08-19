@@ -1,7 +1,6 @@
 package com.stronk.ui.list
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,17 +38,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.stronk.data.Exercise
 import com.stronk.data.ExerciseFilters
-import com.stronk.data.ExerciseRepository
 import com.stronk.ui.PlLabels
 import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkExerciseThumb
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.theme.StronkRadius
@@ -116,11 +113,13 @@ fun ExerciseListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
+                // Dół z zapasem na wysokość dolnej nawigacji — bez tego ostatni
+                // wiersz listy chowa się pod paskiem (uwaga z gate'a).
                 contentPadding = PaddingValues(
                     start = StronkSpacing.screen,
                     end = StronkSpacing.screen,
                     top = StronkSpacing.md,
-                    bottom = StronkSpacing.xxl,
+                    bottom = StronkSizes.navBar + StronkSpacing.md,
                 ),
             ) {
                 items(state.exercises, key = { it.id }) { exercise ->
@@ -328,13 +327,10 @@ private fun LibraryRow(exercise: Exercise, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            AsyncImage(
-                model = ExerciseRepository.IMAGES_BASE_URI + exercise.images.firstOrNull().orEmpty(),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(StronkSizes.thumb)
-                    .clip(StronkRadius.tileShape)
-                    .background(StronkTheme.colors.surfaceTile),
+            StronkExerciseThumb(
+                exerciseId = exercise.id,
+                size = StronkSizes.thumb,
+                cornerRadius = StronkRadius.tile,
             )
             Column(Modifier.weight(1f)) {
                 Text(

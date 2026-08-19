@@ -74,13 +74,13 @@ import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkAccentCard
 import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkChip
+import com.stronk.ui.components.StronkExerciseThumb
 import com.stronk.ui.components.StronkFooterActions
 import com.stronk.ui.components.StronkGhostButton
 import com.stronk.ui.components.StronkIconBadge
 import com.stronk.ui.components.StronkIconBadgeSize
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkListRow
-import com.stronk.ui.components.StronkNextRow
 import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkRingTimer
 import com.stronk.ui.components.StronkSectionHeader
@@ -579,12 +579,44 @@ private fun NextSection(next: WorkoutExerciseUi, onOpen: () -> Unit) {
             .padding(vertical = 8.dp),
     )
     Spacer(Modifier.height(StronkSpacing.xs))
-    StronkNextRow(
-        title = next.name,
-        icon = MuscleIcons.forMuscle(next.muscle),
-        onClick = onOpen,
-    )
+    NextExerciseRow(next = next, onOpen = onOpen)
     Spacer(Modifier.height(StronkSpacing.xl))
+}
+
+/**
+ * Wiersz „następne” (mock `.next .row`) — miniatura 34 dp z promieniem 10,
+ * nazwa w `--text-2` i chevron. Zdjęcie zamiast piktogramu partii: przed
+ * przejściem dalej widać, co się właściwie będzie robiło.
+ */
+@Composable
+private fun NextExerciseRow(next: WorkoutExerciseUi, onOpen: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        StronkExerciseThumb(
+            exerciseId = next.exerciseId,
+            size = StronkSizes.iconTileSmall,
+            cornerRadius = 10.dp,
+        )
+        Text(
+            text = next.name,
+            style = StronkTextStyles.h2,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            imageVector = StronkIcons.chevron,
+            contentDescription = null,
+            tint = StronkTheme.colors.textDim,
+            modifier = Modifier.size(18.dp),
+        )
+    }
 }
 
 // ----------------------------------------------------------- stan: PRZERWA

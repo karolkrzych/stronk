@@ -29,11 +29,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkCard
 import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkExerciseRow
 import com.stronk.ui.components.StronkIcons
-import com.stronk.ui.components.StronkListRow
 import com.stronk.ui.components.StronkMetaChip
 import com.stronk.ui.components.StronkNoteCard
 import com.stronk.ui.components.StronkPrimaryButton
@@ -97,12 +96,15 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .height(44.dp),
                     actions = {
-                        IconButton(onClick = onOpenProfile, modifier = Modifier.size(36.dp)) {
+                        // Jedyne wejście do profilu (cel, sprzęt, kontuzje, kod
+                        // dostępu) — ikona osoby w `--text-2`, żeby czytała się
+                        // jako klikalna, a nie jako ozdobnik nagłówka.
+                        IconButton(onClick = onOpenProfile, modifier = Modifier.size(40.dp)) {
                             Icon(
                                 imageVector = StronkIcons.profile,
-                                contentDescription = "Profil",
-                                tint = StronkTheme.colors.textDim,
-                                modifier = Modifier.size(21.dp),
+                                contentDescription = "Profil i ustawienia",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp),
                             )
                         }
                     },
@@ -241,9 +243,9 @@ private fun WorkoutSection(
     )
     Column(Modifier.padding(top = 2.dp)) {
         workout.exercises.forEachIndexed { index, row ->
-            StronkListRow(
+            StronkExerciseRow(
+                exerciseId = row.exerciseId,
                 title = row.name,
-                icon = MuscleIcons.forMuscle(row.muscleKey),
                 trailing = row.setsChip,
                 divider = index != workout.exercises.lastIndex,
                 onClick = { onExerciseClick(row.exerciseId) },
