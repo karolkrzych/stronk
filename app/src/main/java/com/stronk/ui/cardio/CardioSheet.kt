@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -145,30 +146,41 @@ fun CardioSheet(
                     .padding(top = 6.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
-                BasicTextField(
-                    value = minutesText,
-                    onValueChange = { minutesText = CardioTexts.sanitizeMinutes(it) },
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .focusRequester(minutesFocus),
-                    textStyle = StronkTextStyles.hero.copy(color = MaterialTheme.colorScheme.onSurface),
-                    singleLine = true,
-                    cursorBrush = SolidColor(StronkTheme.colors.lime),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    decorationBox = { field ->
-                        Box {
-                            if (minutesText.isEmpty()) {
-                                Text(
-                                    text = CardioTexts.MINUTES_PLACEHOLDER,
-                                    style = StronkTextStyles.hero,
-                                    color = StronkTheme.colors.surfaceMuted,
-                                    maxLines = 1,
-                                )
+                // Pole ma szerokość SWOJEJ liczby (miarka-duch pod spodem), żeby
+                // „min" stało tuż przy wartości jak w mocku, a nie odpłynęło do
+                // prawej krawędzi — BasicTextField sam z siebie bierze całą szerokość.
+                Box {
+                    Text(
+                        text = minutesText.ifEmpty { CardioTexts.MINUTES_PLACEHOLDER },
+                        style = StronkTextStyles.hero,
+                        color = Color.Transparent,
+                        maxLines = 1,
+                    )
+                    BasicTextField(
+                        value = minutesText,
+                        onValueChange = { minutesText = CardioTexts.sanitizeMinutes(it) },
+                        modifier = Modifier
+                            .matchParentSize()
+                            .focusRequester(minutesFocus),
+                        textStyle = StronkTextStyles.hero.copy(color = MaterialTheme.colorScheme.onSurface),
+                        singleLine = true,
+                        cursorBrush = SolidColor(StronkTheme.colors.lime),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        decorationBox = { field ->
+                            Box {
+                                if (minutesText.isEmpty()) {
+                                    Text(
+                                        text = CardioTexts.MINUTES_PLACEHOLDER,
+                                        style = StronkTextStyles.hero,
+                                        color = StronkTheme.colors.surfaceMuted,
+                                        maxLines = 1,
+                                    )
+                                }
+                                field()
                             }
-                            field()
-                        }
-                    },
-                )
+                        },
+                    )
+                }
                 Text(
                     text = CardioTexts.UNIT_MINUTES,
                     style = StronkTextStyles.unitHero,
