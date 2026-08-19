@@ -105,6 +105,22 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .height(44.dp),
                     actions = {
+                        // Drugi punkt wejścia do dodawania cardio — obok tego
+                        // pod listą ćwiczeń — żeby nie trzeba było scrollować.
+                        // Neutralny styl jak ikona profilu (nie limonkowe CTA):
+                        // top bar ma zostać spokojny, jedna dominanta ekranu
+                        // to karta treningu.
+                        IconButton(
+                            onClick = { cardioSheet = CardioSheetTarget.New },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                imageVector = StronkIcons.add,
+                                contentDescription = "Dodaj cardio",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
                         // Jedyne wejście do profilu (cel, sprzęt, kontuzje, kod
                         // dostępu) — ikona osoby w `--text-2`, żeby czytała się
                         // jako klikalna, a nie jako ozdobnik nagłówka.
