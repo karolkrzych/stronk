@@ -134,14 +134,14 @@ private fun GoalCard(goal: TrainingGoal, selected: Boolean, onClick: () -> Unit)
                 value = GoalDefaults.repRangeLabel(goal),
                 size = StronkStatSize.TITLE,
                 valueColor = valueColor,
-                modifier = Modifier.weight(1.15f),
+                weight = 1.15f,
             )
             StronkStatBlock(
                 label = "Serie",
                 value = params.defaultSets.toString(),
                 size = StronkStatSize.TITLE,
                 valueColor = valueColor,
-                modifier = Modifier.weight(0.85f),
+                weight = 0.85f,
             )
             StronkStatBlock(
                 label = "Przerwa",
@@ -149,7 +149,6 @@ private fun GoalCard(goal: TrainingGoal, selected: Boolean, onClick: () -> Unit)
                 unit = ProfileTexts.restUnit(params.restSeconds),
                 size = StronkStatSize.TITLE,
                 valueColor = valueColor,
-                modifier = Modifier.weight(1f),
             )
         }
     }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -55,11 +56,18 @@ enum class StronkStatSize(
  *
  * ```
  * StronkStatRow {
- *     StronkStatBlock("Ciężar", "32,5", unit = "kg", size = StronkStatSize.HERO, modifier = Modifier.weight(1f))
+ *     StronkStatBlock("Ciężar", "32,5", unit = "kg", size = StronkStatSize.HERO)
  *     StronkStatDivider()
- *     StronkStatBlock("Powtórzenia", "12", modifier = Modifier.weight(1f))
+ *     StronkStatBlock("Powtórzenia", "12")
  * }
  * ```
+ *
+ * Rozciąganie na całą szerokość jest DOMYŚLNE (mocki: `.stats` to siatka/flex
+ * rozciągnięta na cały wiersz — kolumny dzielą dostępną szerokość po równo,
+ * treść w każdej kolumnie zostaje wyrównana do lewej). Stat jest zawsze
+ * dzieckiem [StronkStatRow] (czyli `Row`), więc [fillWidth] po prostu woła
+ * `RowScope.weight` za ciebie — nie trzeba już pamiętać o ręcznym
+ * `Modifier.weight(1f)` przy każdym wywołaniu.
  *
  * @param label kapitalik podany normalnie — wersaliki robi komponent
  * @param value sama liczba, np. "32,5"; bez jednostki i bez „×"
@@ -69,9 +77,16 @@ enum class StronkStatSize(
  * @param stretch siatka mocka (`.stats`): blok wypełnia wysokość wiersza, więc
  *        kapitaliki sąsiednich statów stoją w JEDNYM rzędzie, a liczby o różnej
  *        wielkości siadają na wspólnej linii u dołu. Wymaga [StronkStatRow].
+ * @param fillWidth domyślnie `true` — stat dostaje `RowScope.weight(weight)`,
+ *        więc rząd statów rozciąga się na całą szerokość (jak w mockach).
+ *        `false` tylko gdy stat NIE ma dzielić przestrzeni z rodzeństwem
+ *        (rzadkie, samotny stat w wierszu).
+ * @param weight waga w podziale wiersza, gdy [fillWidth] = true; domyślnie
+ *        równy podział (1f). Użyj innej wartości dla asymetrycznych kolumn
+ *        (np. dłuższa etykieta potrzebuje więcej miejsca).
  */
 @Composable
-fun StronkStatBlock(
+fun RowScope.StronkStatBlock(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
@@ -80,10 +95,13 @@ fun StronkStatBlock(
     valueColor: Color = MaterialTheme.colorScheme.onSurface,
     labelColor: Color = StronkTheme.colors.textDim,
     stretch: Boolean = false,
+    fillWidth: Boolean = true,
+    weight: Float = 1f,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     Column(
-        modifier = modifier
+        modifier = (if (fillWidth) Modifier.weight(weight) else Modifier)
+            .then(modifier)
             .padding(bottom = size.bottomInset)
             .then(if (stretch) Modifier.fillMaxHeight() else Modifier),
         verticalArrangement = if (stretch) Arrangement.SpaceBetween else Arrangement.Top,

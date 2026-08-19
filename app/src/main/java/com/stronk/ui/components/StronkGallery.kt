@@ -56,13 +56,11 @@ private fun StronkGalleryPreview() {
                     value = "32,5",
                     unit = "kg",
                     size = StronkStatSize.HERO,
-                    modifier = Modifier.weight(1f),
                 )
                 StronkStatDivider()
                 StronkStatBlock(
                     label = "Powtórzenia",
                     value = "12",
-                    modifier = Modifier.weight(1f),
                 )
             }
             StronkPrimaryButton("Zaliczone", onClick = {}, icon = StronkIcons.done)

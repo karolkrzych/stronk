@@ -736,13 +736,11 @@ private fun FinishedPane(
                 label = "Zrobione serie",
                 value = "$completedSets",
                 size = StronkStatSize.HERO,
-                modifier = Modifier.weight(1f),
             )
             StronkStatDivider()
             StronkStatBlock(
                 label = "W planie",
                 value = "$totalSets",
-                modifier = Modifier.weight(1f),
             )
         }
         Spacer(Modifier.weight(1f))
@@ -778,7 +776,6 @@ private fun SetStatsRow(
                 value = stat.value,
                 unit = stat.unit,
                 size = if (index == 0) primarySize else secondarySize,
-                modifier = Modifier.weight(1f),
             )
         }
     }
@@ -881,7 +878,6 @@ private fun MiniStatsRow(stats: List<SetStat>, modifier: Modifier = Modifier) {
                 value = stat.value,
                 unit = stat.unit,
                 size = StronkStatSize.TITLE,
-                modifier = Modifier.weight(1f),
             )
         }
     }
