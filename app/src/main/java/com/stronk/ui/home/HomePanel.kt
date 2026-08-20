@@ -38,6 +38,7 @@ import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
+import com.stronk.ui.theme.tabularNums
 
 /** Kafelek piktogramu wiersza panelu (mock: `.prow .picon` 40 × 40, `--r-tile`). */
 private val PanelIconTile = 40.dp
@@ -59,8 +60,10 @@ private val PanelValue = StronkTextStyles.h2.copy(fontWeight = FontWeight.Bold)
 /** KAPITALIK mini-statu cardio (mock: `.pstat .cap` 9,5 z tym samym trackingiem). */
 private val PanelStatCap = StronkTextStyles.cap.copy(fontSize = 9.5f.sp, letterSpacing = 1.33.sp)
 
-/** Liczba mini-statu cardio (mock: `.pstat .v` 15/700 w `--lime-deep`). */
-private val PanelStatValue = StronkTextStyles.bodyStrong.copy(fontWeight = FontWeight.Bold)
+/** Liczba mini-statu cardio (mock: `.pstat .v.num` 15/700 w `--lime-deep`). */
+private val PanelStatValue = StronkTextStyles.bodyStrong
+    .copy(fontWeight = FontWeight.Bold)
+    .tabularNums()
 
 /**
  * Panel dolny ekranu „Dziś" (mock rundy 5 `wariant-c-strefy.html`, `.panel`) —
@@ -72,7 +75,9 @@ private val PanelStatValue = StronkTextStyles.bodyStrong.copy(fontWeight = FontW
  *
  * @param exerciseCount null = nie ma treningu (pusty tydzień / brak planów), więc
  *        wiersza ĆWICZENIA w ogóle nie ma; CARDIO zostaje ZAWSZE — cardio nie
- *        zależy od siłowni
+ *        zależy od siłowni. Zero traktujemy jak brak: dzień planu bez ćwiczeń
+ *        dałby wiersz „0" prowadzący do pustego arkusza, a sekcja bez treści
+ *        ma się nie renderować
  * @param onAddCardio JEDYNY punkt wejścia do dodawania cardio w całej apce
  * @param onCardioClick tap we wpis → sheet edycji/usuwania
  */
@@ -91,7 +96,7 @@ fun HomeBottomPanel(
         color = StronkTheme.colors.surfaceCard,
     ) {
         Column {
-            if (exerciseCount != null) {
+            if (exerciseCount != null && exerciseCount > 0) {
                 PanelRow(icon = StronkIcons.start, onClick = onExercisesClick) {
                     PanelLabel(
                         caption = HomeTexts.SECTION_EXERCISES,

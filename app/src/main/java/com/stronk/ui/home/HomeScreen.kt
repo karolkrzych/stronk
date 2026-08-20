@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -329,6 +330,13 @@ private fun ColumnScope.WorkoutZone(
             text = workout.dayName,
             style = StronkTextStyles.title,
             color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            // `fill = false` = mockowe `.trainname-chev { flex: none }`: chevron
+            // stoi TUŻ za nazwą, a przy długiej nazwie dnia nie zostaje wypchnięty
+            // poza ekran (bez tego Compose mierzy tytuł na pełną szerokość wiersza
+            // i ikona schodzi do zerowej szerokości — czyli znika).
+            modifier = Modifier.weight(1f, fill = false),
         )
         Icon(
             imageVector = StronkIcons.chevron,
