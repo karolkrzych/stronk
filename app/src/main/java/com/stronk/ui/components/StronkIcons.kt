@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.Hotel
 import androidx.compose.material.icons.rounded.Info
@@ -57,6 +58,7 @@ object StronkIcons {
     val delete = Icons.Rounded.Delete
     val close = Icons.Rounded.Close
     val settings = Icons.Rounded.Settings
+    val filter = Icons.Rounded.FilterList
 
     /** Chevron „w szczegóły" na końcu wiersza listy. */
     val chevron = Icons.AutoMirrored.Rounded.KeyboardArrowRight

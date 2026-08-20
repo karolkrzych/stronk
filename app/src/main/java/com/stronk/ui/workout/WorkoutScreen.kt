@@ -6,6 +6,8 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,9 +32,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,15 +52,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -93,6 +102,8 @@ import com.stronk.ui.components.StronkStatRow
 import com.stronk.ui.components.StronkStatSize
 import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
+import com.stronk.ui.detail.ExerciseImageViewer
+import com.stronk.ui.profile.ProfileEquipment
 import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
@@ -1062,23 +1073,56 @@ private fun UpcomingSheet(
     }
 }
 
-/** Obrazki start/koniec z assets, obok siebie (jak w szczegółach ćwiczenia). */
+/**
+ * Obrazki start/koniec z assets, obok siebie (jak w szczegółach ćwiczenia).
+ * Tap otwiera pełnoekranowy podgląd ([ExerciseImageViewer]) — w trakcie treningu
+ * detal chwytu czy ustawienia stóp jest ważniejszy niż kiedykolwiek indziej.
+ */
 @Composable
 private fun ExerciseImagesRow(images: List<String>) {
     if (images.isEmpty()) return
+    val shots = images.take(2)
+    var viewerIndex by rememberSaveable { mutableIntStateOf(NO_VIEWER) }
+
     Row(horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs)) {
-        images.take(2).forEach { path ->
-            AsyncImage(
-                model = ExerciseRepository.IMAGES_BASE_URI + path,
-                contentDescription = null,
+        shots.forEachIndexed { index, path ->
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .aspectRatio(4f / 3f)
-                    .clip(StronkRadius.innerShape),
-            )
+                    .clip(StronkRadius.innerShape)
+                    .background(StronkTheme.colors.surfaceTile)
+                    .clickable { viewerIndex = index },
+            ) {
+                AsyncImage(
+                    model = ExerciseRepository.IMAGES_BASE_URI + path,
+                    contentDescription = "Powiększ obrazek",
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Icon(
+                    imageVector = Icons.Rounded.OpenInFull,
+                    contentDescription = null,
+                    tint = StronkTheme.colors.textDim,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(16.dp),
+                )
+            }
         }
     }
+
+    if (viewerIndex != NO_VIEWER) {
+        ExerciseImageViewer(
+            images = shots,
+            startIndex = viewerIndex,
+            onDismiss = { viewerIndex = NO_VIEWER },
+        )
+    }
 }
+
+/** „Podgląd zamknięty" — trzymamy Int, bo `rememberSaveable` lubi prymitywy. */
+private const val NO_VIEWER = -1
 
 /** Arkusz zamienników: „stanowisko zajęte / brak sprzętu" (ADR-005 pkt 6). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1088,6 +1132,19 @@ private fun SubstitutesSheet(
     onPick: (exercise: com.stronk.data.Exercise, permanent: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // Multi-select, lokalny stan sheetu — filtrowanie client-side, SubstituteFinder nietknięty.
+    var selectedGroups by remember { mutableStateOf(setOf<String>()) }
+    val equipmentGroups = remember(subs) {
+        ProfileEquipment.sortGroupIds(subs.options.map { it.equipmentGroupId }.distinct())
+    }
+    val visibleOptions = remember(subs, selectedGroups) {
+        if (selectedGroups.isEmpty()) {
+            subs.options
+        } else {
+            subs.options.filter { it.equipmentGroupId in selectedGroups }
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = StronkTheme.colors.surfaceCard,
@@ -1100,8 +1157,24 @@ private fun SubstitutesSheet(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(top = StronkSpacing.xxs),
             )
+            if (equipmentGroups.size > 1) {
+                EquipmentFilterButton(
+                    groups = equipmentGroups,
+                    selected = selectedGroups,
+                    onToggle = { groupId ->
+                        selectedGroups = if (groupId in selectedGroups) {
+                            selectedGroups - groupId
+                        } else {
+                            selectedGroups + groupId
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = StronkSpacing.sm),
+                )
+            }
             Spacer(Modifier.height(StronkSpacing.sm))
-            if (subs.options.isEmpty()) {
+            if (visibleOptions.isEmpty()) {
                 Text(
                     text = "Brak zamienników pod Twój sprzęt.",
                     style = StronkTextStyles.meta,
@@ -1110,12 +1183,78 @@ private fun SubstitutesSheet(
                 )
             } else {
                 LazyColumn(modifier = Modifier.heightIn(max = 480.dp)) {
-                    items(subs.options, key = { it.exercise.id }) { option ->
+                    items(visibleOptions, key = { it.exercise.id }) { option ->
                         SubstituteRow(option = option, onPick = onPick)
                     }
                 }
             }
             Spacer(Modifier.height(StronkSpacing.xl))
+        }
+    }
+}
+
+/**
+ * Full-width „Filtruj" pod tytułem arkusza + Material3 [DropdownMenu] w kolorach
+ * theme. Domyślny `containerColor` menu (`surfaceContainer` = `--s1`) jest
+ * IDENTYCZNY z tłem arkusza (`surfaceCard` = `--s1`) — zero odcięcia, menu
+ * znikało w tle. Naprawione jawnym `containerColor = surfaceMuted` (`--s3`,
+ * wyraźnie jaśniejsze niż karta) + hairline obrys `line`. Szerokość i pozycja:
+ * mierzymy szerokość przycisku (`onSizeChanged` na kontenerze-Box, px→dp przez
+ * [LocalDensity]) i wymuszamy tę samą szerokość na menu — bez tego menu miało
+ * intrinsic szerokość dopasowaną do treści (węższą, przyklejoną do lewej
+ * krawędzi pełnoszerokiego przycisku).
+ * Multi-select: tap pozycji dopisuje/zdejmuje grupę, menu zostaje otwarte, żeby
+ * dało się zaznaczyć kilka naraz; zamyka je dopiero tap poza nim.
+ *
+ * Aktywny filtr sygnalizuje limonkowy akcent [StronkGhostButton] (`accent = true`)
+ * + licznik zaznaczonych grup w etykiecie — bez dodatkowych kolorów czy odznak.
+ */
+@Composable
+private fun EquipmentFilterButton(
+    groups: List<String>,
+    selected: Set<String>,
+    onToggle: (groupId: String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var anchorWidthPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    Box(
+        modifier = modifier.onSizeChanged { anchorWidthPx = it.width },
+    ) {
+        StronkGhostButton(
+            text = if (selected.isEmpty()) "Filtruj" else "Filtruj (${selected.size})",
+            onClick = { expanded = true },
+            icon = StronkIcons.filter,
+            accent = selected.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(with(density) { anchorWidthPx.toDp() }),
+            shape = StronkRadius.innerShape,
+            containerColor = StronkTheme.colors.surfaceMuted,
+            border = BorderStroke(StronkSizes.hairline, StronkTheme.colors.line),
+        ) {
+            groups.forEach { groupId ->
+                val isSelected = groupId in selected
+                DropdownMenuItem(
+                    text = { Text(ProfileEquipment.titleOf(groupId)) },
+                    onClick = { onToggle(groupId) },
+                    trailingIcon = if (isSelected) {
+                        {
+                            Icon(
+                                imageVector = StronkIcons.done,
+                                contentDescription = null,
+                                tint = StronkTheme.colors.lime,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
         }
     }
 }

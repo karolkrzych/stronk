@@ -19,6 +19,7 @@ import com.stronk.data.findSubstitutes
 import com.stronk.progression.ProgressionEngine
 import com.stronk.service.RestTimerService
 import com.stronk.ui.PlLabels
+import com.stronk.ui.profile.ProfileEquipment
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -101,6 +102,8 @@ data class CurrentSetUi(
 data class SubstituteUi(
     val exercise: Exercise,
     val equipmentLabel: String,
+    /** Grupa sprzętu ([ProfileEquipment]) pod filtr chipów w arkuszu. */
+    val equipmentGroupId: String,
     /** Naruszenia limitów stawów z profilu — flagujemy, nie ukrywamy. */
     val warningLabels: List<String>,
 )
@@ -498,6 +501,7 @@ class WorkoutViewModel(
                 SubstituteUi(
                     exercise = match.exercise,
                     equipmentLabel = PlLabels.equipment(match.exercise.equipment),
+                    equipmentGroupId = ProfileEquipment.groupIdOf(match.exercise.equipment),
                     warningLabels = match.warnings.map { "obciąża: ${PlLabels.joint(it.joint)}" },
                 )
             },
