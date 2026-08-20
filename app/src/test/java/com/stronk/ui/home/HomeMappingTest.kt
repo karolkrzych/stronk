@@ -144,7 +144,39 @@ class HomeMappingTest {
         assertTrue(HomeMapping.hiddenCount(overview.days[2].exercises.size) > 0)
     }
 
+    // ---------- trening strefy górnej (żywi panel dolny i oba arkusze) ----------
+
+    @Test
+    fun `kazdy stan z treningiem oddaje go panelowi i arkuszom`() {
+        val workout = scheduledWorkout()
+        assertEquals(workout, HomeContent.TodayWorkout(workout).scheduledWorkout)
+        assertEquals(workout, HomeContent.CompletedWorkout(workout).scheduledWorkout)
+        assertEquals(workout, HomeContent.UpcomingWorkout(workout).scheduledWorkout)
+    }
+
+    @Test
+    fun `puste stany nie daja treningu, wiec panel gubi wiersz cwiczen`() {
+        assertNull(HomeContent.NoSchedule.scheduledWorkout)
+        assertNull(HomeContent.NoPlans.scheduledWorkout)
+    }
+
     // ---------- fixtures ----------
+
+    private fun scheduledWorkout(): ScheduledWorkoutUi {
+        val plan = plan()
+        val overview = HomeMapping.planOverview(plan, currentDayIndex = 0, exercises = exercises)
+        return ScheduledWorkoutUi(
+            scheduleEntryId = "e1",
+            planId = plan.id,
+            dayIndex = 0,
+            dateCaption = "Piątek · 21.08",
+            weekChip = "Tydzień 1/6",
+            dayName = plan.days[0].name,
+            exercises = overview.days[0].exercises,
+            setCount = HomeMapping.setCount(plan.days[0]),
+            plan = overview,
+        )
+    }
 
     private fun entry(id: String, date: String, status: ScheduleStatus) = ScheduleEntry(
         id = id,

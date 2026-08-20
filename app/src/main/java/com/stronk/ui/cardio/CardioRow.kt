@@ -48,13 +48,14 @@ internal fun cardioIcon(type: CardioType): ImageVector = when (type) {
 }
 
 /**
- * Sekcja CARDIO pod listą ćwiczeń (mock: kapitalik `.sechd` + `.crow`).
- * Sekcja jest drugorzędna: dominantą ekranu zostaje karta dnia. Jedyny punkt
- * wejścia do dodawania cardio to „+" w górnym pasku „Dziś" — gdy nie ma
- * żadnych wpisów, sekcja się w ogóle nie renderuje (pusty kapitalik bez
- * treści wyglądałby jak błąd, nie jak zaproszenie).
+ * Sekcja CARDIO w karcie dnia na ekranie „Tydzień" (mock: kapitalik `.sechd` +
+ * `.crow`). Sekcja jest drugorzędna i READ-ONLY: bez wpisów w ogóle się nie
+ * renderuje (pusty kapitalik wyglądałby jak błąd, nie jak zaproszenie).
  *
- * @param onRowClick null = wiersze nieklikalne (Tydzień); edycja żyje w „Dziś"
+ * Dodawanie i edycja cardio żyją WYŁĄCZNIE w panelu dolnym ekranu „Dziś"
+ * ([com.stronk.ui.home.HomeBottomPanel]) — jeden punkt wejścia na akcję.
+ *
+ * @param onRowClick null = wiersze nieklikalne (tak jest w „Tygodniu")
  */
 @Composable
 fun CardioSection(

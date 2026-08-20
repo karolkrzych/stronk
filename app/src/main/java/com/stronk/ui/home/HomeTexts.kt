@@ -27,7 +27,6 @@ internal object HomeTexts {
     const val SECTION_CARDIO = "Cardio"
     const val ADD_CARDIO = "Dodaj cardio"
     const val EDIT_PLAN = "Edytuj plan"
-    const val PLAN_DAYS = "Dni planu"
 
     /** Ile miniatur ćwiczeń pokazuje karta dnia w sheecie „Szczegóły planu". */
     const val DAY_PREVIEW_THUMBS = 3
