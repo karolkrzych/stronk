@@ -29,7 +29,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.stronk.data.CardioType
 import com.stronk.ui.cardio.CardioRowUi
 import com.stronk.ui.cardio.CardioTexts
 import com.stronk.ui.cardio.cardioIcon
@@ -43,8 +42,7 @@ import com.stronk.ui.theme.tabularNums
 /** Kafelek piktogramu wiersza panelu (mock: `.prow .picon` 40 × 40, `--r-tile`). */
 private val PanelIconTile = 40.dp
 
-/** Kółko „+" przy cardio (mock: `.paddbtn` 34, `.paddbtn.small` 28 przy wpisie). */
-private val AddButtonSize = 34.dp
+/** Kółko „+" przy nagłówku CARDIO (mock: `.paddbtn.small` 28 — nagłówek jest mały). */
 private val AddButtonSizeSmall = 28.dp
 
 /** Duża liczba wiersza (mock: `.pnum` 22/800) — Figtree 800 z cyframi tabelarycznymi. */
@@ -118,69 +116,58 @@ fun HomeBottomPanel(
                 PanelDivider()
             }
 
-            if (cardio.isEmpty()) {
-                EmptyCardioRow(onAddCardio)
-            } else {
-                cardio.forEachIndexed { index, row ->
-                    if (index > 0) PanelDivider()
-                    CardioEntryRow(
-                        row = row,
-                        // KAPITALIK stoi raz nad pierwszym wpisem, a „+" raz pod
-                        // ostatnim: powtórzony przy każdym wierszu byłby szumem
-                        // i drugim punktem wejścia do tej samej akcji.
-                        showCaption = index == 0,
-                        onClick = { onCardioClick(row) },
-                        onAdd = if (index == cardio.lastIndex) onAddCardio else null,
-                    )
-                }
+            // Nagłówek CARDIO z plusem stoi ZAWSZE w tym samym miejscu — jedyny
+            // punkt wejścia do dodawania, niezależny od liczby wpisów pod nim.
+            CardioHeaderRow(onAdd = onAddCardio)
+            cardio.forEach { row ->
+                PanelDivider()
+                CardioEntryRow(row = row, onClick = { onCardioClick(row) })
             }
         }
     }
 }
 
-/** Pusty stan cardio — zaproszenie i plusik w jednym wierszu (mock: ramka 1). */
+/**
+ * Nagłówek sekcji CARDIO (szkic Karola) — kapitalik i „+" po prawej w jednym,
+ * SMUKŁYM wierszu (bez kafelka ikony 40dp, żeby wyraźnie różnił się od pełnych
+ * wierszy ĆWICZENIA/wpisów i został czytelny jako nagłówek, nie kolejny wiersz).
+ * Wpisy dokładają się pod nim; plus tu stoi zawsze w tym samym miejscu.
+ */
 @Composable
-private fun EmptyCardioRow(onAddCardio: () -> Unit) {
-    PanelRow(
-        icon = cardioIcon(CardioType.BIKE),
-        iconTint = StronkTheme.colors.limeDeep,
-        onClick = onAddCardio,
+private fun CardioHeaderRow(onAdd: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        PanelLabel(caption = HomeTexts.SECTION_CARDIO, modifier = Modifier.weight(1f)) {
-            Text(
-                text = HomeTexts.ADD_CARDIO,
-                style = StronkTextStyles.h2,
-                color = StronkTheme.colors.textDim,
-            )
-        }
-        AddButton(size = AddButtonSize, onClick = onAddCardio)
+        Text(
+            text = HomeTexts.SECTION_CARDIO.uppercase(),
+            style = StronkTextStyles.cap,
+            color = StronkTheme.colors.textDim,
+            modifier = Modifier.weight(1f),
+        )
+        AddButton(size = AddButtonSizeSmall, onClick = onAdd)
     }
 }
 
 /**
  * Wpis cardio (mock: ramka 4) — nazwa typu i STATY CZAS / DYSTANS, każdy z
  * własnym kapitalikiem. Liczby w `--lime-deep`: to fakt z przeszłości, nie akcja.
+ * Bez plusa — jedyny punkt dodawania jest w [CardioHeaderRow]; tap w wiersz to
+ * zawsze edycja.
  */
 @Composable
-private fun CardioEntryRow(
-    row: CardioRowUi,
-    showCaption: Boolean,
-    onClick: () -> Unit,
-    onAdd: (() -> Unit)?,
-) {
+private fun CardioEntryRow(row: CardioRowUi, onClick: () -> Unit) {
     PanelRow(icon = cardioIcon(row.type), iconTint = StronkTheme.colors.limeDeep, onClick = onClick) {
-        PanelLabel(
-            caption = HomeTexts.SECTION_CARDIO.takeIf { showCaption },
+        Text(
+            text = CardioTexts.typeLabel(row.type),
+            style = PanelValue,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
-        ) {
-            Text(
-                text = CardioTexts.typeLabel(row.type),
-                style = PanelValue,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        )
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.Bottom,
@@ -198,13 +185,6 @@ private fun CardioEntryRow(
                     unit = CardioTexts.UNIT_KILOMETERS,
                 )
             }
-        }
-        if (onAdd != null) {
-            AddButton(
-                size = AddButtonSizeSmall,
-                onClick = onAdd,
-                modifier = Modifier.padding(start = 10.dp),
-            )
         }
     }
 }
