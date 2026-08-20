@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -493,7 +494,13 @@ private fun ColumnCaption(text: String, width: Dp) {
         color = StronkTheme.colors.textDim,
         textAlign = TextAlign.End,
         maxLines = 1,
-        modifier = Modifier.width(width),
+        // Kapitalik ma tracking .14em, więc „SERIE" jest szersze niż kolumna liczby
+        // (34 dp) i przy zwykłym `width()` gubiło ostatnią literę („SERI").
+        // `unbounded` pozwala napisowi wyjść w PUSTE miejsce po lewej, a koniec
+        // tekstu dalej trzyma się prawej krawędzi swojej kolumny.
+        modifier = Modifier
+            .width(width)
+            .wrapContentWidth(Alignment.End, unbounded = true),
     )
 }
 
