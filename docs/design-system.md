@@ -1,8 +1,6 @@
 # Design system "Limonka" (zatwierdzony 2026-08-19)
 
-**2026-08-19 runda 4:** drabinka +3 pkt (wybór Karola, wariant A) — s0 6%→9%,
-s1 10%→13%, s2 14%→17%, s3 19%→22%, `--line`/`--line-soft` o te same +3 pkt;
-saturacja zostaje 0%.
+Zmiany tokenów są na dole, w sekcji **Changelog**.
 
 Kierunek wizualny zatwierdzony przez Karola po 2 rundach iteracji; **pełny zestaw
 12 ekranów (runda 3) ZAAKCEPTOWANY 2026-08-19** ("Generalnie mi się podoba wszystko")
@@ -37,8 +35,11 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
 --lime-dim:  hsla(75, 70%, 52%, .13);  /* tint (badge, zaznaczony chip) */
 --lime-line: hsla(75, 70%, 52%, .30);
 
-/* typografia (Segoe UI jako proxy; docelowy font: TBD po rundzie typografii —
-   kandydaci Inter / Figtree, bundlowane w res/font) */
+/* typografia — HYBRYDA H2 (runda 5), szczegóły w sekcji „Typografia" niżej */
+--font-head: "Barlow Semi Condensed", sans-serif;  /* tytuły, waga 600 */
+--font-num:  "Figtree", sans-serif;                /* liczby hero/big, waga 800 */
+--font-body: "Figtree", sans-serif;                /* reszta, wagi 400–700 */
+
 --fs-hero: 62px;  /* wielka liczba (ciężar) */
 --fs-big:  40px;  /* duża liczba statu */
 --fs-title:27px;  /* nazwa ćwiczenia */
@@ -55,6 +56,43 @@ Stare mocki `mocks/alpha-screens.html` są ODRZUCONE — nie wzorować się.
 /* rytm */
 --pad-screen: 22px; --pad-card: 20px;  /* odstępy: 4/8/12/16/20/24/32 */
 ```
+
+## Typografia — hybryda H2 (zatwierdzona 2026-08-20)
+
+Wybór Karola z rundy 5 (mock `round4/typografia-hybryda.html`, wariant **H2**):
+**dwie rodziny, bez Intera**. Segoe UI jako proxy w mockach jest nieaktualne.
+
+| rola | krój | waga | gdzie |
+| --- | --- | --- | --- |
+| TYTUŁY | Barlow Semi Condensed | 600 | `title` 27, `h1` 24, `h1Small` 21 — nazwa ćwiczenia, nagłówek ekranu, nazwa dnia |
+| LICZBY | Figtree | 800 + `tnum` | `hero` 62, `big` 40 — ciężar, countdown, staty rekordu |
+| RESZTA | Figtree | 400/500/600/700 | body, meta, hint, chipy, CTA, jednostki, KAPITALIKI |
+
+- **Dlaczego Barlow na tytułach:** wąski i „sportowy" — długie polskie nazwy
+  ćwiczeń („Wyciskanie sztangi na ławce skośnej") mieszczą się bez ucinania.
+- **Dlaczego `tnum` na liczbach:** cyfry tabelaryczne mają stałą szerokość, więc
+  liczba ciężaru i countdown nie „skaczą" przy zmianie wartości.
+  Compose: `fontFeatureSettings = "tnum"` w `StronkTextStyles.hero` / `.big`.
+- **Kompensacja optyczna** (tokeny `--sc-head` 1.04 / `--sc-num` 0.97 z mocka):
+  Barlow jest wąski, więc `title` rysujemy jako 27 × 1,04 ≈ **28 sp**; Figtree 800
+  jest szerokie i ciężkie, więc `hero` 62 × 0,97 ≈ **60 sp** i `big` 40 × 0,97 ≈
+  **39 sp**. Tokeny `--fs-*` zostają 62/40/27 — mnożnik to poprawka pod krój, nie
+  zmiana skali. `h1` 24 i `h1Small` 21 bez mnożnika (tak jak w mocku).
+- **Tracking:** kapitaliki `.14em` (bez zmian); tytuły Barlow `+.002em` (krój wąski
+  lubi lekki luz), `hero` `-.03em`, `big` `-.015em`, reszta jak dotąd.
+- **Compose:** `ui/theme/Type.kt` — `Barlow` (statyczny TTF, waga 600) i `Figtree`
+  (font ZMIENNY, oś `wght`; instancje 400/500/600/700/800 przez
+  `FontVariation.Settings`; oś działa od API 26, `minSdk` = 29). Waga 600 jest
+  zarejestrowana świadomie — bez niej Compose podstawiłby 700 pod `h2`,
+  `bodyStrong` i jednostki.
+
+**Fonty w repo** (`app/src/main/res/font/`, licencja **SIL Open Font License 1.1**,
+bundlowane w APK — `res/font` NIE jest gitignorowane):
+
+| plik | źródło | licencja |
+| --- | --- | --- |
+| `barlow_semi_condensed_semibold.ttf` | [google/fonts `ofl/barlowsemicondensed`](https://github.com/google/fonts/tree/main/ofl/barlowsemicondensed) — `BarlowSemiCondensed-SemiBold.ttf` | OFL 1.1 (Jeremy Tribby) |
+| `figtree_variable.ttf` | [google/fonts `ofl/figtree`](https://github.com/google/fonts/tree/main/ofl/figtree) — `Figtree[wght].ttf` | OFL 1.1 (Erik Kennedy) |
 
 ## Zasady (twarde, od Karola — pełna lista w memory `karol-zasady`)
 
@@ -165,3 +203,16 @@ Mock → theme tokens w `ui/theme/` (mapowanie 1:1 z :root) → ekrany → **gat
 side-by-side**: render mocka headless Chrome + screenshot emulatora + pomiary
 pikselowe; PASS = "ten sam ekran". Historia rund i galeria (stały URL):
 https://claude.ai/code/artifact/a33aa816-bc16-4728-910d-992f7762c4c4
+
+## Changelog
+
+- **2026-08-20, runda 5 — typografia:** koniec z systemowym Roboto/Segoe.
+  Wchodzi **hybryda H2** (wybór Karola): tytuły Barlow Semi Condensed 600,
+  liczby hero/big Figtree 800 z `tnum`, cała reszta Figtree 400–700. Oba kroje
+  bundlowane w `app/src/main/res/font/` (OFL 1.1). Sizing: `title` 27→28 sp,
+  `hero` 62→60 sp, `big` 40→39 sp (kompensacja optyczna z mocka, tokeny bez
+  zmian); tytuły z wagi 700 na 600, liczby z 700 na 800. Szczegóły w sekcji
+  „Typografia".
+- **2026-08-19, runda 4 — jasność:** drabinka +3 pkt (wybór Karola, wariant A) —
+  s0 6%→9%, s1 10%→13%, s2 14%→17%, s3 19%→22%, `--line`/`--line-soft` o te same
+  +3 pkt; saturacja zostaje 0%.
