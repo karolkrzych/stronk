@@ -10,7 +10,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -19,7 +18,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
+import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
+import com.stronk.ui.theme.tabularNums
 
 /**
  * Jeden słupek wykresu trendu.
@@ -71,7 +72,11 @@ fun StronkBarChart(
     val colorTop = StronkTheme.colors.lime
     val colorLine = StronkTheme.colors.line
     val colorLabel = StronkTheme.colors.textDim
-    val labelStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+    // Wartości nad słupkami to LICZBY: rodzina z theme (gołe `TextStyle` wracało
+    // do systemowego Roboto) i cyfry tabelaryczne, żeby kolumny się nie rozjeżdżały.
+    val labelStyle = StronkTextStyles.meta
+        .copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        .tabularNums()
 
     Canvas(
         modifier

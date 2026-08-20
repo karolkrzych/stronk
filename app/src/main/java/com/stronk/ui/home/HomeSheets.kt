@@ -37,6 +37,7 @@ import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
+import com.stronk.ui.theme.tabularNums
 
 /** Miniatura na karcie dnia (mock S2: `.dc-thumb` 32 × 32, promień `--r-day`). */
 private val DayPreviewThumb = 32.dp
@@ -278,7 +279,7 @@ private fun PlanDayLevel(
         )
         Text(
             text = day.exercises.size.toString(),
-            style = StronkTextStyles.cap,
+            style = StronkTextStyles.cap.tabularNums(),
             color = StronkTheme.colors.textDim,
         )
     }
@@ -301,7 +302,7 @@ private fun SheetHeader(title: String, count: Int) {
         )
         Text(
             text = count.toString(),
-            style = StronkTextStyles.cap,
+            style = StronkTextStyles.cap.tabularNums(),
             color = StronkTheme.colors.textDim,
             modifier = Modifier.padding(bottom = 4.dp),
         )

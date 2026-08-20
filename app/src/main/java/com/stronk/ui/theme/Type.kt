@@ -59,6 +59,13 @@ private val Tight = LineHeightStyle(
 private const val TABULAR = "tnum"
 
 /**
+ * Ten sam styl, ale z cyframi tabelarycznymi — odpowiednik klasy `.num` z mocków.
+ * [StronkTextStyles.hero] i `.big` mają `tnum` na stałe (to zawsze liczby); mniejsze
+ * style są mieszane, więc liczbę oznaczamy wprost: `StronkTextStyles.cap.tabularNums()`.
+ */
+fun TextStyle.tabularNums(): TextStyle = copy(fontFeatureSettings = TABULAR)
+
+/**
  * Skala typograficzna „Limonka" — 1:1 ze zmiennymi `--fs-*` mocków:
  * hero 62 / big 40 / title 27 / h1 24 / h2 17 / body 15 / meta 13 / cap 11.
  * Kapitaliki (cap) mają tracking `.14em`.
