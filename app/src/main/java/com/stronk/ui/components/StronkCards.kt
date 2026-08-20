@@ -127,9 +127,16 @@ fun StronkNoteCard(
     label: String? = null,
     icon: ImageVector? = null,
 ) {
+    // SUCCESS to fakt z przeszłości („zaliczone"), więc krecha i ikona idą
+    // przygaszoną limonką — jasna limonka zostaje dla akcji i „teraz".
     val stripe = when (tone) {
-        StronkTone.ACCENT, StronkTone.SUCCESS -> StronkTheme.colors.lime
+        StronkTone.ACCENT -> StronkTheme.colors.lime
+        StronkTone.SUCCESS -> StronkTheme.colors.limeDeep
         else -> StronkTheme.colors.surfaceMuted
+    }
+    val iconTint = when (tone) {
+        StronkTone.SUCCESS -> StronkTheme.colors.limeDeep
+        else -> StronkTheme.colors.textDim
     }
     Surface(
         modifier = modifier,
@@ -156,7 +163,7 @@ fun StronkNoteCard(
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = StronkTheme.colors.textDim,
+                        tint = iconTint,
                         modifier = Modifier
                             .padding(end = 11.dp, top = 2.dp)
                             .size(16.dp),

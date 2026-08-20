@@ -1,11 +1,12 @@
 package com.stronk.ui.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -29,36 +31,56 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stronk.ui.cardio.CardioRowUi
-import com.stronk.ui.cardio.CardioSection
 import com.stronk.ui.cardio.CardioSheet
-import com.stronk.ui.components.StronkCard
 import com.stronk.ui.components.StronkEmptyState
-import com.stronk.ui.components.StronkExerciseRow
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkMetaChip
 import com.stronk.ui.components.StronkNoteCard
-import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkScreenHeader
-import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
+import com.stronk.ui.theme.StronkRadius
+import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 
+/** Wysokość CTA i belki „ukończone" (mock rundy 5: `.cta2` / `.donerow` = 68). */
+private val CtaHeight = 68.dp
+
+/** Ciemne kółko z ikoną „play" w CTA (mock: `.cta2 .play` 40 × 40). */
+private val CtaPlayCircle = 40.dp
+
+/** Przyciemnienie limonki pod kółkiem „play" (mock: `hsla(--lime-ink, .16)`). */
+private const val CTA_PLAY_ALPHA = 0.16f
+
+/** Wygaszenie tekstu i chevronu NA limonce (mock: `.t2` .6, `.arrow` .55). */
+private const val CTA_MUTED_ALPHA = 0.6f
+private const val CTA_ARROW_ALPHA = 0.55f
+
+/** Odstęp panelu dolnego od nawigacji (mock: `.panel { margin-bottom: 14px }`). */
+private val PanelBottomGap = 14.dp
+
 /**
- * Ekran „Dziś" — 1:1 z mockiem `mocks/limonka/pack-dzis-plany.html` (ekran 1).
+ * Ekran „Dziś" — wariant C rundy 5 („strefy + bottom sheet"),
+ * mock `round5/wariant-c-strefy.html`.
  *
- * Dominanta: karta dnia (data kapitalikami + chip bloku, nazwa dnia 27, nazwa
- * planu, CTA „Zacznij trening"). Pod nią sekcja ĆWICZENIA z licznikiem i
- * wierszami „piktogram + nazwa + chip serii" — bez ciężarów i bez fraz typu
- * „3×10": szczegóły są za tapnięciem w wiersz.
+ * Ekran ma DWIE stałe strefy i pustkę między nimi:
+ * - GÓRA: status, data + tydzień, klikalny tytuł dnia z chevronem (→ sheet
+ *   „Szczegóły planu”) i CTA — albo belka „Trening ukończony”, gdy zrobione.
+ * - DÓŁ, przypięty nad nawigacją: panel ĆWICZENIA / CARDIO. Lista ćwiczeń jest
+ *   schowana w bottom sheecie, na ekranie zostaje sama liczba.
  *
- * Na dole ekranu, tuż nad dolną nawigacją, jedyny link ekranu: „Cały tydzień".
+ * Świadomie NIE MA tu: nazwy planu pod tytułem (jest w sheecie planu), linku
+ * „Cały tydzień" (jest zakładka Tydzień w nawigacji) ani „+" cardio w górnym
+ * pasku (jedyny plusik siedzi w wierszu CARDIO).
  */
 @Composable
 fun HomeScreen(
@@ -67,13 +89,19 @@ fun HomeScreen(
     onOpenPlans: () -> Unit,
     onNewPlan: () -> Unit,
     onOpenProfile: () -> Unit,
+    onEditPlan: (planId: String) -> Unit,
     onExerciseClick: (exerciseId: String) -> Unit,
     viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsState()
+    // Trening strefy górnej: żywi go też panel dolny i oba arkusze, więc stoi tu,
+    // a nie w środku `Scaffold`.
+    val workout = state.content.scheduledWorkout
 
     // null = sheet zamknięty; CardioSheetTarget.New = nowy wpis, Edit = prefill.
     var cardioSheet by remember { mutableStateOf<CardioSheetTarget?>(null) }
+    var exercisesSheet by remember { mutableStateOf(false) }
+    var planSheet by remember { mutableStateOf(false) }
 
     Scaffold { innerPadding ->
         if (state.loading) {
@@ -92,6 +120,9 @@ fun HomeScreen(
                 .padding(innerPadding)
                 .fillMaxSize(),
         ) {
+            // Strefa górna. Scroll jest awaryjny (małe ekrany, puste stany) —
+            // w normalnym stanie treść się mieści, a wolna przestrzeń zostaje
+            // pusta między strefami.
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -100,30 +131,13 @@ fun HomeScreen(
                     .padding(horizontal = StronkSpacing.screen),
             ) {
                 StronkScreenHeader(
-                    title = "Dziś",
+                    title = HomeTexts.TITLE,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp),
+                        .height(StronkSizes.topBar),
                     actions = {
-                        // Drugi punkt wejścia do dodawania cardio — obok tego
-                        // pod listą ćwiczeń — żeby nie trzeba było scrollować.
-                        // Neutralny styl jak ikona profilu (nie limonkowe CTA):
-                        // top bar ma zostać spokojny, jedna dominanta ekranu
-                        // to karta treningu.
-                        IconButton(
-                            onClick = { cardioSheet = CardioSheetTarget.New },
-                            modifier = Modifier.size(40.dp),
-                        ) {
-                            Icon(
-                                imageVector = StronkIcons.add,
-                                contentDescription = "Dodaj cardio",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
                         // Jedyne wejście do profilu (cel, sprzęt, kontuzje, kod
-                        // dostępu) — ikona osoby w `--text-2`, żeby czytała się
-                        // jako klikalna, a nie jako ozdobnik nagłówka.
+                        // dostępu). Górny pasek ma zostać spokojny: jedna ikona.
                         IconButton(onClick = onOpenProfile, modifier = Modifier.size(40.dp)) {
                             Icon(
                                 imageVector = StronkIcons.profile,
@@ -155,28 +169,35 @@ fun HomeScreen(
 
                 if (state.todayDone) {
                     StronkNoteCard(
-                        text = "Dzisiejszy trening zaliczony.",
+                        text = HomeTexts.STATUS_DONE,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = StronkSpacing.sm),
+                            .padding(top = 6.dp),
                         tone = StronkTone.SUCCESS,
                         icon = StronkIcons.done,
                     )
                 }
 
                 when (content) {
-                    is HomeContent.TodayWorkout -> WorkoutSection(
+                    is HomeContent.TodayWorkout -> WorkoutZone(
                         workout = content.workout,
-                        ctaLabel = "Zacznij trening",
+                        ctaLabel = HomeTexts.CTA_TODAY,
                         onStartWorkout = onStartWorkout,
-                        onExerciseClick = onExerciseClick,
+                        onPlanClick = { planSheet = true },
                     )
 
-                    is HomeContent.UpcomingWorkout -> WorkoutSection(
+                    is HomeContent.UpcomingWorkout -> WorkoutZone(
                         workout = content.workout,
-                        ctaLabel = "Zacznij teraz",
+                        ctaLabel = HomeTexts.CTA_UPCOMING,
                         onStartWorkout = onStartWorkout,
-                        onExerciseClick = onExerciseClick,
+                        onPlanClick = { planSheet = true },
+                    )
+
+                    is HomeContent.CompletedWorkout -> WorkoutZone(
+                        workout = content.workout,
+                        ctaLabel = null,
+                        onStartWorkout = onStartWorkout,
+                        onPlanClick = { planSheet = true },
                     )
 
                     HomeContent.NoSchedule -> Column {
@@ -201,23 +222,45 @@ fun HomeScreen(
                         onAction = onNewPlan,
                     )
                 }
-
-                // CARDIO — sekcja drugorzędna pod ćwiczeniami: same fakty z
-                // dziś (limonka przygaszona). Bez wpisów sekcja się nie
-                // renderuje — jedyny punkt wejścia do dodawania to "+" u góry.
-                CardioSection(
-                    rows = state.cardio,
-                    modifier = Modifier.padding(top = StronkSpacing.xl),
-                    onRowClick = { row -> cardioSheet = CardioSheetTarget.Edit(row) },
-                )
-
-                Spacer(Modifier.height(StronkSpacing.lg))
             }
 
-            if (content is HomeContent.TodayWorkout || content is HomeContent.UpcomingWorkout) {
-                WeekLink(onOpenSchedule)
-            }
+            HomeBottomPanel(
+                exerciseCount = workout?.exercises?.size,
+                cardio = state.cardio,
+                onExercisesClick = { exercisesSheet = true },
+                onAddCardio = { cardioSheet = CardioSheetTarget.New },
+                onCardioClick = { row -> cardioSheet = CardioSheetTarget.Edit(row) },
+                modifier = Modifier
+                    .padding(horizontal = StronkSpacing.screen)
+                    .padding(bottom = PanelBottomGap),
+            )
         }
+    }
+
+    if (exercisesSheet && workout != null) {
+        HomeExercisesSheet(
+            exercises = workout.exercises,
+            onDismiss = { exercisesSheet = false },
+            onExerciseClick = { id ->
+                exercisesSheet = false
+                onExerciseClick(id)
+            },
+        )
+    }
+
+    if (planSheet && workout != null) {
+        HomePlanSheet(
+            plan = workout.plan,
+            onDismiss = { planSheet = false },
+            onEditPlan = { planId ->
+                planSheet = false
+                onEditPlan(planId)
+            },
+            onExerciseClick = { id ->
+                planSheet = false
+                onExerciseClick(id)
+            },
+        )
     }
 
     cardioSheet?.let { target ->
@@ -244,100 +287,181 @@ private sealed interface CardioSheetTarget {
     data class Edit(val row: CardioRowUi) : CardioSheetTarget
 }
 
-/** Karta dnia + sekcja ćwiczeń — jedyna treść ekranu, gdy trening jest zaplanowany. */
+/**
+ * Strefa treningu (mock: `.traincaprow` + `.trainname-row` + `.cta2`) — data
+ * kapitalikiem, chip tygodnia, SAM tytuł dnia z chevronem i jedno CTA.
+ *
+ * @param ctaLabel null = trening już zrobiony → zamiast CTA belka z obrysem
+ * @param onPlanClick tap w tytuł dnia — sheet „Szczegóły planu"
+ */
 @Composable
-private fun WorkoutSection(
+private fun ColumnScope.WorkoutZone(
     workout: ScheduledWorkoutUi,
-    ctaLabel: String,
+    ctaLabel: String?,
     onStartWorkout: (planId: String, dayIndex: Int, scheduleEntryId: String?) -> Unit,
-    onExerciseClick: (exerciseId: String) -> Unit,
+    onPlanClick: () -> Unit,
 ) {
-    StronkCard(modifier = Modifier.padding(top = 6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = workout.dateCaption.uppercase(),
-                style = StronkTextStyles.cap,
-                color = StronkTheme.colors.textDim,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            workout.weekChip?.let { StronkMetaChip(it) }
-        }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = StronkSpacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = workout.dateCaption.uppercase(),
+            style = StronkTextStyles.cap,
+            color = StronkTheme.colors.textDim,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        workout.weekChip?.let { StronkMetaChip(it) }
+    }
+
+    // Tytuł dnia to JEDYNA dominanta strefy — nazwa planu wisi w sheecie za
+    // chevronem, bo na ekranie była drugą linijką, której nikt nie czytał.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp)
+            .clickable(onClick = onPlanClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
             text = workout.dayName,
             style = StronkTextStyles.title,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(top = 14.dp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            // `fill = false` = mockowe `.trainname-chev { flex: none }`: chevron
+            // stoi TUŻ za nazwą, a przy długiej nazwie dnia nie zostaje wypchnięty
+            // poza ekran (bez tego Compose mierzy tytuł na pełną szerokość wiersza
+            // i ikona schodzi do zerowej szerokości — czyli znika).
+            modifier = Modifier.weight(1f, fill = false),
         )
-        Text(
-            text = workout.planName,
-            style = MaterialTheme.typography.labelMedium,
-            color = StronkTheme.colors.textDim,
-            modifier = Modifier.padding(top = 6.dp),
-        )
-        StronkPrimaryButton(
-            text = ctaLabel,
-            onClick = {
-                onStartWorkout(workout.planId, workout.dayIndex, workout.scheduleEntryId)
-            },
-            icon = Icons.Rounded.PlayArrow,
-            modifier = Modifier.padding(top = 18.dp),
+        Icon(
+            imageVector = StronkIcons.chevron,
+            contentDescription = "Szczegóły planu",
+            tint = StronkTheme.colors.textDim,
+            modifier = Modifier
+                .padding(start = 7.dp)
+                .size(19.dp),
         )
     }
 
-    StronkSectionHeader(
-        title = "Ćwiczenia",
+    if (ctaLabel == null) {
+        WorkoutDoneBar(workout)
+    } else {
+        WorkoutCta(
+            label = ctaLabel,
+            caption = HomeTexts.exercisesCount(workout.exercises.size),
+            onClick = {
+                onStartWorkout(workout.planId, workout.dayIndex, workout.scheduleEntryId)
+            },
+        )
+    }
+}
+
+/**
+ * CTA ekranu (mock: `.cta2`) — limonkowy pasek 68 dp z ciemnym kółkiem „play",
+ * dwiema linijkami i chevronem. Jedyna duża plama limonki na ekranie.
+ */
+@Composable
+private fun WorkoutCta(label: String, caption: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = StronkSpacing.xl),
-        trailing = {
-            Text(
-                text = workout.exercises.size.toString(),
-                style = StronkTextStyles.cap,
-                color = StronkTheme.colors.textDim,
-            )
-        },
-    )
-    Column(Modifier.padding(top = 2.dp)) {
-        workout.exercises.forEachIndexed { index, row ->
-            StronkExerciseRow(
-                exerciseId = row.exerciseId,
-                title = row.name,
-                trailing = row.setsChip,
-                divider = index != workout.exercises.lastIndex,
-                onClick = { onExerciseClick(row.exerciseId) },
+            .padding(top = 26.dp)
+            .height(CtaHeight),
+        shape = StronkRadius.innerShape,
+        color = StronkTheme.colors.lime,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = StronkSpacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(CtaPlayCircle),
+                shape = StronkRadius.pill,
+                color = StronkTheme.colors.limeInk.copy(alpha = CTA_PLAY_ALPHA),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = StronkTheme.colors.limeInk,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = StronkTextStyles.cta.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                    color = StronkTheme.colors.limeInk,
+                    maxLines = 1,
+                )
+                Text(
+                    text = caption,
+                    style = StronkTextStyles.hint.copy(fontWeight = FontWeight.SemiBold),
+                    color = StronkTheme.colors.limeInk.copy(alpha = CTA_MUTED_ALPHA),
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Icon(
+                imageVector = StronkIcons.chevron,
+                contentDescription = null,
+                tint = StronkTheme.colors.limeInk.copy(alpha = CTA_ARROW_ALPHA),
+                modifier = Modifier.size(19.dp),
             )
         }
     }
 }
 
 /**
- * Jedyny link ekranu (mock: `.weeklink`) — podkreślony tekst 13 w `--text-3`
- * z chevronem, wyśrodkowany tuż nad dolną nawigacją.
+ * Belka „Trening ukończony" (mock: `.donerow`) — sam obrys, zero wypełnienia:
+ * na tym ekranie nie ma już nic do zrobienia, więc nic nie ma prawa świecić.
  */
 @Composable
-private fun WeekLink(onOpenSchedule: () -> Unit) {
-    Row(
+private fun WorkoutDoneBar(workout: ScheduledWorkoutUi) {
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpenSchedule)
-            .padding(vertical = 14.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(top = 26.dp)
+            .height(CtaHeight),
+        shape = StronkRadius.innerShape,
+        color = Color.Transparent,
+        border = BorderStroke(StronkSizes.hairline, StronkTheme.colors.line),
     ) {
-        Text(
-            text = "Cały tydzień",
-            style = MaterialTheme.typography.labelMedium,
-            color = StronkTheme.colors.textDim,
-            textDecoration = TextDecoration.Underline,
-        )
-        Icon(
-            imageVector = StronkIcons.chevron,
-            contentDescription = null,
-            tint = StronkTheme.colors.textDim,
-            modifier = Modifier
-                .padding(start = 7.dp)
-                .size(16.dp),
-        )
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = StronkIcons.done,
+                    contentDescription = null,
+                    tint = StronkTheme.colors.limeDeep,
+                    modifier = Modifier.size(17.dp),
+                )
+                Text(
+                    text = HomeTexts.DONE_BAR,
+                    style = StronkTextStyles.bodyStrong.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = HomeTexts.workoutSummary(workout.exercises.size, workout.setCount),
+                style = StronkTextStyles.hint.copy(fontWeight = FontWeight.SemiBold),
+                color = StronkTheme.colors.textDim,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+        }
     }
 }
