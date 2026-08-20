@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -35,6 +36,7 @@ import com.stronk.ui.cardio.cardioIcon
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
+import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 import com.stronk.ui.theme.tabularNums
@@ -88,13 +90,17 @@ fun HomeBottomPanel(
     onCardioClick: (CardioRowUi) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = StronkRadius.cardShape,
-        color = StronkTheme.colors.surfaceCard,
-    ) {
-        Column {
-            if (exerciseCount != null && exerciseCount > 0) {
+    // Dwie osobne karty s1 — ĆWICZENIA i CARDIO są różnymi tematami, więc mają
+    // własne karty z przerwą między nimi (spójną z odstępem kart w Tygodniu),
+    // zamiast jednego wielkiego szarego bloku. Gdy nie ma treningu, karta
+    // ĆWICZENIA w ogóle się nie renderuje — bez przerwy nad samą CARDIO.
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (exerciseCount != null && exerciseCount > 0) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = StronkRadius.cardShape,
+                color = StronkTheme.colors.surfaceCard,
+            ) {
                 PanelRow(icon = StronkIcons.start, onClick = onExercisesClick) {
                     PanelLabel(
                         caption = HomeTexts.SECTION_EXERCISES,
@@ -113,15 +119,24 @@ fun HomeBottomPanel(
                         modifier = Modifier.size(18.dp),
                     )
                 }
-                PanelDivider()
             }
+            Spacer(Modifier.height(StronkSpacing.sm))
+        }
 
-            // Nagłówek CARDIO z plusem stoi ZAWSZE w tym samym miejscu — jedyny
-            // punkt wejścia do dodawania, niezależny od liczby wpisów pod nim.
-            CardioHeaderRow(onAdd = onAddCardio)
-            cardio.forEach { row ->
-                PanelDivider()
-                CardioEntryRow(row = row, onClick = { onCardioClick(row) })
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = StronkRadius.cardShape,
+            color = StronkTheme.colors.surfaceCard,
+        ) {
+            Column {
+                // Nagłówek CARDIO z plusem stoi ZAWSZE w tym samym miejscu —
+                // jedyny punkt wejścia do dodawania, niezależny od liczby
+                // wpisów pod nim.
+                CardioHeaderRow(onAdd = onAddCardio)
+                cardio.forEach { row ->
+                    PanelDivider()
+                    CardioEntryRow(row = row, onClick = { onCardioClick(row) })
+                }
             }
         }
     }
