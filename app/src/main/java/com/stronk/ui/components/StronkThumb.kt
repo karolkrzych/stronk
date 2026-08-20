@@ -137,7 +137,11 @@ fun StronkExerciseRow(
                     text = title,
                     style = StronkTextStyles.h2,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    // Mocki (`verify-c` ramka 2, `verify-sheet-2` ramka 2) łamią długie
+                    // nazwy na DWIE linie. Przy jednej linii „Wyciskanie na maszynie
+                    // siedząc" i „Wyciskanie nogami na suwnicy" ucinały się do
+                    // nierozróżnialnego „Wycisk…".
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (caption != null) {
