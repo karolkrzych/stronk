@@ -161,6 +161,8 @@ fun StronkNavHost() {
                     onOpenPlans = { navigateToTab(Routes.PLANS) },
                     onNewPlan = { navController.navigate(Routes.planEditor(null)) },
                     onOpenProfile = { navController.navigate(Routes.PROFILE) },
+                    // Z arkusza „Szczegóły planu" prosto do edytora tego planu.
+                    onEditPlan = { planId -> navController.navigate(Routes.planEditor(planId)) },
                     onExerciseClick = { id -> navController.navigate(Routes.exerciseDetail(id)) },
                 )
             }
