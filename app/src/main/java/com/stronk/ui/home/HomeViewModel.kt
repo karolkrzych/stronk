@@ -15,7 +15,6 @@ import com.stronk.data.Plan
 import com.stronk.data.PlanRepository
 import com.stronk.data.ScheduleEntry
 import com.stronk.data.ScheduleRepository
-import com.stronk.data.ScheduleStatus
 import com.stronk.progression.ProgressionEngine
 import com.stronk.ui.cardio.CardioRowUi
 import com.stronk.ui.plans.PlanTexts
@@ -46,7 +45,7 @@ data class HomeExerciseRow(
     val setsChip: String,
 )
 
-/** Zaplanowany trening przygotowany pod kartę dnia na ekranie „Dziś". */
+/** Zaplanowany trening przygotowany pod strefę treningu na ekranie „Dziś". */
 data class ScheduledWorkoutUi(
     val scheduleEntryId: String,
     val planId: String,
@@ -55,10 +54,32 @@ data class ScheduledWorkoutUi(
     val dateCaption: String,
     /** Chip bloku progresji, np. "Tydzień 1/6"; null gdy plan nie ma bloku. */
     val weekChip: String?,
-    val planName: String,
-    /** Nazwa dnia planu, np. "Full body B" — dominanta karty. */
+    /** Nazwa dnia planu, np. "Full body B" — dominanta ekranu. */
     val dayName: String,
     val exercises: List<HomeExerciseRow>,
+    /** Suma serii wszystkich ćwiczeń dnia — belka „Trening ukończony". */
+    val setCount: Int,
+    /** Cały plan pod sheet „Szczegóły planu" (nazwa planu, wszystkie dni). */
+    val plan: PlanOverviewUi,
+)
+
+/**
+ * Jeden dzień planu w sheecie „Szczegóły planu" (wariant S2 „karty z podglądem").
+ * Karta dnia pokazuje pierwsze miniatury OD RAZU, więc wiezie pełną listę ćwiczeń.
+ */
+data class PlanDayUi(
+    val dayIndex: Int,
+    val name: String,
+    val exercises: List<HomeExerciseRow>,
+    /** Dzień, który apka pokazuje jako bieżący — krecha limeDeep przy krawędzi. */
+    val current: Boolean,
+)
+
+/** Plan pod sheet „Szczegóły planu" — nagłówek + wszystkie dni. */
+data class PlanOverviewUi(
+    val planId: String,
+    val name: String,
+    val days: List<PlanDayUi>,
 )
 
 /**
@@ -79,6 +100,12 @@ sealed interface HomeContent {
     /** Na dziś jest zaplanowany trening. */
     data class TodayWorkout(val workout: ScheduledWorkoutUi) : HomeContent
 
+    /**
+     * Dzisiejszy trening jest już zrobiony — strefa treningu zostaje na ekranie
+     * (data, dzień, plan), tylko zamiast CTA stoi belka „Trening ukończony".
+     */
+    data class CompletedWorkout(val workout: ScheduledWorkoutUi) : HomeContent
+
     /** Dziś nic nie ma — pokazujemy najbliższy zaplanowany. */
     data class UpcomingWorkout(val workout: ScheduledWorkoutUi) : HomeContent
 
@@ -88,6 +115,15 @@ sealed interface HomeContent {
     /** Zero planów — zachęta do stworzenia pierwszego. */
     data object NoPlans : HomeContent
 }
+
+/** Trening ze strefy górnej albo null (puste stany) — bez rozpisywania `when`. */
+val HomeContent.scheduledWorkout: ScheduledWorkoutUi?
+    get() = when (this) {
+        is HomeContent.TodayWorkout -> workout
+        is HomeContent.CompletedWorkout -> workout
+        is HomeContent.UpcomingWorkout -> workout
+        HomeContent.NoSchedule, HomeContent.NoPlans -> null
+    }
 
 /** Stan ekranu Home. */
 data class HomeUiState(
@@ -170,22 +206,21 @@ class HomeViewModel(
         latestCardio = cardio
         val today = LocalDate.now()
         val todayKey = today.toString()
-        val planned = schedule.filter { it.status == ScheduleStatus.PLANNED }
-        // observeSchedule sortuje chronologicznie, więc first = najwcześniejszy.
-        val todayEntry = planned.firstOrNull { it.date == todayKey }
-        val upcomingEntry = planned.firstOrNull { it.date > todayKey }
+        val entries = HomeMapping.selectEntries(schedule, todayKey)
 
-        val todayUi = todayEntry?.let { workoutUi(it, plans, exercises) }
-        val upcomingUi = upcomingEntry?.let { workoutUi(it, plans, exercises) }
+        val todayUi = entries.today?.let { workoutUi(it, plans, exercises) }
+        val doneUi = entries.todayDone?.let { workoutUi(it, plans, exercises) }
+        val upcomingUi = entries.upcoming?.let { workoutUi(it, plans, exercises) }
         val content = when {
             todayUi != null -> HomeContent.TodayWorkout(todayUi)
+            doneUi != null -> HomeContent.CompletedWorkout(doneUi)
             upcomingUi != null -> HomeContent.UpcomingWorkout(upcomingUi)
             plans.any { !it.archived } -> HomeContent.NoSchedule
             else -> HomeContent.NoPlans
         }
         return HomeUiState(
             loading = false,
-            todayDone = schedule.any { it.date == todayKey && it.status == ScheduleStatus.DONE },
+            todayDone = entries.todayDone != null,
             activeWorkout = session?.let {
                 ActiveWorkoutUi(
                     planId = it.planId,
@@ -217,23 +252,20 @@ class HomeViewModel(
         val plan = plans.firstOrNull { it.id == entry.planId } ?: return null
         val day = plan.days.getOrNull(entry.dayIndex) ?: return null
         val date = runCatching { LocalDate.parse(entry.date) }.getOrNull()
+        val overview = HomeMapping.planOverview(plan, entry.dayIndex, exercises)
         return ScheduledWorkoutUi(
             scheduleEntryId = entry.id,
             planId = plan.id,
             dayIndex = entry.dayIndex,
             dateCaption = date?.let(::dateCaption) ?: entry.date,
             weekChip = date?.let { weekChip(plan, it) },
-            planName = plan.name,
             dayName = day.name,
-            exercises = day.exercises.map { planExercise ->
-                val exercise = exercises[planExercise.exerciseId]
-                HomeExerciseRow(
-                    exerciseId = planExercise.exerciseId,
-                    name = exercise?.namePl ?: planExercise.exerciseId,
-                    muscleKey = exercise?.primaryMuscles?.firstOrNull(),
-                    setsChip = PlanTexts.setsChip(planExercise.sets),
-                )
-            },
+            // Ten sam dzień, który wiezie już przegląd planu — nie mapujemy go
+            // drugi raz, żeby lista w sheecie i lista na ekranie nie mogły się
+            // rozjechać.
+            exercises = overview.days[entry.dayIndex].exercises,
+            setCount = HomeMapping.setCount(day),
+            plan = overview,
         )
     }
 
