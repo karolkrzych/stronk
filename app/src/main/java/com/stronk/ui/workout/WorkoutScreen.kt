@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,7 +62,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -1192,8 +1195,14 @@ private fun SubstitutesSheet(
 
 /**
  * Full-width „Filtruj" pod tytułem arkusza + Material3 [DropdownMenu] w kolorach
- * theme (domyślne — `surfaceContainer` motywu to `--s1`, spójnie z menu ⋮ edytora
- * planu i filtrami bazy ćwiczeń, żadne z nich nie nadpisuje kolorów ręcznie).
+ * theme. Domyślny `containerColor` menu (`surfaceContainer` = `--s1`) jest
+ * IDENTYCZNY z tłem arkusza (`surfaceCard` = `--s1`) — zero odcięcia, menu
+ * znikało w tle. Naprawione jawnym `containerColor = surfaceMuted` (`--s3`,
+ * wyraźnie jaśniejsze niż karta) + hairline obrys `line`. Szerokość i pozycja:
+ * mierzymy szerokość przycisku (`onSizeChanged` na kontenerze-Box, px→dp przez
+ * [LocalDensity]) i wymuszamy tę samą szerokość na menu — bez tego menu miało
+ * intrinsic szerokość dopasowaną do treści (węższą, przyklejoną do lewej
+ * krawędzi pełnoszerokiego przycisku).
  * Multi-select: tap pozycji dopisuje/zdejmuje grupę, menu zostaje otwarte, żeby
  * dało się zaznaczyć kilka naraz; zamyka je dopiero tap poza nim.
  *
@@ -1208,7 +1217,11 @@ private fun EquipmentFilterButton(
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Box(modifier) {
+    var anchorWidthPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    Box(
+        modifier = modifier.onSizeChanged { anchorWidthPx = it.width },
+    ) {
         StronkGhostButton(
             text = if (selected.isEmpty()) "Filtruj" else "Filtruj (${selected.size})",
             onClick = { expanded = true },
@@ -1216,7 +1229,14 @@ private fun EquipmentFilterButton(
             accent = selected.isNotEmpty(),
             modifier = Modifier.fillMaxWidth(),
         )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(with(density) { anchorWidthPx.toDp() }),
+            shape = StronkRadius.innerShape,
+            containerColor = StronkTheme.colors.surfaceMuted,
+            border = BorderStroke(StronkSizes.hairline, StronkTheme.colors.line),
+        ) {
             groups.forEach { groupId ->
                 val isSelected = groupId in selected
                 DropdownMenuItem(
