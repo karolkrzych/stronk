@@ -44,6 +44,10 @@ object ProfileEquipment {
     /** Grupa dla wartości sprzętu; nieznana wartość → [OTHER]. */
     fun groupIdOf(equipment: String): String = groupOfKey[equipment] ?: OTHER
 
+    /** Jak wyżej, ale brak sprzętu (`null`, np. ćwiczenie bez pola equipment) → [BODYWEIGHT]. */
+    @JvmName("groupIdOfNullable")
+    fun groupIdOf(equipment: String?): String = equipment?.let(::groupIdOf) ?: BODYWEIGHT
+
     /** Sekcje w stałej kolejności; puste sekcje pomijamy, kolejność wewnątrz = wejściowa. */
     fun groupsOf(options: List<String>): List<EquipmentGroup> {
         val byGroup = options.groupBy(::groupIdOf)
@@ -51,4 +55,10 @@ object ProfileEquipment {
             byGroup[id]?.let { items -> EquipmentGroup(id, titles.getValue(id), items) }
         }
     }
+
+    /** Etykieta sekcji dla ID grupy (jednej z pięciu stałych powyżej). */
+    fun titleOf(groupId: String): String = titles.getValue(groupId)
+
+    /** Podzbiór [ids] w kanonicznej kolejności sekcji — do sortowania chipów filtra. */
+    fun sortGroupIds(ids: Collection<String>): List<String> = order.filter { it in ids }
 }

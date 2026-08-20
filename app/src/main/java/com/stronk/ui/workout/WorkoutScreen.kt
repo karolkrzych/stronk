@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -77,6 +78,7 @@ import com.stronk.ui.PlLabels
 import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkChip
+import com.stronk.ui.components.StronkChoiceChip
 import com.stronk.ui.components.StronkExerciseThumb
 import com.stronk.ui.components.StronkFooterActions
 import com.stronk.ui.components.StronkGhostButton
@@ -98,6 +100,7 @@ import com.stronk.ui.components.StronkStatSize
 import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
 import com.stronk.ui.detail.ExerciseImageViewer
+import com.stronk.ui.profile.ProfileEquipment
 import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
@@ -1126,6 +1129,16 @@ private fun SubstitutesSheet(
     onPick: (exercise: com.stronk.data.Exercise, permanent: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // Single-select, lokalny stan sheetu — filtrowanie client-side, SubstituteFinder nietknięty.
+    var equipmentFilter by remember { mutableStateOf<String?>(null) }
+    val equipmentGroups = remember(subs) {
+        ProfileEquipment.sortGroupIds(subs.options.map { it.equipmentGroupId }.distinct())
+    }
+    val visibleOptions = remember(subs, equipmentFilter) {
+        val filter = equipmentFilter
+        if (filter == null) subs.options else subs.options.filter { it.equipmentGroupId == filter }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = StronkTheme.colors.surfaceCard,
@@ -1138,8 +1151,36 @@ private fun SubstitutesSheet(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(top = StronkSpacing.xxs),
             )
+            if (subs.profileEquipmentEmpty) {
+                StronkNoteCard(
+                    text = "Brak sprzętu w profilu — pokazujemy wszystkie ćwiczenia. " +
+                        "Zaznacz swój sprzęt: Profil → Sprzęt.",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = StronkSpacing.sm),
+                )
+            }
+            if (equipmentGroups.size > 1) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = StronkSpacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
+                ) {
+                    equipmentGroups.forEach { groupId ->
+                        StronkChoiceChip(
+                            label = ProfileEquipment.titleOf(groupId),
+                            selected = equipmentFilter == groupId,
+                            onClick = {
+                                equipmentFilter = if (equipmentFilter == groupId) null else groupId
+                            },
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(StronkSpacing.sm))
-            if (subs.options.isEmpty()) {
+            if (visibleOptions.isEmpty()) {
                 Text(
                     text = "Brak zamienników pod Twój sprzęt.",
                     style = StronkTextStyles.meta,
@@ -1148,7 +1189,7 @@ private fun SubstitutesSheet(
                 )
             } else {
                 LazyColumn(modifier = Modifier.heightIn(max = 480.dp)) {
-                    items(subs.options, key = { it.exercise.id }) { option ->
+                    items(visibleOptions, key = { it.exercise.id }) { option ->
                         SubstituteRow(option = option, onPick = onPick)
                     }
                 }

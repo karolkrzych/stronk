@@ -61,4 +61,38 @@ class ProfileEquipmentTest {
     fun `puste wejście daje brak sekcji`() {
         assertTrue(ProfileEquipment.groupsOf(emptyList()).isEmpty())
     }
+
+    @Test
+    fun `brak sprzętu (null) traktowany jak bez sprzętu`() {
+        assertEquals(ProfileEquipment.BODYWEIGHT, ProfileEquipment.groupIdOf(null))
+    }
+
+    @Test
+    fun `titleOf zwraca tę samą etykietę co groupsOf`() {
+        ProfileEquipment.groupsOf(datasetLike).forEach { group ->
+            assertEquals(group.title, ProfileEquipment.titleOf(group.id))
+        }
+    }
+
+    @Test
+    fun `sortGroupIds porządkuje niezależnie od kolejności wejściowej`() {
+        val shuffled = listOf(
+            ProfileEquipment.OTHER,
+            ProfileEquipment.BODYWEIGHT,
+            ProfileEquipment.FREE_WEIGHTS,
+        )
+
+        assertEquals(
+            listOf(ProfileEquipment.FREE_WEIGHTS, ProfileEquipment.BODYWEIGHT, ProfileEquipment.OTHER),
+            ProfileEquipment.sortGroupIds(shuffled),
+        )
+    }
+
+    @Test
+    fun `sortGroupIds pomija grupy spoza wejścia`() {
+        assertEquals(
+            listOf(ProfileEquipment.MACHINES),
+            ProfileEquipment.sortGroupIds(listOf(ProfileEquipment.MACHINES)),
+        )
+    }
 }
