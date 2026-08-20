@@ -111,8 +111,6 @@ data class SubstituteUi(
 data class SubstitutesState(
     val forExerciseName: String,
     val options: List<SubstituteUi>,
-    /** Profil bez zaznaczonego sprzętu → arkusz pokazuje notkę (SubstituteFinder wtedy nie filtruje). */
-    val profileEquipmentEmpty: Boolean = false,
 )
 
 /**
@@ -507,7 +505,6 @@ class WorkoutViewModel(
                     warningLabels = match.warnings.map { "obciąża: ${PlLabels.joint(it.joint)}" },
                 )
             },
-            profileEquipmentEmpty = profileDetails.equipment.isEmpty(),
         )
     }
 

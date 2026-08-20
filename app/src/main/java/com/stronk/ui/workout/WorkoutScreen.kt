@@ -11,7 +11,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,6 +35,8 @@ import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -78,7 +79,6 @@ import com.stronk.ui.PlLabels
 import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkChip
-import com.stronk.ui.components.StronkChoiceChip
 import com.stronk.ui.components.StronkExerciseThumb
 import com.stronk.ui.components.StronkFooterActions
 import com.stronk.ui.components.StronkGhostButton
@@ -1129,14 +1129,17 @@ private fun SubstitutesSheet(
     onPick: (exercise: com.stronk.data.Exercise, permanent: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // Single-select, lokalny stan sheetu — filtrowanie client-side, SubstituteFinder nietknięty.
-    var equipmentFilter by remember { mutableStateOf<String?>(null) }
+    // Multi-select, lokalny stan sheetu — filtrowanie client-side, SubstituteFinder nietknięty.
+    var selectedGroups by remember { mutableStateOf(setOf<String>()) }
     val equipmentGroups = remember(subs) {
         ProfileEquipment.sortGroupIds(subs.options.map { it.equipmentGroupId }.distinct())
     }
-    val visibleOptions = remember(subs, equipmentFilter) {
-        val filter = equipmentFilter
-        if (filter == null) subs.options else subs.options.filter { it.equipmentGroupId == filter }
+    val visibleOptions = remember(subs, selectedGroups) {
+        if (selectedGroups.isEmpty()) {
+            subs.options
+        } else {
+            subs.options.filter { it.equipmentGroupId in selectedGroups }
+        }
     }
 
     ModalBottomSheet(
@@ -1151,33 +1154,21 @@ private fun SubstitutesSheet(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(top = StronkSpacing.xxs),
             )
-            if (subs.profileEquipmentEmpty) {
-                StronkNoteCard(
-                    text = "Brak sprzętu w profilu — pokazujemy wszystkie ćwiczenia. " +
-                        "Zaznacz swój sprzęt: Profil → Sprzęt.",
+            if (equipmentGroups.size > 1) {
+                EquipmentFilterButton(
+                    groups = equipmentGroups,
+                    selected = selectedGroups,
+                    onToggle = { groupId ->
+                        selectedGroups = if (groupId in selectedGroups) {
+                            selectedGroups - groupId
+                        } else {
+                            selectedGroups + groupId
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = StronkSpacing.sm),
                 )
-            }
-            if (equipmentGroups.size > 1) {
-                FlowRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = StronkSpacing.sm),
-                    horizontalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
-                    verticalArrangement = Arrangement.spacedBy(StronkSpacing.xs),
-                ) {
-                    equipmentGroups.forEach { groupId ->
-                        StronkChoiceChip(
-                            label = ProfileEquipment.titleOf(groupId),
-                            selected = equipmentFilter == groupId,
-                            onClick = {
-                                equipmentFilter = if (equipmentFilter == groupId) null else groupId
-                            },
-                        )
-                    }
-                }
             }
             Spacer(Modifier.height(StronkSpacing.sm))
             if (visibleOptions.isEmpty()) {
@@ -1195,6 +1186,55 @@ private fun SubstitutesSheet(
                 }
             }
             Spacer(Modifier.height(StronkSpacing.xl))
+        }
+    }
+}
+
+/**
+ * Full-width „Filtruj" pod tytułem arkusza + Material3 [DropdownMenu] w kolorach
+ * theme (domyślne — `surfaceContainer` motywu to `--s1`, spójnie z menu ⋮ edytora
+ * planu i filtrami bazy ćwiczeń, żadne z nich nie nadpisuje kolorów ręcznie).
+ * Multi-select: tap pozycji dopisuje/zdejmuje grupę, menu zostaje otwarte, żeby
+ * dało się zaznaczyć kilka naraz; zamyka je dopiero tap poza nim.
+ *
+ * Aktywny filtr sygnalizuje limonkowy akcent [StronkGhostButton] (`accent = true`)
+ * + licznik zaznaczonych grup w etykiecie — bez dodatkowych kolorów czy odznak.
+ */
+@Composable
+private fun EquipmentFilterButton(
+    groups: List<String>,
+    selected: Set<String>,
+    onToggle: (groupId: String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier) {
+        StronkGhostButton(
+            text = if (selected.isEmpty()) "Filtruj" else "Filtruj (${selected.size})",
+            onClick = { expanded = true },
+            icon = StronkIcons.filter,
+            accent = selected.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            groups.forEach { groupId ->
+                val isSelected = groupId in selected
+                DropdownMenuItem(
+                    text = { Text(ProfileEquipment.titleOf(groupId)) },
+                    onClick = { onToggle(groupId) },
+                    trailingIcon = if (isSelected) {
+                        {
+                            Icon(
+                                imageVector = StronkIcons.done,
+                                contentDescription = null,
+                                tint = StronkTheme.colors.lime,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
         }
     }
 }
