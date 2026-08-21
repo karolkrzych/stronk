@@ -129,7 +129,12 @@ object MuscleIcons {
     fun forEquipment(equipment: String?): ImageVector = when (equipment) {
         "body only", null -> Icons.Rounded.Accessibility
         "cable" -> Icons.Rounded.Cable
-        "machine" -> Icons.Rounded.PrecisionManufacturing
+        // Podtypy equipment="machine" (reklasyfikacja 2026-08-21) dzielą ikonę
+        // z "machine" — to wciąż ta sama kategoria sprzętu, tylko rozbita na
+        // realne urządzenia, nie osobny charakter wizualny.
+        "machine", "smith machine", "leverage machine", "leg machine" ->
+            Icons.Rounded.PrecisionManufacturing
+        "cardio machine" -> Icons.AutoMirrored.Rounded.DirectionsRun
         "bands" -> Icons.Rounded.Waves
         else -> Icons.Rounded.FitnessCenter
     }

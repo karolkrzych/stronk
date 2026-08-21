@@ -11,8 +11,9 @@ import org.junit.Test
 class ProfileEquipmentTest {
 
     private val datasetLike = listOf(
-        "barbell", "body only", "bands", "cable", "dumbbell", "e-z curl bar",
-        "exercise ball", "foam roll", "kettlebells", "machine", "medicine ball", "other",
+        "barbell", "body only", "bands", "cable", "cardio machine", "dumbbell", "e-z curl bar",
+        "exercise ball", "foam roll", "kettlebells", "leg machine", "leverage machine", "machine",
+        "medicine ball", "other", "smith machine",
     )
 
     @Test
@@ -41,6 +42,7 @@ class ProfileEquipmentTest {
             listOf(
                 ProfileEquipment.FREE_WEIGHTS,
                 ProfileEquipment.MACHINES,
+                ProfileEquipment.CARDIO,
                 ProfileEquipment.ACCESSORIES,
                 ProfileEquipment.BODYWEIGHT,
                 ProfileEquipment.OTHER,
@@ -94,5 +96,25 @@ class ProfileEquipmentTest {
             listOf(ProfileEquipment.MACHINES),
             ProfileEquipment.sortGroupIds(listOf(ProfileEquipment.MACHINES)),
         )
+    }
+
+    @Test
+    fun `podtypy maszyn siłowych z reklasyfikacji ladują w sekcji Maszyny i wyciągi`() {
+        assertEquals(ProfileEquipment.MACHINES, ProfileEquipment.groupIdOf("smith machine"))
+        assertEquals(ProfileEquipment.MACHINES, ProfileEquipment.groupIdOf("leverage machine"))
+        assertEquals(ProfileEquipment.MACHINES, ProfileEquipment.groupIdOf("leg machine"))
+    }
+
+    @Test
+    fun `sprzęt cardio ląduje we własnej sekcji, nie w Maszynach ani Pozostałych`() {
+        assertEquals(ProfileEquipment.CARDIO, ProfileEquipment.groupIdOf("cardio machine"))
+        assertEquals("Cardio", ProfileEquipment.titleOf(ProfileEquipment.CARDIO))
+    }
+
+    @Test
+    fun `stara wartość machine z profilu sprzed reklasyfikacji nadal działa`() {
+        // Kompatybilność wsteczna: profile w Firestore mogą mieć zapisane "machine"
+        // z czasów przed rozbiciem na podtypy — nic nie może się na tym wywalić.
+        assertEquals(ProfileEquipment.MACHINES, ProfileEquipment.groupIdOf("machine"))
     }
 }

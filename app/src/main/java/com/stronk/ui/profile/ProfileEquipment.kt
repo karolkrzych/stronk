@@ -12,16 +12,18 @@ object ProfileEquipment {
 
     const val FREE_WEIGHTS = "free"
     const val MACHINES = "machines"
+    const val CARDIO = "cardio"
     const val ACCESSORIES = "accessories"
     const val BODYWEIGHT = "bodyweight"
     const val OTHER = "other"
 
     /** Kolejność sekcji na ekranie — od tego, co najczęściej decyduje o planie. */
-    private val order = listOf(FREE_WEIGHTS, MACHINES, ACCESSORIES, BODYWEIGHT, OTHER)
+    private val order = listOf(FREE_WEIGHTS, MACHINES, CARDIO, ACCESSORIES, BODYWEIGHT, OTHER)
 
     private val titles = mapOf(
         FREE_WEIGHTS to "Wolne ciężary",
         MACHINES to "Maszyny i wyciągi",
+        CARDIO to "Cardio",
         ACCESSORIES to "Akcesoria",
         BODYWEIGHT to "Bez sprzętu",
         OTHER to "Pozostałe",
@@ -34,6 +36,18 @@ object ProfileEquipment {
         "e-z curl bar" to FREE_WEIGHTS,
         "machine" to MACHINES,
         "cable" to MACHINES,
+        // Reklasyfikacja equipment="machine" (2026-08-21): podtypy maszyn siłowych
+        // zostają w tej samej sekcji co "machine" i "cable" — to wciąż sprzęt
+        // stacjonarny na siłowni, tylko rozróżniony na realne urządzenia.
+        "smith machine" to MACHINES,
+        "leverage machine" to MACHINES,
+        "leg machine" to MACHINES,
+        // Cardio ma WŁASNĄ sekcję zamiast trafiać do "Maszyny i wyciągi" albo
+        // "Pozostałe": to inny rodzaj sprzętu (bieżnia/orbitrek/rower/wioślarz),
+        // który user może mieć niezależnie od maszyn siłowych (np. tylko w domu),
+        // a "Pozostałe" jest już zbiorem różnorodnych rzadkich wartości — cardio
+        // zgubiłoby się tam mimo że to duża, konkretna kategoria (9 wartości).
+        "cardio machine" to CARDIO,
         "bands" to ACCESSORIES,
         "medicine ball" to ACCESSORIES,
         "exercise ball" to ACCESSORIES,

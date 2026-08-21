@@ -29,6 +29,10 @@ object PlLabels {
     private val equipment = mapOf(
         "body only" to "masa ciała",
         "machine" to "maszyna",
+        "smith machine" to "suwnica Smitha",
+        "leverage machine" to "maszyna dźwigniowa",
+        "leg machine" to "maszyna do nóg",
+        "cardio machine" to "sprzęt cardio",
         "other" to "inne",
         "foam roll" to "wałek piankowy",
         "kettlebells" to "kettlebell",
