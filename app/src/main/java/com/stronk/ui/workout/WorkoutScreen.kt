@@ -6,7 +6,6 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,8 +35,6 @@ import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -62,9 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -78,10 +73,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.stronk.data.ExerciseRepository
 import com.stronk.data.SetLog
+import com.stronk.data.SubstituteScoring
+import com.stronk.data.filterSubstitutesByGroup
 import com.stronk.ui.PlLabels
 import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkChip
+import com.stronk.ui.components.StronkEquipmentFilterButton
 import com.stronk.ui.components.StronkExerciseThumb
 import com.stronk.ui.components.StronkFooterActions
 import com.stronk.ui.components.StronkGhostButton
@@ -1133,16 +1131,19 @@ private fun SubstitutesSheet(
     onDismiss: () -> Unit,
 ) {
     // Multi-select, lokalny stan sheetu — filtrowanie client-side, SubstituteFinder nietknięty.
+    // subs.options to PEŁNA lista kandydatów (WorkoutViewModel woła findSubstitutes bez limitu);
+    // limit (DEFAULT_LIMIT) stosujemy DOPIERO PO filtrze grupowym, patrz filterSubstitutesByGroup.
     var selectedGroups by remember { mutableStateOf(setOf<String>()) }
     val equipmentGroups = remember(subs) {
         ProfileEquipment.sortGroupIds(subs.options.map { it.equipmentGroupId }.distinct())
     }
     val visibleOptions = remember(subs, selectedGroups) {
-        if (selectedGroups.isEmpty()) {
-            subs.options
-        } else {
-            subs.options.filter { it.equipmentGroupId in selectedGroups }
-        }
+        filterSubstitutesByGroup(
+            items = subs.options,
+            groupIdOf = { it.equipmentGroupId },
+            selectedGroups = selectedGroups,
+            displayLimit = SubstituteScoring.DEFAULT_LIMIT,
+        )
     }
 
     ModalBottomSheet(
@@ -1158,7 +1159,7 @@ private fun SubstitutesSheet(
                 modifier = Modifier.padding(top = StronkSpacing.xxs),
             )
             if (equipmentGroups.size > 1) {
-                EquipmentFilterButton(
+                StronkEquipmentFilterButton(
                     groups = equipmentGroups,
                     selected = selectedGroups,
                     onToggle = { groupId ->
@@ -1189,72 +1190,6 @@ private fun SubstitutesSheet(
                 }
             }
             Spacer(Modifier.height(StronkSpacing.xl))
-        }
-    }
-}
-
-/**
- * Full-width „Filtruj" pod tytułem arkusza + Material3 [DropdownMenu] w kolorach
- * theme. Domyślny `containerColor` menu (`surfaceContainer` = `--s1`) jest
- * IDENTYCZNY z tłem arkusza (`surfaceCard` = `--s1`) — zero odcięcia, menu
- * znikało w tle. Naprawione jawnym `containerColor = surfaceMuted` (`--s3`,
- * wyraźnie jaśniejsze niż karta) + hairline obrys `line`. Szerokość i pozycja:
- * mierzymy szerokość przycisku (`onSizeChanged` na kontenerze-Box, px→dp przez
- * [LocalDensity]) i wymuszamy tę samą szerokość na menu — bez tego menu miało
- * intrinsic szerokość dopasowaną do treści (węższą, przyklejoną do lewej
- * krawędzi pełnoszerokiego przycisku).
- * Multi-select: tap pozycji dopisuje/zdejmuje grupę, menu zostaje otwarte, żeby
- * dało się zaznaczyć kilka naraz; zamyka je dopiero tap poza nim.
- *
- * Aktywny filtr sygnalizuje limonkowy akcent [StronkGhostButton] (`accent = true`)
- * + licznik zaznaczonych grup w etykiecie — bez dodatkowych kolorów czy odznak.
- */
-@Composable
-private fun EquipmentFilterButton(
-    groups: List<String>,
-    selected: Set<String>,
-    onToggle: (groupId: String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var anchorWidthPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-    Box(
-        modifier = modifier.onSizeChanged { anchorWidthPx = it.width },
-    ) {
-        StronkGhostButton(
-            text = if (selected.isEmpty()) "Filtruj" else "Filtruj (${selected.size})",
-            onClick = { expanded = true },
-            icon = StronkIcons.filter,
-            accent = selected.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.width(with(density) { anchorWidthPx.toDp() }),
-            shape = StronkRadius.innerShape,
-            containerColor = StronkTheme.colors.surfaceMuted,
-            border = BorderStroke(StronkSizes.hairline, StronkTheme.colors.line),
-        ) {
-            groups.forEach { groupId ->
-                val isSelected = groupId in selected
-                DropdownMenuItem(
-                    text = { Text(ProfileEquipment.titleOf(groupId)) },
-                    onClick = { onToggle(groupId) },
-                    trailingIcon = if (isSelected) {
-                        {
-                            Icon(
-                                imageVector = StronkIcons.done,
-                                contentDescription = null,
-                                tint = StronkTheme.colors.lime,
-                            )
-                        }
-                    } else {
-                        null
-                    },
-                )
-            }
         }
     }
 }

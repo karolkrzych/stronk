@@ -113,6 +113,8 @@ fun ScheduleDatePickerDialog(
 @Composable
 fun AssignPlanDialog(
     plans: List<PlanOption>,
+    /** Zajęte dni ze wszystkich planów — wejście do walidacji kolizji okna. */
+    occupiedEntries: List<OccupiedEntry>,
     onConfirm: (planId: String, assignments: Map<DayOfWeek, Int>, startDate: LocalDate) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -124,6 +126,13 @@ fun AssignPlanDialog(
     }
     var startDate by remember { mutableStateOf(LocalDate.now()) }
     var showStartDatePicker by remember { mutableStateOf(false) }
+
+    // Kolizja z INNYM planem w całym oknie generacji — blokuje CTA („jeden okres,
+    // jeden plan"). Zajęcie przez TEN SAM plan nie blokuje — onConfirm po prostu
+    // pominie zajęte dni (albo pokaże komunikat, gdy nic nowego nie powstanie).
+    val conflict = remember(selectedPlanId, startDate, occupiedEntries) {
+        selectedPlanId?.let { planId -> conflictingOtherPlanEntry(occupiedEntries, planId, startDate) }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -205,18 +214,25 @@ fun AssignPlanDialog(
                         )
                     }
                     Spacer(Modifier.height(StronkSpacing.sm))
-                    StronkNoteCard(
-                        text = "Wpisy na ${ScheduleConstants.GENERATION_WEEKS} tygodnie; " +
-                            "zajęte dni pomijamy.",
-                        icon = StronkIcons.info,
-                    )
+                    if (conflict != null) {
+                        StronkNoteCard(
+                            text = ScheduleTexts.periodConflictNote(conflict.planName),
+                            tone = StronkTone.WARNING,
+                            icon = StronkIcons.info,
+                        )
+                    } else {
+                        StronkNoteCard(
+                            text = ScheduleTexts.assignPlanNote(selectedPlan.continuous),
+                            icon = StronkIcons.info,
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(StronkSpacing.lg))
                 StronkPrimaryButton(
-                    text = "Zaplanuj ${ScheduleConstants.GENERATION_WEEKS} tyg.",
+                    text = ScheduleTexts.assignPlanCta(selectedPlan?.continuous ?: false),
                     height = StronkSizes.ctaSmall,
-                    enabled = selectedPlan != null && assignments.isNotEmpty(),
+                    enabled = selectedPlan != null && assignments.isNotEmpty() && conflict == null,
                     onClick = { selectedPlan?.let { onConfirm(it.id, assignments, startDate) } },
                 )
                 Box(

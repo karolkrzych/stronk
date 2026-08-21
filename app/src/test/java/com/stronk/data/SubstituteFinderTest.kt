@@ -229,4 +229,87 @@ class SubstituteFinderTest {
 
         assertEquals(listOf("full", "half"), result.map { it.exercise.id })
     }
+
+    // --- filterSubstitutesByGroup: filtr grupowy + limit STOSOWANY PO filtrze ---
+
+    private data class GroupedItem(val id: String, val group: String)
+
+    @Test
+    fun `filterSubstitutesByGroup - nic niezaznaczone zwraca wszystko do limitu`() {
+        val items = listOf(
+            GroupedItem("a", "free"), GroupedItem("b", "free"), GroupedItem("c", "machines"),
+        )
+
+        val result = filterSubstitutesByGroup(items, { it.group }, emptySet(), displayLimit = 10)
+
+        assertEquals(listOf("a", "b", "c"), result.map { it.id })
+    }
+
+    @Test
+    fun `filterSubstitutesByGroup - filtruje po zaznaczonej grupie`() {
+        val items = listOf(
+            GroupedItem("a", "free"), GroupedItem("b", "machines"), GroupedItem("c", "free"),
+        )
+
+        val result = filterSubstitutesByGroup(items, { it.group }, setOf("free"), displayLimit = 10)
+
+        assertEquals(listOf("a", "c"), result.map { it.id })
+    }
+
+    @Test
+    fun `filterSubstitutesByGroup - limit stosowany PO filtrze, nie przed`() {
+        // 3x "free" na poczatku zjadlyby caly maly limit, gdyby ucinac PRZED filtrem —
+        // filtr do "machines" musi mimo to znalezc oba pasujace elementy.
+        val items = listOf(
+            GroupedItem("a", "free"), GroupedItem("b", "free"), GroupedItem("c", "free"),
+            GroupedItem("d", "machines"), GroupedItem("e", "machines"),
+        )
+
+        val result = filterSubstitutesByGroup(items, { it.group }, setOf("machines"), displayLimit = 2)
+
+        assertEquals(listOf("d", "e"), result.map { it.id })
+    }
+
+    @Test
+    fun `filterSubstitutesByGroup - obcina do displayLimit dopiero po filtrze`() {
+        val items = (1..5).map { GroupedItem("free$it", "free") }
+
+        val result = filterSubstitutesByGroup(items, { it.group }, setOf("free"), displayLimit = 3)
+
+        assertEquals(listOf("free1", "free2", "free3"), result.map { it.id })
+    }
+
+    @Test
+    fun `koniec z bugiem - limit przed filtrem chowal pasujace zamienniki innej grupy sprzetu`() {
+        val original = exercise("bench", primaryMuscles = listOf("chest"), equipment = "barbell")
+        val barbellCandidates = (1..10).map {
+            exercise(
+                "barbell$it", namePl = "Barbell $it",
+                primaryMuscles = listOf("chest"), equipment = "barbell",
+            )
+        }
+        val machineCandidate = exercise(
+            "machinePress", namePl = "Wyciskanie na maszynie",
+            primaryMuscles = listOf("chest"), equipment = "machine",
+        )
+        val all = listOf(original) + barbellCandidates + listOf(machineCandidate)
+
+        // Stare zachowanie (limit=10 PRZED filtrem): machinePress ginie calkowicie, mimo ze
+        // pasuje partia i sprzetem jest dostepny — to byl zglaszany przez Karola bug.
+        val oldStyleLimited =
+            findSubstitutes(original, all, ProfileDetails(), limit = SubstituteScoring.DEFAULT_LIMIT)
+        assertTrue(oldStyleLimited.none { it.exercise.id == "machinePress" })
+
+        // Nowe zachowanie: findSubstitutes bez limitu + filtr grupowy na PEŁNEJ liście,
+        // limit stosowany DOPIERO po filtrze -> machinePress się znajduje.
+        val full = findSubstitutes(original, all, ProfileDetails(), limit = SubstituteScoring.NO_LIMIT)
+        val filtered = filterSubstitutesByGroup(
+            items = full,
+            groupIdOf = { it.exercise.equipment ?: "none" },
+            selectedGroups = setOf("machine"),
+            displayLimit = SubstituteScoring.DEFAULT_LIMIT,
+        )
+
+        assertEquals(listOf("machinePress"), filtered.map { it.exercise.id })
+    }
 }

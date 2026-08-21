@@ -43,16 +43,19 @@ import com.stronk.data.ExerciseRepository
 import com.stronk.data.ProfileDetails
 import com.stronk.data.SubstituteMatch
 import com.stronk.data.filterExercises
+import com.stronk.data.filterSubstitutesByGroup
 import com.stronk.data.isCompliant
 import com.stronk.ui.PlLabels
 import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkChoiceChip
 import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkEquipmentFilterButton
 import com.stronk.ui.components.StronkIconBadge
 import com.stronk.ui.components.StronkIconBadgeSize
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkInsetCard
 import com.stronk.ui.components.StronkSectionHeader
+import com.stronk.ui.profile.ProfileEquipment
 import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
@@ -264,12 +267,47 @@ internal fun SubstitutesSheet(
     onChoose: (SubstituteMatch) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // Multi-select, lokalny stan sheetu — identyczny wzorzec jak w arkuszu zamienników
+    // treningu (WorkoutScreen). substitutes.matches to PEŁNA lista kandydatów
+    // (PlanEditorViewModel woła findSubstitutes bez limitu); limit (SUBSTITUTE_LIMIT)
+    // stosujemy DOPIERO PO filtrze grupowym, patrz filterSubstitutesByGroup.
+    var selectedGroups by remember { mutableStateOf(setOf<String>()) }
+    val equipmentGroups = remember(substitutes) {
+        ProfileEquipment.sortGroupIds(
+            substitutes.matches.map { ProfileEquipment.groupIdOf(it.exercise.equipment) }.distinct(),
+        )
+    }
+    val visibleMatches = remember(substitutes, selectedGroups) {
+        filterSubstitutesByGroup(
+            items = substitutes.matches,
+            groupIdOf = { ProfileEquipment.groupIdOf(it.exercise.equipment) },
+            selectedGroups = selectedGroups,
+            displayLimit = PlanDefaults.SUBSTITUTE_LIMIT,
+        )
+    }
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
         StronkSectionHeader(
             title = "Zamienniki: ${substitutes.forExercise.namePl}",
             modifier = Modifier.padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.xs),
         )
-        if (substitutes.matches.isEmpty()) {
+        if (equipmentGroups.size > 1) {
+            StronkEquipmentFilterButton(
+                groups = equipmentGroups,
+                selected = selectedGroups,
+                onToggle = { groupId ->
+                    selectedGroups = if (groupId in selectedGroups) {
+                        selectedGroups - groupId
+                    } else {
+                        selectedGroups + groupId
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.xs),
+            )
+        }
+        if (visibleMatches.isEmpty()) {
             StronkEmptyState(
                 icon = StronkIcons.swap,
                 title = "Brak sensownych zamienników",
@@ -282,7 +320,7 @@ internal fun SubstitutesSheet(
                     .padding(horizontal = StronkSpacing.screen, vertical = StronkSpacing.sm),
                 verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
             ) {
-                substitutes.matches.forEach { match ->
+                visibleMatches.forEach { match ->
                     SubstituteRow(match = match, onChoose = { onChoose(match) })
                 }
             }

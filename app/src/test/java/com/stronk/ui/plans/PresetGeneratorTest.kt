@@ -223,6 +223,110 @@ class PresetGeneratorTest {
         assertEquals(SetTarget.WeightReps(GoalDefaults.STRENGTH.accessoryReps), exercises[1].target)
     }
 
+    // --- mechanizm K/Ł (gentleCandidateIds + relevantJoints) ---
+
+    @Test
+    fun `aktywne ograniczenie relevantJoint wybiera liste lagodna`() {
+        val classicPick = exercise("classic", knee = StressLevel.HIGH)
+        val gentlePick = exercise("gentle", knee = StressLevel.NONE)
+        val slotWithGentle = PresetSlot(
+            label = "slot",
+            candidateIds = listOf("classic"),
+            gentleCandidateIds = listOf("gentle"),
+            relevantJoints = setOf("knee"),
+            sets = 3,
+            reps = 10,
+        )
+        val profile = ProfileDetails(constraints = mapOf("knee" to StressLevel.LOW))
+        val resolved = resolveSlotExercise(
+            slotWithGentle,
+            mapOf("classic" to classicPick, "gentle" to gentlePick),
+            listOf(classicPick, gentlePick),
+            profile,
+        )
+        assertEquals("gentle", resolved?.id)
+    }
+
+    @Test
+    fun `brak aktywnego ograniczenia relevantJoint wybiera liste klasyczna`() {
+        val classicPick = exercise("classic", knee = StressLevel.HIGH)
+        val gentlePick = exercise("gentle", knee = StressLevel.NONE)
+        val slotWithGentle = PresetSlot(
+            label = "slot",
+            candidateIds = listOf("classic"),
+            gentleCandidateIds = listOf("gentle"),
+            relevantJoints = setOf("knee"),
+            sets = 3,
+            reps = 10,
+        )
+        // Profil bez ograniczenia kolana (nawet z innymi ograniczeniami) -> klasyczna.
+        val profile = ProfileDetails(constraints = mapOf("lowBack" to StressLevel.LOW))
+        val resolved = resolveSlotExercise(
+            slotWithGentle,
+            mapOf("classic" to classicPick, "gentle" to gentlePick),
+            listOf(classicPick, gentlePick),
+            profile,
+        )
+        assertEquals("classic", resolved?.id)
+    }
+
+    @Test
+    fun `slot bez gentleCandidateIds domyslnie rowny candidateIds`() {
+        assertEquals(slot("a", "b").candidateIds, slot("a", "b").gentleCandidateIds)
+    }
+
+    // --- dedup miedzy dniami (generatePresetDays) ---
+
+    @Test
+    fun `dedup miedzy dniami omija juz uzyte cwiczenie w kolejnym dniu`() {
+        val a = exercise("a")
+        val b = exercise("b")
+        val days = generatePresetDays(
+            preset(
+                PresetDay("Dzień 1", listOf(slot("a", "b"))),
+                PresetDay("Dzień 2", listOf(slot("a", "b"))),
+            ),
+            listOf(a, b),
+            ProfileDetails(),
+        )
+        assertEquals("a", days[0].exercises.single().exerciseId)
+        // Bez dedupu między dniami dzień 2 też wybrałby "a" (per-day usedIds resetowane) —
+        // z dedupem na poziomie presetu przechodzi na "b".
+        assertEquals("b", days[1].exercises.single().exerciseId)
+    }
+
+    @Test
+    fun `dedup woli powtorke dobrego cwiczenia niz naruszenie stawu`() {
+        // Tylko dwóch kandydatów w slocie: "good" (zgodny) i "bad" (narusza kolano).
+        // Dzień 1 zużywa "good"; w dniu 2 jedyna nieużyta opcja to "bad" (narusza) —
+        // generator ma wybrać POWTÓRKĘ "good", a nie "bad".
+        val good = exercise("good", knee = StressLevel.NONE)
+        val bad = exercise("bad", knee = StressLevel.HIGH)
+        val profile = ProfileDetails(constraints = mapOf("knee" to StressLevel.LOW))
+        val days = generatePresetDays(
+            preset(
+                PresetDay("Dzień 1", listOf(slot("good", "bad"))),
+                PresetDay("Dzień 2", listOf(slot("good", "bad"))),
+            ),
+            listOf(good, bad),
+            profile,
+        )
+        assertEquals("good", days[0].exercises.single().exerciseId)
+        assertEquals("good", days[1].exercises.single().exerciseId)
+    }
+
+    @Test
+    fun `dedup w ramach jednego dnia dziala jak dotychczas mimo usedIds na poziomie presetu`() {
+        val a = exercise("a")
+        val b = exercise("b")
+        val days = generatePresetDays(
+            preset(PresetDay("Dzień", listOf(slot("a", "b"), slot("a", "b")))),
+            listOf(a, b),
+            ProfileDetails(),
+        )
+        assertEquals(listOf("a", "b"), days.first().exercises.map { it.exerciseId })
+    }
+
     // --- convertTarget ---
 
     @Test

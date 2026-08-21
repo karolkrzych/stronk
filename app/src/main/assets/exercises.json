@@ -3313,7 +3313,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "cardio machine",
   "level": "beginner",
   "category": "cardio",
   "mechanic": null,
@@ -4969,7 +4969,7 @@
    "traps"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -5003,7 +5003,7 @@
    "calves"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -5038,7 +5038,7 @@
    "calves"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -5576,7 +5576,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -7622,7 +7622,7 @@
    "shoulders",
    "triceps"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -9670,7 +9670,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "cardio machine",
   "level": "intermediate",
   "category": "cardio",
   "mechanic": null,
@@ -11428,7 +11428,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -13717,7 +13717,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "cardio machine",
   "level": "beginner",
   "category": "cardio",
   "mechanic": null,
@@ -15211,7 +15211,7 @@
    "quadriceps"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -15287,7 +15287,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -15358,7 +15358,7 @@
    "shoulders",
    "triceps"
   ],
-  "equipment": "machine",
+  "equipment": "leverage machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -15393,7 +15393,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "leverage machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -15429,7 +15429,7 @@
    "shoulders",
    "triceps"
   ],
-  "equipment": "machine",
+  "equipment": "leverage machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -15465,7 +15465,7 @@
   "secondaryMuscles": [
    "lats"
   ],
-  "equipment": "machine",
+  "equipment": "leverage machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -15501,7 +15501,7 @@
    "shoulders",
    "triceps"
   ],
-  "equipment": "machine",
+  "equipment": "leverage machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -15537,7 +15537,7 @@
    "biceps",
    "middle back"
   ],
-  "equipment": "machine",
+  "equipment": "leverage machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -15572,7 +15572,7 @@
   "secondaryMuscles": [
    "triceps"
   ],
-  "equipment": "machine",
+  "equipment": "leverage machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -15609,7 +15609,7 @@
   "secondaryMuscles": [
    "forearms"
   ],
-  "equipment": "machine",
+  "equipment": "leverage machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -16089,7 +16089,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "intermediate",
   "category": "strength",
   "mechanic": "compound",
@@ -16586,7 +16586,7 @@
    "hamstrings"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -16626,7 +16626,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "intermediate",
   "category": "strength",
   "mechanic": "compound",
@@ -17467,7 +17467,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "intermediate",
   "category": "strength",
   "mechanic": "compound",
@@ -17507,7 +17507,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "intermediate",
   "category": "strength",
   "mechanic": "compound",
@@ -21422,7 +21422,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "cardio machine",
   "level": "beginner",
   "category": "cardio",
   "mechanic": null,
@@ -22676,7 +22676,7 @@
    "lower back",
    "middle back"
   ],
-  "equipment": "machine",
+  "equipment": "cardio machine",
   "level": "intermediate",
   "category": "cardio",
   "mechanic": null,
@@ -22747,7 +22747,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "cardio machine",
   "level": "beginner",
   "category": "cardio",
   "mechanic": null,
@@ -23302,7 +23302,7 @@
    "calves"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -23873,7 +23873,7 @@
    "hamstrings"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -25191,7 +25191,7 @@
    "quadriceps"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -25818,7 +25818,7 @@
   "secondaryMuscles": [
    "shoulders"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -25856,7 +25856,7 @@
    "shoulders",
    "triceps"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -25896,7 +25896,7 @@
    "lats",
    "shoulders"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -25932,7 +25932,7 @@
    "calves"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -25970,7 +25970,7 @@
    "chest",
    "shoulders"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -26008,7 +26008,7 @@
    "shoulders",
    "triceps"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -26050,7 +26050,7 @@
    "shoulders",
    "traps"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "intermediate",
   "category": "strength",
   "mechanic": "compound",
@@ -26084,7 +26084,7 @@
    "abdominals"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -26122,7 +26122,7 @@
    "shoulders",
    "triceps"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -26159,7 +26159,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "intermediate",
   "category": "strength",
   "mechanic": "compound",
@@ -26198,7 +26198,7 @@
    "biceps",
    "traps"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -26236,7 +26236,7 @@
   "secondaryMuscles": [
    "triceps"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -26275,7 +26275,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "intermediate",
   "category": "strength",
   "mechanic": "compound",
@@ -26312,7 +26312,7 @@
    "calves"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -26353,7 +26353,7 @@
    "hamstrings",
    "lower back"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -26392,7 +26392,7 @@
    "glutes",
    "lower back"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -26432,7 +26432,7 @@
    "middle back",
    "shoulders"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -26474,7 +26474,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "smith machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "compound",
@@ -27479,7 +27479,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "cardio machine",
   "level": "intermediate",
   "category": "cardio",
   "mechanic": null,
@@ -27922,7 +27922,7 @@
    "calves"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -28481,7 +28481,7 @@
    "hamstrings"
   ],
   "secondaryMuscles": [],
-  "equipment": "machine",
+  "equipment": "leg machine",
   "level": "beginner",
   "category": "strength",
   "mechanic": "isolation",
@@ -29248,7 +29248,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "cardio machine",
   "level": "intermediate",
   "category": "cardio",
   "mechanic": null,
@@ -31330,7 +31330,7 @@
    "glutes",
    "hamstrings"
   ],
-  "equipment": "machine",
+  "equipment": "cardio machine",
   "level": "beginner",
   "category": "cardio",
   "mechanic": null,

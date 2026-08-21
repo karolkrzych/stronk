@@ -17,6 +17,13 @@ import java.util.Locale
 data class PlannedSlot(val date: LocalDate, val dayIndex: Int)
 
 /**
+ * Dzień zajęty przez wpis harmonogramu (PLANNED/DONE) — pod walidację kolizji
+ * planów w [AssignPlanDialog] i [ScheduleViewModel.onAssignPlan]. [planName]
+ * to nazwa planu w chwili budowy stanu (nie referencja — plan może zniknąć).
+ */
+data class OccupiedEntry(val date: LocalDate, val planId: String, val planName: String)
+
+/**
  * Okno tygodni bloku pokazywane w siatce kwadratów: [startWeek] to 0-based
  * indeks pierwszego rzędu w bloku, [rows] to liczba rzędów.
  */
@@ -165,4 +172,56 @@ fun generatePlannedSlots(
     }
         .filter { it.date >= startDate && it.date < endExclusive && it.date !in occupiedDates }
         .sortedBy { it.date }
+}
+
+// ---------- rolling generation (plan bez bloku) ----------
+
+/**
+ * Czy plan bez bloku potrzebuje dogenerowania kolejnych tygodni: najpóźniejszy
+ * zaplanowany wpis [lastPlannedDate] jest bliżej niż [thresholdWeeks] tygodni od
+ * [today]. Ściśle „bliżej niż" — dokładnie [thresholdWeeks] tygodni od dziś to
+ * jeszcze nie powód (zapas się nie skończył).
+ */
+fun needsRollingExtension(
+    lastPlannedDate: LocalDate,
+    today: LocalDate,
+    thresholdWeeks: Int = ScheduleConstants.ROLLING_THRESHOLD_WEEKS,
+): Boolean = lastPlannedDate.isBefore(today.plusWeeks(thresholdWeeks.toLong()))
+
+/**
+ * Przypisanie dzień tygodnia → indeks dnia planu wyprowadzone z ISTNIEJĄCYCH
+ * wpisów (rolling generation nie ma dostępu do assignments z dialogu — te żyją
+ * tylko lokalnie w [AssignPlanDialog], nigdzie nie są trwałe).
+ *
+ * Bierzemy ostatni tydzień (najpóźniejszy poniedziałek) z wpisów w [entries] —
+ * generacja produkuje identyczny wzorzec dnia tygodnia w każdym tygodniu, więc
+ * jeden tydzień wystarczy jako źródło prawdy. Puste [entries] dają pustą mapę.
+ */
+fun deriveWeekAssignments(entries: List<PlannedSlot>): Map<DayOfWeek, Int> {
+    if (entries.isEmpty()) return emptyMap()
+    val byWeek = entries.groupBy { weekStartOf(it.date) }
+    val lastWeekStart = byWeek.keys.max()
+    return byWeek.getValue(lastWeekStart).associate { it.date.dayOfWeek to it.dayIndex }
+}
+
+// ---------- walidacja kolizji planów ----------
+
+/**
+ * Pierwszy (najwcześniejszy) wpis INNEGO planu w oknie [startDate, startDate +
+ * [weeks]) — sygnał blokujący CTA w [AssignPlanDialog]. Cel: na jeden okres tylko
+ * jeden plan, więc sprawdzamy CAŁE okno, nie tylko konkretne dni przypisania.
+ *
+ * `null` = okno wolne od kolizji z innym planem (może być częściowo zajęte przez
+ * TEN SAM plan — to nie blokuje CTA, patrz [ScheduleViewModel.onAssignPlan]).
+ */
+fun conflictingOtherPlanEntry(
+    occupied: List<OccupiedEntry>,
+    selectedPlanId: String,
+    startDate: LocalDate,
+    weeks: Int = ScheduleConstants.GENERATION_WEEKS,
+): OccupiedEntry? {
+    val endExclusive = startDate.plusWeeks(weeks.toLong())
+    return occupied
+        .filter { it.planId != selectedPlanId && it.date >= startDate && it.date < endExclusive }
+        .minByOrNull { it.date }
 }

@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -54,9 +52,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -90,8 +86,10 @@ import kotlin.math.roundToInt
  *
  * 1. **Kreator** ([PlanWizard]) — tylko dla nowego planu: szablon → długość
  *    bloku → ograniczenia → nazwa.
- * 2. **Edytor** — dni jako karty; liczby stoją w kolumnach `SERIE` / `CEL`
- *    z nagłówkami raz na dzień, nigdy jako fraza „3×10".
+ * 2. **Edytor** — dni jako karty; wiersz ćwiczenia pokazuje TYLKO miniaturkę,
+ *    pełną nazwę (do 2 linii) i partię mięśniową — zero serii/celu w wierszu
+ *    (feedback: "nie mam pojęcia jakie ćwiczenia mi wrzucasz do planu").
+ *    Tapnięcie wiersza otwiera [ExerciseEditDialog] z serią/celem/ciężarem.
  * 3. **Picker** ([ExercisePicker]) — dobór ćwiczenia do dnia.
  *
  * Akcje planu (Zapisz, Archiwizuj/Przywróć) mieszkają TU, w szczegółach —
@@ -159,15 +157,6 @@ fun PlanEditorScreen(
         )
     }
 }
-
-/** Szerokość kolumny SERIE w wierszu ćwiczenia (i w nagłówku nad nim). */
-private val SETS_COLUMN_WIDTH = 34.dp
-
-/** Szerokość kolumny CEL — mieści „12", „60 s" i „1 km · 6:00". */
-private val TARGET_COLUMN_WIDTH = 74.dp
-
-/** Szerokość kolumny menu akcji — tyle, ile domyślny `IconButton`. */
-private val MENU_COLUMN_WIDTH = 48.dp
 
 // ---------- warstwy ekranu ----------
 
@@ -421,12 +410,11 @@ private fun DayCard(
                 tone = StronkTone.NEUTRAL,
             )
         } else {
-            // Nagłówki kolumn RAZ na dzień — niżej stoją same liczby (zasada
-            // Karola: nigdy „3×10" w jednej frazie).
-            ExerciseColumnHeaders(modifier = Modifier.padding(top = StronkSpacing.sm))
+            // Wiersz nie pokazuje serii/celu (zasada Karola: nigdy „3×10" w
+            // jednej frazie) — te dane są za tapnięciem, w ExerciseEditDialog.
             ReorderableExercises(
                 exercises = day.exercises,
-                modifier = Modifier.padding(top = StronkSpacing.xxs),
+                modifier = Modifier.padding(top = StronkSpacing.sm),
                 onExerciseClick = onExerciseClick,
                 onReorder = onReorder,
                 onSubstitutes = onSubstitutes,
@@ -463,45 +451,6 @@ private fun DayCard(
             modifier = Modifier.fillMaxWidth().padding(top = StronkSpacing.md),
         )
     }
-}
-
-/**
- * Nagłówki kolumn liczbowych dnia — kapitaliki `SERIE` i `CEL` ustawione dokładnie
- * nad kolumnami wierszy ([SETS_COLUMN_WIDTH] / [TARGET_COLUMN_WIDTH]), z zapasem
- * na menu akcji po prawej.
- */
-@Composable
-private fun ExerciseColumnHeaders(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(end = StronkSpacing.xs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
-    ) {
-        Spacer(Modifier.weight(1f))
-        ColumnCaption("Serie", SETS_COLUMN_WIDTH)
-        ColumnCaption("Cel", TARGET_COLUMN_WIDTH)
-        Spacer(Modifier.width(MENU_COLUMN_WIDTH))
-    }
-}
-
-@Composable
-private fun ColumnCaption(text: String, width: Dp) {
-    Text(
-        text = text.uppercase(),
-        style = StronkTextStyles.cap,
-        color = StronkTheme.colors.textDim,
-        textAlign = TextAlign.End,
-        maxLines = 1,
-        // Kapitalik ma tracking .14em, więc „SERIE" jest szersze niż kolumna liczby
-        // (34 dp) i przy zwykłym `width()` gubiło ostatnią literę („SERI").
-        // `unbounded` pozwala napisowi wyjść w PUSTE miejsce po lewej, a koniec
-        // tekstu dalej trzyma się prawej krawędzi swojej kolumny.
-        modifier = Modifier
-            .width(width)
-            .wrapContentWidth(Alignment.End, unbounded = true),
-    )
 }
 
 /**
@@ -599,7 +548,14 @@ private const val DRAG_SCALE = 1.02f
 /** Cień podniesionego wiersza. */
 private val DRAG_SHADOW = 10.dp
 
-/** Wiersz ćwiczenia w dniu: miniaturka, nazwa + partia, kolumny SERIE / CEL, chwyt ≡. */
+/**
+ * Wiersz ćwiczenia w dniu: miniaturka prawdziwego ćwiczenia, PEŁNA nazwa (do
+ * 2 linii, dopiero potem ellipsis) i partia mięśniowa kapitalikiem, chwyt ≡.
+ *
+ * Zero serii i celu — Karol z telefonu: "nie mam pojęcia jakie ćwiczenia mi
+ * wrzucasz do planu", bo nazwa ucinała się do ~8 znaków obok liczb. Seria/cel
+ * są za tapnięciem wiersza, w [ExerciseEditDialog]. Wzorzec: mock „W1 — czysty".
+ */
 @Composable
 private fun ExercisePlanRow(
     exercise: EditorExerciseUi,
@@ -627,18 +583,23 @@ private fun ExercisePlanRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(StronkSpacing.sm),
         ) {
+            // Rozmiar/promień jak w Bazie ([StronkSizes.thumb] / [StronkRadius.tile])
+            // — na tyle duża miniatura, żeby faktycznie rozpoznać ćwiczenie
+            // (mock ma `--r-tile` na kafelku, dokładnie ten sam token).
             StronkExerciseThumb(
                 exerciseId = exercise.planExercise.exerciseId,
-                size = StronkSizes.iconTile,
-                cornerRadius = StronkRadius.tileSmall,
+                size = StronkSizes.thumb,
+                cornerRadius = StronkRadius.tile,
             )
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = exercise.name,
-                        style = StronkTextStyles.h2,
+                        // h1Small = ten sam Barlow SC, którym „następnie" w treningu
+                        // pokazuje nazwę ćwiczenia jako jedyną dominantę wiersza.
+                        style = StronkTextStyles.h1Small,
                         color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
@@ -652,36 +613,17 @@ private fun ExercisePlanRow(
                     }
                 }
                 Text(
-                    text = exercise.exercise?.primaryMuscles?.firstOrNull()?.let(PlLabels::muscle)
-                        ?: "ćwiczenie spoza bazy",
-                    style = StronkTextStyles.meta,
+                    text = (
+                        exercise.exercise?.primaryMuscles?.firstOrNull()?.let(PlLabels::muscle)
+                            ?: "ćwiczenie spoza bazy"
+                        ).uppercase(),
+                    style = StronkTextStyles.cap,
                     color = StronkTheme.colors.textDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 3.dp),
+                    modifier = Modifier.padding(top = 6.dp),
                 )
             }
-            val valueColor = if (warning) {
-                StronkTheme.colors.warning
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            }
-            Text(
-                text = PlanTexts.setsValue(exercise.planExercise),
-                style = StronkTextStyles.h2,
-                color = valueColor,
-                textAlign = TextAlign.End,
-                maxLines = 1,
-                modifier = Modifier.width(SETS_COLUMN_WIDTH),
-            )
-            Text(
-                text = PlanTexts.targetValue(exercise.planExercise),
-                style = StronkTextStyles.h2,
-                color = valueColor,
-                textAlign = TextAlign.End,
-                maxLines = 1,
-                modifier = Modifier.width(TARGET_COLUMN_WIDTH),
-            )
             ExerciseRowHandle(
                 dragging = dragging,
                 handleModifier = handleModifier,

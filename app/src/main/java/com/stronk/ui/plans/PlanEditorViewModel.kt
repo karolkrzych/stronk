@@ -18,11 +18,13 @@ import com.stronk.data.PlanRepository
 import com.stronk.data.ProfileDetails
 import com.stronk.data.StressLevel
 import com.stronk.data.SubstituteMatch
+import com.stronk.data.SubstituteScoring
 import com.stronk.data.UserProfile
 import com.stronk.data.UserProfileRepository
 import com.stronk.data.findSubstitutes
 import com.stronk.data.isCompliant
 import com.stronk.progression.ProgressionConstants
+import com.stronk.ui.PlLabels
 import com.stronk.ui.profile.ProfileDefaults
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -71,12 +73,13 @@ data class SubstitutesUi(
 
 /**
  * Krok kreatora nowego planu (mock `pack-dzis-plany.html`, ekran 3).
- * Kolejność jest wymuszona logiką: ograniczenia muszą być znane ZANIM
+ * Kolejność jest wymuszona logiką: sprzęt i ograniczenia muszą być znane ZANIM
  * wygenerujemy dni z szablonu, bo to one decydują o doborze ćwiczeń.
  */
 enum class PlanWizardStep(val title: String, val subtitle: String) {
     TEMPLATE("Od czego zaczynamy", "Wybierz szablon albo złóż plan od zera."),
     BLOCK("Blok treningowy", "Możesz go wyłączyć — wtedy plan biegnie bez końca."),
+    EQUIPMENT("Twój sprzęt", "Zaznacz, na czym trenujesz — resztę ćwiczeń pominiemy."),
     CONSTRAINTS("Twoje ograniczenia", "Zaznacz miejsca, które oszczędzamy."),
     NAME("Nazwa planu", "Tak zobaczysz go na liście i w harmonogramie."),
 }
@@ -89,13 +92,16 @@ data class PlanWizardUi(
     val presets: List<PlanPreset> = emptyList(),
     /** null = „zacznij od zera". */
     val selectedPresetId: String? = null,
-    /** Kroki 1 i 4 wymagają wyboru/nazwy; reszta zawsze przepuszcza dalej. */
+    /** Kroki 1 i 5 wymagają wyboru/nazwy; reszta zawsze przepuszcza dalej. */
     val canGoNext: Boolean = false,
     /** Tygodnie PRACY w bloku; null = plan bez bloku (ciągła progresja). */
     val blockLengthWeeks: Int? = null,
     /** Klucze stawów w kolejności prezentacji (jak w profilu). */
     val jointKeys: List<String> = emptyList(),
     val selectedJoints: Set<String> = emptySet(),
+    /** Wartości sprzętu z datasetu — te same, co w zakładce Sprzęt profilu. */
+    val equipmentOptions: List<String> = emptyList(),
+    val selectedEquipment: Set<String> = emptySet(),
     val name: String = "",
     /** Podgląd tego, co powstanie — staty DNI / TYGODNIE / ĆWICZENIA. */
     val summaryDays: Int = 0,
@@ -165,6 +171,10 @@ class PlanEditorViewModel(
         val joints: Set<String> = emptySet(),
         /** Ograniczenia wczytane z profilu — prefill robimy dokładnie raz. */
         val jointsPrefilled: Boolean = false,
+        /** Sprzęt wybrany w kroku „Twój sprzęt" — puste = pokazuj wszystko (jak w profilu). */
+        val equipment: Set<String> = emptySet(),
+        /** Sprzęt wczytany z profilu — prefill robimy dokładnie raz, wzorem [jointsPrefilled]. */
+        val equipmentPrefilled: Boolean = false,
     )
 
     /** Warstwy UI ponad edytorem (picker, arkusz zamienników, arkusz sugestii). */
@@ -202,7 +212,7 @@ class PlanEditorViewModel(
             PlanEditorUiState(
                 loading = false,
                 isNew = planId == null,
-                wizard = if (d.started) null else wizardUi(d),
+                wizard = if (d.started) null else wizardUi(d, all),
                 name = d.name,
                 blockLengthWeeks = d.blockLengthWeeks,
                 days = d.days.map { day ->
@@ -245,13 +255,17 @@ class PlanEditorViewModel(
                 profileDisplayName = userProfile?.displayName.orEmpty()
                 profileLoaded = true
                 prefillJoints(details)
+                prefillEquipment(details)
             }
         }
         viewModelScope.launch {
             if (planId == null) {
                 draft.value = Draft()
                 // Profil mógł dojść przed draftem — wtedy prefill czekał na ten moment.
-                if (profileLoaded) prefillJoints(profile.value)
+                if (profileLoaded) {
+                    prefillJoints(profile.value)
+                    prefillEquipment(profile.value)
+                }
             } else {
                 // Cache-first: plan otwierany z listy jest już w cache Firestore.
                 val plan = planRepository.observePlan(planId).filterNotNull().first()
@@ -270,10 +284,13 @@ class PlanEditorViewModel(
 
     // ---------- kreator nowego planu ----------
 
-    /** Widok kroku kreatora — czysta projekcja [Draft], zero stanu własnego. */
-    private fun wizardUi(d: Draft): PlanWizardUi {
+    /** Widok kroku kreatora — czysta projekcja [Draft] (+ dataset dla opcji sprzętu). */
+    private fun wizardUi(d: Draft, all: List<Exercise>): PlanWizardUi {
         val steps = PlanWizardStep.entries
         val stepIndex = steps.indexOf(d.step)
+        // Te same wartości i ta sama etykieta/sortowanie co w ProfileViewModel —
+        // wybrane spoza datasetu (np. stary wpis) doklejamy, żeby dało się odznaczyć.
+        val equipmentOptions = all.mapNotNull { it.equipment }.distinct().sortedBy(PlLabels::equipment)
         return PlanWizardUi(
             step = d.step,
             stepIndex = stepIndex,
@@ -288,6 +305,8 @@ class PlanEditorViewModel(
             blockLengthWeeks = d.blockLengthWeeks,
             jointKeys = ProfileDefaults.JOINT_KEYS,
             selectedJoints = d.joints,
+            equipmentOptions = equipmentOptions + d.equipment.filterNot { it in equipmentOptions },
+            selectedEquipment = d.equipment,
             name = d.name,
             summaryDays = d.preset?.days?.size ?: 1,
             summaryExercises = d.preset?.slotCount ?: 0,
@@ -309,6 +328,19 @@ class PlanEditorViewModel(
                     .keys.toSet(),
                 jointsPrefilled = true,
             )
+        }
+    }
+
+    /**
+     * Krok „Twój sprzęt" startuje z tym, co już jest w profilu — wzorem
+     * [prefillJoints]. Dokładnie raz, żeby nie nadpisać wyboru w kreatorze
+     * kolejnym snapshotem z Firestore.
+     */
+    private fun prefillEquipment(details: ProfileDetails) = updateDraft { d ->
+        if (d.equipmentPrefilled || d.started) {
+            d
+        } else {
+            d.copy(equipment = details.equipment.toSet(), equipmentPrefilled = true)
         }
     }
 
@@ -339,13 +371,27 @@ class PlanEditorViewModel(
         wizardNext()
     }
 
+    fun wizardToggleEquipment(item: String) = updateDraft { d ->
+        d.copy(equipment = if (item in d.equipment) d.equipment - item else d.equipment + item)
+    }
+
+    /**
+     * Pomiń krok „Twój sprzęt": czyści wybór i przechodzi dalej — puste
+     * `profile.equipment` to celowa reguła "pokazuj wszystkie ćwiczenia"
+     * (patrz [com.stronk.data.isCompliant]), więc pominięcie jest uczciwe.
+     */
+    fun wizardSkipEquipment() {
+        updateDraft { it.copy(equipment = emptySet()) }
+        wizardNext()
+    }
+
     fun wizardBack() = updateDraft { d ->
         val steps = PlanWizardStep.entries
         val index = steps.indexOf(d.step)
         if (index <= 0) d else d.copy(step = steps[index - 1])
     }
 
-    /** Ostatni krok domyka kreator: zapisuje ograniczenia i generuje dni. */
+    /** Ostatni krok domyka kreator: zapisuje sprzęt i ograniczenia, generuje dni. */
     fun wizardNext() {
         val d = draft.value ?: return
         val steps = PlanWizardStep.entries
@@ -357,10 +403,15 @@ class PlanEditorViewModel(
         }
     }
 
+    /**
+     * Ostatni krok domyka kreator: zapisuje sprzęt i ograniczenia do profilu,
+     * a WYNIKOWYM profilem (nie starym, nie czekamy na echo z Firestore)
+     * generuje dni — dopiero wtedy preset realnie widzi wybrany w kroku sprzęt.
+     */
     private fun finishWizard() {
         val d = draft.value ?: return
         val all = allExercises.value ?: return
-        val details = saveConstraints(d.joints)
+        val details = saveWizardProfile(joints = d.joints, equipment = d.equipment)
         val days = d.preset
             ?.let { generatePresetDays(it, all, details) }
             ?: listOf(PlanDay(name = dayName(0)))
@@ -374,17 +425,20 @@ class PlanEditorViewModel(
     }
 
     /**
-     * Zapisuje ograniczenia z kreatora do profilu i zwraca profil, którym
-     * generujemy dni (nie czekamy na powrót snapshotu z Firestore, ADR-002).
+     * Zapisuje sprzęt i ograniczenia z kreatora do profilu i zwraca profil,
+     * którym generujemy dni (nie czekamy na powrót snapshotu z Firestore, ADR-002).
      *
      * Wszystkie 7 stawów zapisujemy jawnie: `SetOptions.merge()` nie kasuje
      * kluczy mapy, więc „brak ograniczenia" musi mieć własną wartość wire
      * ([ProfileDefaults.NO_LIMIT_WIRE_LEVEL]). Staw już ograniczony zachowuje
-     * swój dokładniejszy limit z profilu — kreator go nie zgrubia.
+     * swój dokładniejszy limit z profilu — kreator go nie zgrubia. Sprzęt nie ma
+     * takiej pułapki (lista, nie mapa) — nadpisujemy go wprost wyborem z kroku,
+     * PUSTY = ta sama reguła co w profilu ("pokazuj wszystkie ćwiczenia").
      */
-    private fun saveConstraints(joints: Set<String>): ProfileDetails {
+    private fun saveWizardProfile(joints: Set<String>, equipment: Set<String>): ProfileDetails {
         val current = profile.value
         val details = current.copy(
+            equipment = equipment.sorted(),
             constraints = ProfileDefaults.JOINT_KEYS.associateWith { joint ->
                 if (joint !in joints) {
                     ProfileDefaults.NO_LIMIT_WIRE_LEVEL
@@ -491,7 +545,9 @@ class PlanEditorViewModel(
         overlay.value = overlay.value.copy(
             substitutes = SubstitutesUi(
                 forExercise = exercise,
-                matches = findSubstitutes(exercise, all, profile.value, PlanDefaults.SUBSTITUTE_LIMIT),
+                // Bez limitu: filtr grupowy w arkuszu działa na pełnej liście, limit
+                // (SUBSTITUTE_LIMIT) stosowany DOPIERO PO filtrze (filterSubstitutesByGroup).
+                matches = findSubstitutes(exercise, all, profile.value, limit = SubstituteScoring.NO_LIMIT),
                 dayIndex = dayIndex,
                 replaceIndex = exerciseIndex,
             ),
@@ -505,7 +561,7 @@ class PlanEditorViewModel(
         overlay.value = overlay.value.copy(
             substitutes = SubstitutesUi(
                 forExercise = exercise,
-                matches = findSubstitutes(exercise, all, profile.value, PlanDefaults.SUBSTITUTE_LIMIT),
+                matches = findSubstitutes(exercise, all, profile.value, limit = SubstituteScoring.NO_LIMIT),
                 dayIndex = dayIndex,
                 replaceIndex = null,
             ),

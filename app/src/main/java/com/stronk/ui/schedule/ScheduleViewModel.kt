@@ -99,6 +99,8 @@ data class PlanOption(
     val name: String,
     /** Nazwy dni planu w kolejności indeksów. */
     val dayNames: List<String>,
+    /** `blockLengthWeeks == null` — plan bez końca, dostaje rolling generation. */
+    val continuous: Boolean,
 )
 
 /** Stan ekranu Tydzień. */
@@ -123,6 +125,8 @@ data class ScheduleUiState(
     val planOptions: List<PlanOption> = emptyList(),
     /** true = zero wpisów w całym harmonogramie → pusty stan z zachętą. */
     val scheduleEmpty: Boolean = true,
+    /** Zajęte dni (PLANNED/DONE) ze wszystkich planów — walidacja kolizji w [AssignPlanDialog]. */
+    val occupiedEntries: List<OccupiedEntry> = emptyList(),
 )
 
 class ScheduleViewModel(
@@ -141,6 +145,22 @@ class ScheduleViewModel(
     /** Ostatni znany harmonogram — pod akcje (przesuń/odwołaj/generacja). */
     private var latestEntries: List<ScheduleEntry> = emptyList()
 
+    /** Ostatnio znane plany — pod rolling generation (mirror wzorca [latestEntries]). */
+    private var latestPlans: List<Plan> = emptyList()
+
+    /** Komunikat po nieudanej próbie przypisania planu (Snackbar w [ScheduleScreen]). */
+    private val _assignmentMessage = MutableStateFlow<String?>(null)
+    val assignmentMessage: StateFlow<String?> = _assignmentMessage
+
+    /**
+     * Idempotencja rolling generation: planId → [ScheduleEntry.date] najpóźniejszego
+     * wpisu, od którego już próbowaliśmy dogenerować. Chroni przed wielokrotnym
+     * odpaleniem w tym samym cyklu (Flow potrafi odpalić się ponownie, zanim własny
+     * zapis dotrze do lokalnego cache'u Firestore) — bez blokowania KOLEJNEJ,
+     * realnej potrzeby przedłużenia, gdy `lastPlannedDate` ruszy dalej.
+     */
+    private val rollingExtensionCursor = mutableMapOf<String, LocalDate>()
+
     val uiState: StateFlow<ScheduleUiState> = combine(
         scheduleRepository.observeSchedule(),
         planRepository.observePlans(),
@@ -149,6 +169,7 @@ class ScheduleViewModel(
         cardioRepository.observeCardio(),
     ) { schedule, plans, exercises, selected, cardio ->
         latestEntries = schedule
+        latestPlans = plans
         if (exercises == null) ScheduleUiState(loading = true)
         else buildState(schedule, plans, exercises, selected, cardio)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScheduleUiState())
@@ -156,6 +177,12 @@ class ScheduleViewModel(
     init {
         viewModelScope.launch {
             exercisesById.value = exerciseRepository.getAll().associateBy { it.id }
+        }
+        // Rolling generation planów bez bloku — osobny mechanizm poza reducerem
+        // (buildState zostaje czystą funkcją). Obserwuje uiState, więc odpala się
+        // przy każdej zmianie harmonogramu/planów; guard wyżej robi resztę.
+        viewModelScope.launch {
+            uiState.collect { maybeExtendContinuousPlans(latestEntries, latestPlans) }
         }
     }
 
@@ -208,7 +235,12 @@ class ScheduleViewModel(
     /**
      * Przypisanie planu do tygodnia: generuje wpisy PLANNED na
      * [ScheduleConstants.GENERATION_WEEKS] tygodni od [startDate].
-     * Dni z już aktywnym wpisem (PLANNED/DONE) są pomijane.
+     * Dni z już aktywnym wpisem (PLANNED/DONE, dowolnego planu) są pomijane.
+     *
+     * Kolizja z INNYM planem w oknie blokuje CTA już w [AssignPlanDialog] (patrz
+     * [conflictingOtherPlanEntry]) — więc jeśli mimo to nic się nie wygenerowało,
+     * to dlatego, że cały wybrany okres zajmuje już TEN SAM plan; user dostaje o
+     * tym komunikat zamiast cichej no-op.
      */
     fun onAssignPlan(planId: String, assignments: Map<DayOfWeek, Int>, startDate: LocalDate) {
         if (assignments.isEmpty()) return
@@ -216,7 +248,12 @@ class ScheduleViewModel(
             .filter { it.status == ScheduleStatus.PLANNED || it.status == ScheduleStatus.DONE }
             .mapNotNull { entry -> parseDate(entry.date) }
             .toSet()
-        generatePlannedSlots(assignments, startDate, occupiedDates = occupied).forEach { slot ->
+        val slots = generatePlannedSlots(assignments, startDate, occupiedDates = occupied)
+        if (slots.isEmpty()) {
+            _assignmentMessage.value = ScheduleTexts.PERIOD_ALREADY_PLANNED
+            return
+        }
+        slots.forEach { slot ->
             scheduleRepository.save(
                 ScheduleEntry(
                     id = scheduleRepository.newId(),
@@ -227,6 +264,66 @@ class ScheduleViewModel(
             )
         }
         selectedDate.value = startDate
+    }
+
+    /** Snackbar w [ScheduleScreen] pokazał komunikat — czyścimy, żeby się nie powtarzał. */
+    fun onAssignmentMessageShown() {
+        _assignmentMessage.value = null
+    }
+
+    // ---------- rolling generation (plan bez bloku) ----------
+
+    /**
+     * Dla każdego planu BEZ bloku ([Plan.blockLengthWeeks] `== null`) sprawdza,
+     * czy najpóźniejszy zaplanowany wpis jest bliżej niż
+     * [ScheduleConstants.ROLLING_THRESHOLD_WEEKS] tygodni od dziś — jeśli tak,
+     * dogenerowuje kolejne [ScheduleConstants.GENERATION_WEEKS] tygodni z
+     * przypisaniami wyprowadzonymi z istniejących wpisów ([deriveWeekAssignments]).
+     * Plany z blokiem — bez zmian. Czysta logika (próg, derywacja, filtr zajętości)
+     * żyje w [WeekPlanner]; ta funkcja tylko orkiestruje odczyt/zapis.
+     */
+    private fun maybeExtendContinuousPlans(schedule: List<ScheduleEntry>, plans: List<Plan>) {
+        val today = LocalDate.now()
+        val plansById = plans.associateBy { it.id }
+        val plannedSlotsByPlan = schedule
+            .filter { it.status == ScheduleStatus.PLANNED }
+            .mapNotNull { entry -> parseDate(entry.date)?.let { date -> entry.planId to PlannedSlot(date, entry.dayIndex) } }
+            .groupBy({ it.first }, { it.second })
+
+        plannedSlotsByPlan.forEach { (planId, slots) ->
+            val plan = plansById[planId] ?: return@forEach
+            if (plan.archived || plan.blockLengthWeeks != null) return@forEach
+
+            val lastPlannedDate = slots.maxOf { it.date }
+            // Guard: ten sam stan (planId, ostatnia data) już przetworzony w tym cyklu.
+            if (rollingExtensionCursor[planId] == lastPlannedDate) return@forEach
+            if (!needsRollingExtension(lastPlannedDate, today)) return@forEach
+
+            val assignments = deriveWeekAssignments(slots)
+            if (assignments.isEmpty()) return@forEach
+            rollingExtensionCursor[planId] = lastPlannedDate
+
+            val occupied = schedule
+                .filter { it.status == ScheduleStatus.PLANNED || it.status == ScheduleStatus.DONE }
+                .mapNotNull { entry -> parseDate(entry.date) }
+                .toSet()
+            val newSlots = generatePlannedSlots(
+                assignments = assignments,
+                startDate = lastPlannedDate.plusDays(1),
+                weeks = ScheduleConstants.GENERATION_WEEKS,
+                occupiedDates = occupied,
+            )
+            newSlots.forEach { slot ->
+                scheduleRepository.save(
+                    ScheduleEntry(
+                        id = scheduleRepository.newId(),
+                        date = slot.date.toString(),
+                        planId = planId,
+                        dayIndex = slot.dayIndex,
+                    ),
+                )
+            }
+        }
     }
 
     // ---------- budowa stanu ----------
@@ -317,9 +414,25 @@ class ScheduleViewModel(
                 .filter { !it.archived && it.days.isNotEmpty() }
                 .sortedByDescending { it.createdAt }
                 .map { candidate ->
-                    PlanOption(candidate.id, candidate.name, candidate.days.map { it.name })
+                    PlanOption(
+                        id = candidate.id,
+                        name = candidate.name,
+                        dayNames = candidate.days.map { it.name },
+                        continuous = candidate.blockLengthWeeks == null,
+                    )
                 },
             scheduleEmpty = schedule.isEmpty(),
+            occupiedEntries = schedule
+                .filter { it.status == ScheduleStatus.PLANNED || it.status == ScheduleStatus.DONE }
+                .mapNotNull { entry ->
+                    parseDate(entry.date)?.let { date ->
+                        OccupiedEntry(
+                            date = date,
+                            planId = entry.planId,
+                            planName = plansById[entry.planId]?.name ?: "usunięty plan",
+                        )
+                    }
+                },
         )
     }
 
