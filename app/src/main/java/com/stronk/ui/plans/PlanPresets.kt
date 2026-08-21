@@ -106,10 +106,20 @@ data class PlanPreset(
 /**
  * Definicje presetów (CONCEPT moduł 3: "wizard dla laika" w wersji mechanicznej).
  *
- * Kolejność kandydatów w slotach jest celowa: w presecie powrotowym najpierw
- * warianty najłagodniejsze dla kolana i dolnego odcinka pleców (kryterium
- * sukcesu alfy), w pozostałych — klasyka danego wzorca ruchu, potem warianty
- * na inny sprzęt.
+ * Treść przepisana wg zaakceptowanej rozpiski v2 (2026-08): każdy slot ma 4-5
+ * kandydatów pokrywających wolny ciężar (sztanga/hantle), maszynę/wyciąg i
+ * wariant domowy (guma/masa własna) — kolejność klasyczna sama w sobie jest
+ * bogata sprzętowo (obsługuje zarówno pełną siłownię, jak i home gym).
+ * Osobna kolejność łagodna ([PresetSlot.gentleCandidateIds]) jest tylko tam,
+ * gdzie rozpiska ją podaje (przysiad, zawias biodrowy, wiosłowanie w opadzie,
+ * grzbiet — wyprosty) — wybiera ją [resolveSlotExercise], gdy profil ma
+ * aktywne ograniczenie jednego z [PresetSlot.relevantJoints] slotu.
+ *
+ * Jawne data-gapy z rozpiski (nie do naprawienia treścią — granica datasetu):
+ * biceps bez wariantu na gumie/masie własnej w CAŁEJ bazie 873 ćwiczeń;
+ * pionowy ciąg pleców (drążek) bez wolnego ciężaru; core — stabilizacja bez
+ * wolnego ciężaru (naturalne dla wzorca); grzbiet — wyprosty bez wariantu
+ * poniżej lowBack=medium; przysiad/wypad bez wariantu poniżej knee=medium.
  */
 object PlanPresets {
 
@@ -126,11 +136,17 @@ object PlanPresets {
                     PresetSlot(
                         label = "Nogi — przód uda",
                         candidateIds = listOf(
+                            "Barbell_Squat",
+                            "Dumbbell_Squat",
                             "Leg_Press",
-                            "Leg_Extensions",
-                            "Goblet_Squat",
-                            "Bodyweight_Walking_Lunge",
+                            "Bodyweight_Squat",
                         ),
+                        gentleCandidateIds = listOf(
+                            "Leg_Press",
+                            "Bodyweight_Squat",
+                            "Dumbbell_Squat",
+                        ),
+                        relevantJoints = setOf("knee", "lowBack"),
                         sets = 3,
                         reps = 10,
                     ),
@@ -139,18 +155,21 @@ object PlanPresets {
                         candidateIds = listOf(
                             "Seated_Leg_Curl",
                             "Lying_Leg_Curls",
-                            "Glute_Ham_Raise",
+                            "Stiff-Legged_Dumbbell_Deadlift",
+                            "Natural_Glute_Ham_Raise",
                         ),
+                        relevantJoints = setOf("knee"),
                         sets = 3,
                         reps = 12,
                     ),
                     PresetSlot(
                         label = "Klatka — wyciskanie",
                         candidateIds = listOf(
-                            "Machine_Bench_Press",
-                            "Dumbbell_Bench_Press",
-                            "Pushups",
                             "Barbell_Bench_Press_-_Medium_Grip",
+                            "Dumbbell_Bench_Press",
+                            "Leverage_Chest_Press",
+                            "Machine_Bench_Press",
+                            "Pushups",
                         ),
                         sets = 3,
                         reps = 10,
@@ -158,22 +177,31 @@ object PlanPresets {
                     PresetSlot(
                         label = "Plecy — wiosłowanie",
                         candidateIds = listOf(
+                            "Bent_Over_Barbell_Row",
+                            "Dumbbell_Incline_Row",
                             "Leverage_Iso_Row",
+                            "Seated_Cable_Rows",
+                            "Inverted_Row",
+                        ),
+                        gentleCandidateIds = listOf(
+                            "Leverage_Iso_Row",
+                            "Seated_Cable_Rows",
                             "Dumbbell_Incline_Row",
                             "Inverted_Row",
-                            "Seated_Cable_Rows",
                         ),
+                        relevantJoints = setOf("lowBack"),
                         sets = 3,
                         reps = 10,
                     ),
                     PresetSlot(
                         label = "Barki — wyciskanie",
                         candidateIds = listOf(
-                            "Leverage_Shoulder_Press",
-                            "Machine_Shoulder_Military_Press",
+                            "Barbell_Shoulder_Press",
                             "Dumbbell_Shoulder_Press",
-                            "Side_Lateral_Raise",
+                            "Leverage_Shoulder_Press",
+                            "Shoulder_Press_-_With_Bands",
                         ),
+                        relevantJoints = setOf("shoulder"),
                         sets = 3,
                         reps = 10,
                     ),
@@ -187,6 +215,18 @@ object PlanPresets {
                         sets = 3,
                         reps = 10,
                     ),
+                    PresetSlot(
+                        label = "Triceps",
+                        candidateIds = listOf(
+                            "Standing_Dumbbell_Triceps_Extension",
+                            "Triceps_Pushdown",
+                            "Machine_Triceps_Extension",
+                            "Band_Skull_Crusher",
+                            "Bench_Dips",
+                        ),
+                        sets = 3,
+                        reps = 12,
+                    ),
                 ),
             ),
             PresetDay(
@@ -195,11 +235,13 @@ object PlanPresets {
                     PresetSlot(
                         label = "Pośladki — mostek biodrowy",
                         candidateIds = listOf(
+                            "Barbell_Hip_Thrust",
                             "Barbell_Glute_Bridge",
-                            "Physioball_Hip_Bridge",
+                            "Reverse_Hyperextension",
                             "Hip_Extension_with_Bands",
                             "Butt_Lift_Bridge",
                         ),
+                        relevantJoints = setOf("lowBack"),
                         sets = 3,
                         reps = 12,
                     ),
@@ -207,19 +249,21 @@ object PlanPresets {
                         label = "Nogi — tył uda",
                         candidateIds = listOf(
                             "Lying_Leg_Curls",
+                            "Romanian_Deadlift",
                             "Seated_Leg_Curl",
-                            "Stiff-Legged_Dumbbell_Deadlift",
+                            "Natural_Glute_Ham_Raise",
                         ),
+                        relevantJoints = setOf("knee"),
                         sets = 3,
                         reps = 12,
                     ),
                     PresetSlot(
                         label = "Plecy — ściąganie",
                         candidateIds = listOf(
-                            "Close-Grip_Front_Lat_Pulldown",
                             "Wide-Grip_Lat_Pulldown",
-                            "Band_Assisted_Pull-Up",
+                            "Close-Grip_Front_Lat_Pulldown",
                             "Chin-Up",
+                            "Band_Assisted_Pull-Up",
                         ),
                         sets = 3,
                         reps = 10,
@@ -229,6 +273,7 @@ object PlanPresets {
                         candidateIds = listOf(
                             "Dumbbell_Bench_Press",
                             "Machine_Bench_Press",
+                            "Leverage_Chest_Press",
                             "Pushups",
                         ),
                         sets = 3,
@@ -237,9 +282,10 @@ object PlanPresets {
                     PresetSlot(
                         label = "Łydki",
                         candidateIds = listOf(
-                            "Seated_Calf_Raise",
-                            "Calf_Press_On_The_Leg_Press_Machine",
+                            "Standing_Barbell_Calf_Raise",
                             "Standing_Dumbbell_Calf_Raise",
+                            "Seated_Calf_Raise",
+                            "Calf_Raises_-_With_Bands",
                         ),
                         sets = 3,
                         reps = 15,
@@ -248,11 +294,22 @@ object PlanPresets {
                         label = "Core — antyrotacja",
                         candidateIds = listOf(
                             "Pallof_Press",
-                            "Dead_Bug",
                             "Side_Bridge",
+                            "Dead_Bug",
                         ),
                         sets = 3,
                         reps = 10,
+                    ),
+                    PresetSlot(
+                        label = "Biceps",
+                        candidateIds = listOf(
+                            "Barbell_Curl",
+                            "Hammer_Curls",
+                            "Machine_Bicep_Curl",
+                            "Cable_Hammer_Curls_-_Rope_Attachment",
+                        ),
+                        sets = 3,
+                        reps = 12,
                     ),
                 ),
             ),
@@ -262,29 +319,39 @@ object PlanPresets {
                     PresetSlot(
                         label = "Nogi — suwnica / przysiad",
                         candidateIds = listOf(
-                            "Leg_Press",
                             "Goblet_Squat",
+                            "Leg_Press",
                             "Leg_Extensions",
+                            "Bodyweight_Squat",
                         ),
+                        relevantJoints = setOf("knee", "lowBack"),
                         sets = 3,
                         reps = 10,
                     ),
                     PresetSlot(
                         label = "Pośladki",
                         candidateIds = listOf(
-                            "Hip_Extension_with_Bands",
-                            "Barbell_Glute_Bridge",
+                            "Romanian_Deadlift",
+                            "Stiff-Legged_Dumbbell_Deadlift",
+                            "Glute_Ham_Raise",
                             "Butt_Lift_Bridge",
+                            "Physioball_Hip_Bridge",
                         ),
+                        gentleCandidateIds = listOf(
+                            "Glute_Ham_Raise",
+                            "Butt_Lift_Bridge",
+                            "Physioball_Hip_Bridge",
+                        ),
+                        relevantJoints = setOf("lowBack"),
                         sets = 3,
                         reps = 12,
                     ),
                     PresetSlot(
                         label = "Plecy — wiosłowanie hantlem",
                         candidateIds = listOf(
-                            "Dumbbell_Incline_Row",
                             "One-Arm_Dumbbell_Row",
                             "Leverage_High_Row",
+                            "Inverted_Row",
                         ),
                         sets = 3,
                         reps = 10,
@@ -295,6 +362,7 @@ object PlanPresets {
                             "Side_Lateral_Raise",
                             "Seated_Side_Lateral_Raise",
                             "Cable_Seated_Lateral_Raise",
+                            "Lateral_Raise_-_With_Bands",
                         ),
                         sets = 3,
                         reps = 12,
@@ -304,6 +372,7 @@ object PlanPresets {
                         candidateIds = listOf(
                             "Dumbbell_Bicep_Curl",
                             "Hammer_Curls",
+                            "Machine_Bicep_Curl",
                             "Barbell_Curl",
                         ),
                         sets = 3,
@@ -313,6 +382,8 @@ object PlanPresets {
                         label = "Triceps",
                         candidateIds = listOf(
                             "Triceps_Pushdown",
+                            "Machine_Triceps_Extension",
+                            "Band_Skull_Crusher",
                             "Standing_Dumbbell_Triceps_Extension",
                             "Bench_Dips",
                         ),
@@ -334,21 +405,24 @@ object PlanPresets {
                 name = "Push",
                 slots = listOf(
                     PresetSlot(
-                        label = "Klatka — wyciskanie poziome",
+                        label = "Klatka — poziomo",
                         candidateIds = listOf(
                             "Barbell_Bench_Press_-_Medium_Grip",
                             "Dumbbell_Bench_Press",
+                            "Leverage_Chest_Press",
                             "Machine_Bench_Press",
+                            "Pushups",
                         ),
                         sets = 4,
                         reps = 8,
                     ),
                     PresetSlot(
-                        label = "Klatka — wyciskanie na skosie",
+                        label = "Klatka — skos",
                         candidateIds = listOf(
                             "Barbell_Incline_Bench_Press_-_Medium_Grip",
                             "Hammer_Grip_Incline_DB_Bench_Press",
                             "Leverage_Incline_Chest_Press",
+                            "Incline_Push-Up",
                         ),
                         sets = 3,
                         reps = 10,
@@ -359,7 +433,9 @@ object PlanPresets {
                             "Barbell_Shoulder_Press",
                             "Dumbbell_Shoulder_Press",
                             "Leverage_Shoulder_Press",
+                            "Shoulder_Press_-_With_Bands",
                         ),
+                        relevantJoints = setOf("shoulder"),
                         sets = 3,
                         reps = 10,
                     ),
@@ -378,6 +454,8 @@ object PlanPresets {
                         candidateIds = listOf(
                             "Triceps_Pushdown",
                             "Standing_Dumbbell_Triceps_Extension",
+                            "Machine_Triceps_Extension",
+                            "Band_Skull_Crusher",
                             "Bench_Dips",
                         ),
                         sets = 3,
@@ -395,17 +473,25 @@ object PlanPresets {
                             "One-Arm_Dumbbell_Row",
                             "Seated_Cable_Rows",
                             "Leverage_Iso_Row",
+                            "Inverted_Row",
                         ),
+                        gentleCandidateIds = listOf(
+                            "Leverage_Iso_Row",
+                            "Seated_Cable_Rows",
+                            "Inverted_Row",
+                            "One-Arm_Dumbbell_Row",
+                        ),
+                        relevantJoints = setOf("lowBack"),
                         sets = 4,
                         reps = 8,
                     ),
                     PresetSlot(
                         label = "Plecy — pion",
                         candidateIds = listOf(
-                            "Pullups",
                             "Wide-Grip_Lat_Pulldown",
+                            "Close-Grip_Front_Lat_Pulldown",
+                            "Pullups",
                             "Band_Assisted_Pull-Up",
-                            "Chin-Up",
                         ),
                         sets = 3,
                         reps = 8,
@@ -413,9 +499,10 @@ object PlanPresets {
                     PresetSlot(
                         label = "Tył barków",
                         candidateIds = listOf(
+                            "Dumbbell_Lying_Rear_Lateral_Raise",
                             "Face_Pull",
                             "Cable_Rope_Rear-Delt_Rows",
-                            "Dumbbell_Lying_Rear_Lateral_Raise",
+                            "Back_Flyes_-_With_Bands",
                         ),
                         sets = 3,
                         reps = 15,
@@ -425,7 +512,8 @@ object PlanPresets {
                         candidateIds = listOf(
                             "Barbell_Curl",
                             "Dumbbell_Bicep_Curl",
-                            "Hammer_Curls",
+                            "Machine_Bicep_Curl",
+                            "Cable_Hammer_Curls_-_Rope_Attachment",
                         ),
                         sets = 3,
                         reps = 12,
@@ -433,9 +521,17 @@ object PlanPresets {
                     PresetSlot(
                         label = "Grzbiet — wyprosty",
                         candidateIds = listOf(
+                            "Good_Morning",
                             "Hyperextensions_Back_Extensions",
                             "Hyperextensions_With_No_Hyperextension_Bench",
+                            "Superman",
                         ),
+                        gentleCandidateIds = listOf(
+                            "Hyperextensions_With_No_Hyperextension_Bench",
+                            "Superman",
+                            "Hyperextensions_Back_Extensions",
+                        ),
+                        relevantJoints = setOf("lowBack"),
                         sets = 3,
                         reps = 12,
                     ),
@@ -448,9 +544,16 @@ object PlanPresets {
                         label = "Przysiad",
                         candidateIds = listOf(
                             "Barbell_Squat",
-                            "Goblet_Squat",
+                            "Dumbbell_Squat",
                             "Leg_Press",
+                            "Bodyweight_Squat",
                         ),
+                        gentleCandidateIds = listOf(
+                            "Leg_Press",
+                            "Bodyweight_Squat",
+                            "Dumbbell_Squat",
+                        ),
+                        relevantJoints = setOf("knee", "lowBack"),
                         sets = 4,
                         reps = 8,
                     ),
@@ -458,19 +561,33 @@ object PlanPresets {
                         label = "Zawias biodrowy",
                         candidateIds = listOf(
                             "Romanian_Deadlift",
+                            "Barbell_Hip_Thrust",
                             "Stiff-Legged_Dumbbell_Deadlift",
-                            "Barbell_Glute_Bridge",
+                            "Reverse_Hyperextension",
+                            "Hip_Extension_with_Bands",
                         ),
+                        gentleCandidateIds = listOf(
+                            "Barbell_Hip_Thrust",
+                            "Reverse_Hyperextension",
+                            "Hip_Extension_with_Bands",
+                        ),
+                        relevantJoints = setOf("lowBack"),
                         sets = 3,
                         reps = 10,
                     ),
                     PresetSlot(
                         label = "Nogi — przód uda",
                         candidateIds = listOf(
-                            "Leg_Press",
                             "Dumbbell_Lunges",
+                            "Barbell_Lunge",
                             "Leg_Extensions",
+                            "Bodyweight_Walking_Lunge",
                         ),
+                        gentleCandidateIds = listOf(
+                            "Leg_Extensions",
+                            "Bodyweight_Walking_Lunge",
+                        ),
+                        relevantJoints = setOf("knee"),
                         sets = 3,
                         reps = 10,
                     ),
@@ -480,16 +597,19 @@ object PlanPresets {
                             "Lying_Leg_Curls",
                             "Seated_Leg_Curl",
                             "Glute_Ham_Raise",
+                            "Natural_Glute_Ham_Raise",
                         ),
+                        relevantJoints = setOf("knee"),
                         sets = 3,
                         reps = 12,
                     ),
                     PresetSlot(
                         label = "Łydki",
                         candidateIds = listOf(
-                            "Standing_Calf_Raises",
-                            "Seated_Calf_Raise",
+                            "Standing_Barbell_Calf_Raise",
                             "Standing_Dumbbell_Calf_Raise",
+                            "Standing_Calf_Raises",
+                            "Calf_Raises_-_With_Bands",
                         ),
                         sets = 4,
                         reps = 12,
@@ -503,6 +623,17 @@ object PlanPresets {
                         ),
                         sets = 3,
                         reps = 10,
+                    ),
+                    PresetSlot(
+                        label = "Biceps",
+                        candidateIds = listOf(
+                            "Hammer_Curls",
+                            "Dumbbell_Bicep_Curl",
+                            "Machine_Bicep_Curl",
+                            "Barbell_Curl",
+                        ),
+                        sets = 3,
+                        reps = 12,
                     ),
                 ),
             ),
@@ -522,9 +653,16 @@ object PlanPresets {
                         label = "Przysiad / suwnica",
                         candidateIds = listOf(
                             "Barbell_Squat",
+                            "Dumbbell_Squat",
                             "Leg_Press",
-                            "Goblet_Squat",
+                            "Bodyweight_Squat",
                         ),
+                        gentleCandidateIds = listOf(
+                            "Leg_Press",
+                            "Bodyweight_Squat",
+                            "Dumbbell_Squat",
+                        ),
+                        relevantJoints = setOf("knee", "lowBack"),
                         sets = 3,
                         reps = 8,
                     ),
@@ -534,6 +672,7 @@ object PlanPresets {
                             "Barbell_Bench_Press_-_Medium_Grip",
                             "Dumbbell_Bench_Press",
                             "Machine_Bench_Press",
+                            "Pushups",
                         ),
                         sets = 3,
                         reps = 8,
@@ -544,7 +683,14 @@ object PlanPresets {
                             "Bent_Over_Barbell_Row",
                             "Seated_Cable_Rows",
                             "One-Arm_Dumbbell_Row",
+                            "Inverted_Row",
                         ),
+                        gentleCandidateIds = listOf(
+                            "Seated_Cable_Rows",
+                            "Inverted_Row",
+                            "One-Arm_Dumbbell_Row",
+                        ),
+                        relevantJoints = setOf("lowBack"),
                         sets = 3,
                         reps = 10,
                     ),
@@ -553,6 +699,7 @@ object PlanPresets {
                         candidateIds = listOf(
                             "Side_Lateral_Raise",
                             "Cable_Seated_Lateral_Raise",
+                            "Lateral_Raise_-_With_Bands",
                         ),
                         sets = 3,
                         reps = 12,
@@ -566,6 +713,17 @@ object PlanPresets {
                         sets = 3,
                         reps = 10,
                     ),
+                    PresetSlot(
+                        label = "Triceps",
+                        candidateIds = listOf(
+                            "Standing_Dumbbell_Triceps_Extension",
+                            "Machine_Triceps_Extension",
+                            "Band_Skull_Crusher",
+                            "Bench_Dips",
+                        ),
+                        sets = 3,
+                        reps = 12,
+                    ),
                 ),
             ),
             PresetDay(
@@ -575,9 +733,17 @@ object PlanPresets {
                         label = "Zawias biodrowy",
                         candidateIds = listOf(
                             "Romanian_Deadlift",
+                            "Barbell_Hip_Thrust",
                             "Stiff-Legged_Dumbbell_Deadlift",
                             "Lying_Leg_Curls",
+                            "Hip_Extension_with_Bands",
                         ),
+                        gentleCandidateIds = listOf(
+                            "Barbell_Hip_Thrust",
+                            "Lying_Leg_Curls",
+                            "Hip_Extension_with_Bands",
+                        ),
+                        relevantJoints = setOf("lowBack"),
                         sets = 3,
                         reps = 10,
                     ),
@@ -587,7 +753,9 @@ object PlanPresets {
                             "Standing_Military_Press",
                             "Dumbbell_Shoulder_Press",
                             "Leverage_Shoulder_Press",
+                            "Shoulder_Press_-_With_Bands",
                         ),
+                        relevantJoints = setOf("shoulder"),
                         sets = 3,
                         reps = 8,
                     ),
@@ -595,8 +763,9 @@ object PlanPresets {
                         label = "Plecy — pion",
                         candidateIds = listOf(
                             "Wide-Grip_Lat_Pulldown",
-                            "Pullups",
                             "Close-Grip_Front_Lat_Pulldown",
+                            "Pullups",
+                            "Chin-Up",
                         ),
                         sets = 3,
                         reps = 10,
@@ -606,6 +775,7 @@ object PlanPresets {
                         candidateIds = listOf(
                             "Barbell_Curl",
                             "Dumbbell_Bicep_Curl",
+                            "Machine_Bicep_Curl",
                         ),
                         sets = 3,
                         reps = 12,
@@ -615,6 +785,7 @@ object PlanPresets {
                         candidateIds = listOf(
                             "Triceps_Pushdown",
                             "Bench_Dips",
+                            "Machine_Triceps_Extension",
                         ),
                         sets = 3,
                         reps = 12,
