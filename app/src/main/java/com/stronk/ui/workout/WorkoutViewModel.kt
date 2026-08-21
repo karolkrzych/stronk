@@ -14,6 +14,7 @@ import com.stronk.data.ProfileDetails
 import com.stronk.data.ScheduleStatus
 import com.stronk.data.SetLog
 import com.stronk.data.SetTarget
+import com.stronk.data.SubstituteScoring
 import com.stronk.data.Workout
 import com.stronk.data.findSubstitutes
 import com.stronk.progression.ProgressionEngine
@@ -494,7 +495,9 @@ class WorkoutViewModel(
     fun showSubstitutes() {
         val se = manager.session.value?.currentExercise ?: return
         val exercise = se.exercise ?: return
-        val matches = findSubstitutes(exercise, allExercises, profileDetails)
+        // Bez limitu: filtr grupowy w UI działa na pełnej liście, limit (DEFAULT_LIMIT)
+        // stosujemy DOPIERO PO filtrze (patrz filterSubstitutesByGroup w SubstitutesSheet).
+        val matches = findSubstitutes(exercise, allExercises, profileDetails, limit = SubstituteScoring.NO_LIMIT)
         substitutes.value = SubstitutesState(
             forExerciseName = exercise.namePl,
             options = matches.map { match ->

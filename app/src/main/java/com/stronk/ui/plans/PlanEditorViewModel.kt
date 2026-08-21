@@ -18,6 +18,7 @@ import com.stronk.data.PlanRepository
 import com.stronk.data.ProfileDetails
 import com.stronk.data.StressLevel
 import com.stronk.data.SubstituteMatch
+import com.stronk.data.SubstituteScoring
 import com.stronk.data.UserProfile
 import com.stronk.data.UserProfileRepository
 import com.stronk.data.findSubstitutes
@@ -491,7 +492,9 @@ class PlanEditorViewModel(
         overlay.value = overlay.value.copy(
             substitutes = SubstitutesUi(
                 forExercise = exercise,
-                matches = findSubstitutes(exercise, all, profile.value, PlanDefaults.SUBSTITUTE_LIMIT),
+                // Bez limitu: filtr grupowy w arkuszu działa na pełnej liście, limit
+                // (SUBSTITUTE_LIMIT) stosowany DOPIERO PO filtrze (filterSubstitutesByGroup).
+                matches = findSubstitutes(exercise, all, profile.value, limit = SubstituteScoring.NO_LIMIT),
                 dayIndex = dayIndex,
                 replaceIndex = exerciseIndex,
             ),
@@ -505,7 +508,7 @@ class PlanEditorViewModel(
         overlay.value = overlay.value.copy(
             substitutes = SubstitutesUi(
                 forExercise = exercise,
-                matches = findSubstitutes(exercise, all, profile.value, PlanDefaults.SUBSTITUTE_LIMIT),
+                matches = findSubstitutes(exercise, all, profile.value, limit = SubstituteScoring.NO_LIMIT),
                 dayIndex = dayIndex,
                 replaceIndex = null,
             ),

@@ -46,6 +46,9 @@ object SubstituteScoring {
     val ALWAYS_AVAILABLE_EQUIPMENT = setOf("body only")
 
     const val DEFAULT_LIMIT = 10
+
+    /** Przekazywane do [findSubstitutes] jako `limit`, gdy chcemy PEŁną listę kandydatów. */
+    const val NO_LIMIT = Int.MAX_VALUE
 }
 
 /** Porządek dotkliwości — jawny, bo ordinal enuma [StressLevel] idzie od HIGH do NONE. */
@@ -129,4 +132,30 @@ fun findSubstitutes(
         .sortedWith(compareByDescending<SubstituteMatch> { it.score }.thenBy { it.exercise.namePl })
         .take(limit)
         .toList()
+}
+
+/**
+ * Filtr po grupie sprzętu ([com.stronk.ui.profile.ProfileEquipment]) w arkuszu
+ * zamienników — działa na PEŁNEJ liście kandydatów (wołaj [findSubstitutes] ze
+ * `limit = SubstituteScoring.NO_LIMIT`), `displayLimit` stosujemy DOPIERO PO
+ * filtrze. Bez tego zawężenie do jednej grupy sprzętu potrafiło pokazać pustkę,
+ * mimo że pasujące zamienniki istniały, tylko zostały ucięte limitem WCZEŚNIEJ.
+ *
+ * Generic i bez zależności od typu UI — współdzielona przez arkusz zamienników
+ * treningu ([com.stronk.ui.workout.SubstituteUi]) i edytora planu
+ * ([com.stronk.data.SubstituteMatch]); `groupIdOf` wyciąga grupę z elementu.
+ * Nic nie zaznaczone ([selectedGroups] puste) = pokazujemy wszystko (jak dziś).
+ */
+fun <T> filterSubstitutesByGroup(
+    items: List<T>,
+    groupIdOf: (T) -> String,
+    selectedGroups: Set<String>,
+    displayLimit: Int,
+): List<T> {
+    val filtered = if (selectedGroups.isEmpty()) {
+        items
+    } else {
+        items.filter { groupIdOf(it) in selectedGroups }
+    }
+    return filtered.take(displayLimit)
 }
