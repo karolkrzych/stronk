@@ -3,6 +3,7 @@ package com.stronk.ui.schedule
 import java.time.DayOfWeek
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -182,5 +183,123 @@ class WeekPlannerTest {
             emptyList<PlannedSlot>(),
             generatePlannedSlots(emptyMap(), monday, weeks = 4),
         )
+    }
+
+    // ---------- needsRollingExtension ----------
+
+    @Test
+    fun `needsRollingExtension gdy ostatni wpis blizej niz prog zwraca true`() {
+        val today = monday
+        val lastPlanned = today.plusDays(10) // < 2 tygodnie (14 dni)
+        assertTrue(needsRollingExtension(lastPlanned, today, thresholdWeeks = 2))
+    }
+
+    @Test
+    fun `needsRollingExtension dokladnie na progu to jeszcze nie powod`() {
+        val today = monday
+        val lastPlanned = today.plusWeeks(2) // dokladnie prog, zapas sie nie skonczyl
+        assertFalse(needsRollingExtension(lastPlanned, today, thresholdWeeks = 2))
+    }
+
+    @Test
+    fun `needsRollingExtension gdy ostatni wpis daleko w przyszlosci zwraca false`() {
+        val today = monday
+        val lastPlanned = today.plusWeeks(4)
+        assertFalse(needsRollingExtension(lastPlanned, today, thresholdWeeks = 2))
+    }
+
+    @Test
+    fun `needsRollingExtension gdy ostatni wpis juz w przeszlosci zwraca true`() {
+        val today = monday
+        val lastPlanned = today.minusDays(3)
+        assertTrue(needsRollingExtension(lastPlanned, today, thresholdWeeks = 2))
+    }
+
+    // ---------- deriveWeekAssignments ----------
+
+    @Test
+    fun `deriveWeekAssignments z pustej listy daje pusta mape`() {
+        assertEquals(emptyMap<DayOfWeek, Int>(), deriveWeekAssignments(emptyList()))
+    }
+
+    @Test
+    fun `deriveWeekAssignments bierze ostatni tydzien wpisow`() {
+        // Dwa tygodnie wpisow pn/czw z tym samym wzorcem (0/1) — wynik z 2. tygodnia.
+        val entries = listOf(
+            PlannedSlot(monday, 0),
+            PlannedSlot(monday.plusDays(3), 1), // czwartek
+            PlannedSlot(monday.plusWeeks(1), 0),
+            PlannedSlot(monday.plusWeeks(1).plusDays(3), 1),
+        )
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.THURSDAY to 1),
+            deriveWeekAssignments(entries),
+        )
+    }
+
+    @Test
+    fun `deriveWeekAssignments ignoruje starszy tydzien gdy wzorzec sie zmienil`() {
+        // Pierwszy tydzien: pn=0. Ostatni (najpozniejszy) tydzien: pn=1 — wygrywa ostatni.
+        val entries = listOf(
+            PlannedSlot(monday, 0),
+            PlannedSlot(monday.plusWeeks(2), 1),
+        )
+        assertEquals(mapOf(DayOfWeek.MONDAY to 1), deriveWeekAssignments(entries))
+    }
+
+    @Test
+    fun `deriveWeekAssignments zachowuje full body na kilku dniach z tym samym dayIndex`() {
+        val entries = listOf(
+            PlannedSlot(monday, 0),
+            PlannedSlot(monday.plusDays(2), 0), // sroda
+            PlannedSlot(monday.plusDays(4), 0), // piatek
+        )
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 0, DayOfWeek.FRIDAY to 0),
+            deriveWeekAssignments(entries),
+        )
+    }
+
+    // ---------- conflictingOtherPlanEntry ----------
+
+    @Test
+    fun `conflictingOtherPlanEntry bez zajetych dni to null`() {
+        assertEquals(null, conflictingOtherPlanEntry(emptyList(), "planA", monday, weeks = 4))
+    }
+
+    @Test
+    fun `conflictingOtherPlanEntry zajete przez TEN SAM plan nie blokuje`() {
+        val occupied = listOf(OccupiedEntry(monday, "planA", "Full Body"))
+        assertEquals(null, conflictingOtherPlanEntry(occupied, "planA", monday, weeks = 4))
+    }
+
+    @Test
+    fun `conflictingOtherPlanEntry zajete przez inny plan w oknie blokuje`() {
+        val occupied = listOf(OccupiedEntry(monday.plusDays(2), "planB", "Push Pull"))
+        val conflict = conflictingOtherPlanEntry(occupied, "planA", monday, weeks = 4)
+        assertEquals(OccupiedEntry(monday.plusDays(2), "planB", "Push Pull"), conflict)
+    }
+
+    @Test
+    fun `conflictingOtherPlanEntry poza oknem generacji nie blokuje`() {
+        val beforeStart = OccupiedEntry(monday.minusDays(1), "planB", "Push Pull")
+        val afterWindow = OccupiedEntry(monday.plusWeeks(4), "planB", "Push Pull")
+        val conflict = conflictingOtherPlanEntry(
+            listOf(beforeStart, afterWindow),
+            "planA",
+            monday,
+            weeks = 4,
+        )
+        assertEquals(null, conflict)
+    }
+
+    @Test
+    fun `conflictingOtherPlanEntry zwraca najwczesniejszy konflikt`() {
+        val occupied = listOf(
+            OccupiedEntry(monday.plusDays(5), "planB", "Push Pull"),
+            OccupiedEntry(monday.plusDays(1), "planC", "Nogi"),
+        )
+        val conflict = conflictingOtherPlanEntry(occupied, "planA", monday, weeks = 4)
+        assertEquals(OccupiedEntry(monday.plusDays(1), "planC", "Nogi"), conflict)
     }
 }

@@ -11,6 +11,13 @@ object ScheduleConstants {
     /** Na ile tygodni do przodu generowane są wpisy przy przypisaniu planu. */
     const val GENERATION_WEEKS = 4
 
+    /**
+     * Rolling generation (plan BEZ bloku — [com.stronk.data.Plan.blockLengthWeeks]
+     * `== null`): gdy najpóźniejszy zaplanowany wpis danego planu jest bliżej niż
+     * tyle tygodni od dziś, dogenerowujemy kolejne [GENERATION_WEEKS] tygodni.
+     */
+    const val ROLLING_THRESHOLD_WEEKS = 2
+
     const val DAYS_IN_WEEK = 7
 
     /**

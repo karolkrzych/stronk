@@ -18,8 +18,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +48,7 @@ import com.stronk.ui.components.StronkEmptyState
 import com.stronk.ui.components.StronkIconBadge
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkListRow
+import com.stronk.ui.components.StronkNoteCard
 import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.components.StronkTone
@@ -95,10 +99,31 @@ fun ScheduleScreen(
     viewModel: ScheduleViewModel = viewModel(factory = ScheduleViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val assignmentMessage by viewModel.assignmentMessage.collectAsState()
     var showAssignDialog by remember { mutableStateOf(false) }
     var moveEntryId by remember { mutableStateOf<String?>(null) }
 
-    Scaffold { innerPadding ->
+    val snackbarHostState = remember { SnackbarHostState() }
+    // Komunikat po nieudanej próbie przypisania planu (np. „ten okres jest już
+    // zaplanowany") — StronkNoteCard w slocie snackbara, nie systemowy Toast.
+    LaunchedEffect(assignmentMessage) {
+        assignmentMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.onAssignmentMessageShown()
+        }
+    }
+
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                StronkNoteCard(
+                    text = data.visuals.message,
+                    icon = StronkIcons.info,
+                    modifier = Modifier.padding(StronkSpacing.screen),
+                )
+            }
+        },
+    ) { innerPadding ->
         if (state.loading) {
             Box(
                 modifier = Modifier
@@ -192,6 +217,7 @@ fun ScheduleScreen(
     if (showAssignDialog) {
         AssignPlanDialog(
             plans = state.planOptions,
+            occupiedEntries = state.occupiedEntries,
             onConfirm = { planId, assignments, startDate ->
                 viewModel.onAssignPlan(planId, assignments, startDate)
                 showAssignDialog = false
