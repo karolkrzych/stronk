@@ -43,6 +43,8 @@ import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkSegmentedProgress
 import com.stronk.ui.components.StronkStatDivider
 import com.stronk.ui.components.StronkStatRow
+import com.stronk.ui.profile.ProfileEquipment
+import com.stronk.ui.profile.ProfileTexts
 import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
@@ -51,9 +53,9 @@ import com.stronk.ui.theme.StronkTheme
 
 /**
  * Kreator nowego planu — 1:1 z mockiem `mocks/limonka/pack-dzis-plany.html`
- * (ekran 3). Ekran wewnętrzny: BEZ dolnej nawigacji.
+ * (ekran 3), rozszerzony o krok sprzętu. Ekran wewnętrzny: BEZ dolnej nawigacji.
  *
- * Stały szkielet każdego kroku: kapitalik „Nowy plan" + „Krok N/4", pasek
+ * Stały szkielet każdego kroku: kapitalik „Nowy plan" + „Krok N/5", pasek
  * kroków z semantyką (zrobione `--lime-deep`, bieżący `--lime`, przyszłe
  * `--s3`), tytuł 27, jedno zdanie podtytułu, JEDNA karta z treścią kroku i
  * stopka Wstecz / Dalej w proporcji 1 : 1,7.
@@ -130,6 +132,11 @@ internal fun PlanWizard(
                     wizard = wizard,
                     onChange = viewModel::onBlockLengthChange,
                     onEnabledChange = viewModel::onBlockEnabledChange,
+                )
+                PlanWizardStep.EQUIPMENT -> EquipmentStep(
+                    wizard = wizard,
+                    onToggle = viewModel::wizardToggleEquipment,
+                    onSkip = viewModel::wizardSkipEquipment,
                 )
                 PlanWizardStep.CONSTRAINTS -> ConstraintsStep(
                     wizard = wizard,
@@ -329,7 +336,69 @@ private fun StepperButton(
     }
 }
 
-// ---------- krok 3: ograniczenia ----------
+// ---------- krok 3: sprzęt ----------
+
+/**
+ * Sekcje i chipy identyczne z zakładką Sprzęt profilu ([ProfileEquipmentTab]) —
+ * grupowanie z [ProfileEquipment.groupsOf] (zero duplikacji logiki), hint z
+ * [ProfileTexts.equipmentHint]. Karta i skip-link wzorem [ConstraintsStep];
+ * bez własnego scrolla — o to dba już kolumna kroku w [PlanWizard].
+ */
+@Composable
+private fun EquipmentStep(
+    wizard: PlanWizardUi,
+    onToggle: (String) -> Unit,
+    onSkip: () -> Unit,
+) {
+    val groups = ProfileEquipment.groupsOf(wizard.equipmentOptions)
+    StronkCard(modifier = Modifier.padding(top = StronkSpacing.section)) {
+        StronkSectionHeader(
+            title = "Twój sprzęt",
+            modifier = Modifier.fillMaxWidth(),
+            trailing = {
+                Text(
+                    text = wizard.selectedEquipment.size.toString(),
+                    style = StronkTextStyles.cap,
+                    color = StronkTheme.colors.textDim,
+                )
+            },
+        )
+        groups.forEach { group ->
+            Column(
+                modifier = Modifier.padding(top = StronkSpacing.md),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                StronkSectionHeader(title = group.title)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    group.items.forEach { item ->
+                        WizardChip(
+                            label = PlLabels.equipment(item),
+                            selected = item in wizard.selectedEquipment,
+                            onClick = { onToggle(item) },
+                        )
+                    }
+                }
+            }
+        }
+        WizardNote(
+            text = ProfileTexts.equipmentHint(wizard.selectedEquipment.size),
+            modifier = Modifier.padding(top = 14.dp),
+        )
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = StronkSpacing.lg),
+        contentAlignment = Alignment.Center,
+    ) {
+        WizardSkipLink(text = "Pomiń — pokażemy wszystkie ćwiczenia", onClick = onSkip)
+    }
+}
+
+// ---------- krok 4: ograniczenia ----------
 
 @Composable
 private fun ConstraintsStep(
@@ -355,7 +424,7 @@ private fun ConstraintsStep(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             wizard.jointKeys.forEach { joint ->
-                JointChip(
+                WizardChip(
                     // Mocki kapitalizują etykiety chipów — „Kolano", nie „kolano".
                     label = PlanTexts.chipLabel(PlLabels.joint(joint)),
                     selected = joint in wizard.selectedJoints,
@@ -379,12 +448,13 @@ private fun ConstraintsStep(
 }
 
 /**
- * Chip stawu (mock: `.jchip`) — 38 dp, tekst 15. Zaznaczony to TINT z ptaszkiem:
+ * Chip kreatora (mock: `.jchip`) — 38 dp, tekst 15. Zaznaczony to TINT z ptaszkiem:
  * `--lime-dim` + obrys `--lime-line` + tekst `--lime`. Obrys jest rysowany
- * zawsze, więc zaznaczenie nie przesuwa sąsiadów.
+ * zawsze, więc zaznaczenie nie przesuwa sąsiadów. Współdzielony przez krok
+ * sprzętu ([EquipmentStep]) i ograniczeń ([ConstraintsStep]).
  */
 @Composable
-private fun JointChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun WizardChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = StronkRadius.pill,
@@ -423,7 +493,7 @@ private fun JointChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-// ---------- krok 4: nazwa ----------
+// ---------- krok 5: nazwa ----------
 
 @Composable
 private fun NameStep(wizard: PlanWizardUi, onNameChange: (String) -> Unit) {
