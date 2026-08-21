@@ -28,10 +28,12 @@ class PlanPresetsDatasetTest {
 
     @Test
     fun `kazdy kandydat kazdego slotu istnieje w datasecie`() {
+        // Sprawdza OBIE listy — klasyczną i łagodną (gentleCandidateIds), bo
+        // resolveSlotExercise może wybrać dowolną z nich w zależności od profilu.
         val missing = PlanPresets.all.flatMap { preset ->
             preset.days.flatMap { day ->
                 day.slots.flatMap { slot ->
-                    slot.candidateIds
+                    (slot.candidateIds + slot.gentleCandidateIds).distinct()
                         .filterNot { it in exercisesById }
                         .map { "${preset.id} / ${day.name} / ${slot.label}: $it" }
                 }
@@ -49,12 +51,18 @@ class PlanPresetsDatasetTest {
                 assertTrue("Dzień bez nazwy w ${preset.id}", day.name.isNotBlank())
                 day.slots.forEach { slot ->
                     assertTrue("Slot bez kandydatów: ${slot.label}", slot.candidateIds.isNotEmpty())
+                    assertTrue("Slot bez łagodnych kandydatów: ${slot.label}", slot.gentleCandidateIds.isNotEmpty())
                     assertTrue("Serie poza zakresem: ${slot.label}", slot.sets in 1..PlanDefaults.SETS_MAX)
                     assertTrue("Powtórzenia niedodatnie: ${slot.label}", slot.reps >= 1)
                     assertEquals(
                         "Duplikaty kandydatów: ${slot.label}",
                         slot.candidateIds.size,
                         slot.candidateIds.distinct().size,
+                    )
+                    assertEquals(
+                        "Duplikaty łagodnych kandydatów: ${slot.label}",
+                        slot.gentleCandidateIds.size,
+                        slot.gentleCandidateIds.distinct().size,
                     )
                 }
             }

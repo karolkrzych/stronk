@@ -54,17 +54,34 @@ fun convertTarget(old: SetTarget, newType: MeasurementType): SetTarget {
 }
 
 /**
+ * Kolejność kandydatów slotu pod profil: łagodna ([PresetSlot.gentleCandidateIds]),
+ * gdy profil ma AKTYWNE ograniczenie (wpis w `constraints`) dla któregokolwiek
+ * stawu z [PresetSlot.relevantJoints] — inaczej klasyczna. Sama obecność stawu
+ * w [PresetSlot.relevantJoints] nic nie dyskwalifikuje — to nadal robi
+ * [isCompliant]; to tylko wybór, KTÓRA lista wchodzi do gry.
+ */
+private fun PresetSlot.resolveCandidateIds(profile: ProfileDetails): List<String> =
+    if (relevantJoints.any { it in profile.constraints }) gentleCandidateIds else candidateIds
+
+/**
  * Wybór ćwiczenia do slotu presetu pod profil:
- * 1. pierwszy kandydat w pełni zgodny (sprzęt + limity stawów) wygrywa,
+ * 1. pierwszy NIEUŻYTY kandydat (z listy klasycznej albo łagodnej —
+ *    [PresetSlot.resolveCandidateIds]) w pełni zgodny (sprzęt + limity
+ *    stawów) wygrywa,
  * 2. brak zgodnego → zamiennik bez naruszeń przez [findSubstitutes]
  *    dla najbardziej preferowanego istniejącego kandydata,
- * 3. dalej brak → pierwszy kandydat z dostępnym sprzętem
+ * 3. dalej brak zgodnego NIEUŻYTEGO → wolej POWTÓRKĘ dobrego (w pełni
+ *    zgodnego) kandydata z tej samej listy, choćby użytego w innym dniu,
+ *    niż zamiennik/fallback z naruszeniem stawu (dedup między dniami nie ma
+ *    prawa pogorszyć doboru — patrz [generatePresetDays]),
+ * 4. dalej brak → pierwszy NIEUŻYTY kandydat z dostępnym sprzętem
  *    (naruszenia limitów oflaguje edytor — filozofia CONCEPT: flagować, nie ukrywać),
- * 4. dalej brak → pierwszy istniejący kandydat,
- * 5. żaden kandydat nie istnieje w datasecie → null (slot pominięty).
+ * 5. dalej brak → pierwszy istniejący kandydat,
+ * 6. żaden kandydat nie istnieje w datasecie → null (slot pominięty).
  *
- * [usedIds] pozwala unikać duplikatów w ramach dnia — użyte ćwiczenia są
- * pomijane, chyba że nie zostaje żaden kandydat.
+ * [usedIds] pozwala unikać duplikatów — w ramach dnia i (od dedupu między
+ * dniami) we WSZYSTKICH poprzednich dniach tego samego presetu; użyte
+ * ćwiczenia są pomijane, chyba że nie zostaje żaden zgodny kandydat.
  */
 fun resolveSlotExercise(
     slot: PresetSlot,
@@ -73,7 +90,7 @@ fun resolveSlotExercise(
     profile: ProfileDetails,
     usedIds: Set<String> = emptySet(),
 ): Exercise? {
-    val existingAll = slot.candidateIds.mapNotNull { exercisesById[it] }
+    val existingAll = slot.resolveCandidateIds(profile).mapNotNull { exercisesById[it] }
     if (existingAll.isEmpty()) return null
     val existing = existingAll.filter { it.id !in usedIds }.ifEmpty { existingAll }
 
@@ -82,6 +99,8 @@ fun resolveSlotExercise(
     findSubstitutes(existing.first(), allExercises, profile, PlanDefaults.SUBSTITUTE_LIMIT)
         .firstOrNull { it.warnings.isEmpty() && it.exercise.id !in usedIds }
         ?.let { return it.exercise }
+
+    existingAll.firstOrNull { isCompliant(it, profile).isFullyCompliant }?.let { return it }
 
     existing.firstOrNull { isCompliant(it, profile).equipmentAvailable }?.let { return it }
     return existing.first()
@@ -107,6 +126,12 @@ private fun resolveReps(slot: PresetSlot, profile: ProfileDetails): Int =
  * do przejrzenia — nic nie jest zapisywane tutaj. Sloty bez żadnego
  * istniejącego kandydata są pomijane. Serie×powtórzenia pochodzą z [GoalDefaults]
  * wg celu z profilu — presety definiują tylko DOBÓR i KOLEJNOŚĆ ćwiczeń.
+ *
+ * Dedup działa na poziomie CAŁEGO presetu, nie pojedynczego dnia: `usedIds`
+ * kumuluje się przez wszystkie dni, więc ten sam kandydat nie wygrywa dwa
+ * razy w tygodniu, o ile [resolveSlotExercise] znajdzie zgodną alternatywę
+ * (inaczej woli powtórkę dobrego ćwiczenia niż naruszenie stawu — patrz jego
+ * dokumentacja).
  */
 fun generatePresetDays(
     preset: PlanPreset,
@@ -114,8 +139,8 @@ fun generatePresetDays(
     profile: ProfileDetails,
 ): List<PlanDay> {
     val byId = allExercises.associateBy { it.id }
+    val usedIds = mutableSetOf<String>()
     return preset.days.map { day ->
-        val usedIds = mutableSetOf<String>()
         val exercises = day.slots.mapNotNull { slot ->
             val exercise =
                 resolveSlotExercise(slot, byId, allExercises, profile, usedIds)

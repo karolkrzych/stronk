@@ -51,8 +51,25 @@ object PlanDefaults {
 data class PresetSlot(
     /** Rola slotu po polsku, np. "Klatka — wyciskanie". */
     val label: String,
-    /** exerciseId z bundlowanej bazy, od najbardziej preferowanego. */
+    /** exerciseId z bundlowanej bazy, od najbardziej preferowanego (kolejność klasyczna). */
     val candidateIds: List<String>,
+    /**
+     * Kolejność łagodna — używana zamiast [candidateIds], gdy profil ma AKTYWNE
+     * ograniczenie (wpis w `profile.constraints`) dla któregokolwiek stawu z
+     * [relevantJoints] (patrz `resolveSlotExercise` w `PresetGenerator.kt`).
+     * Domyślnie równa [candidateIds] (brak osobnej łagodnej wersji slotu) —
+     * addytywne pole, zero wpływu na sloty bez rozróżnienia K/Ł.
+     */
+    val gentleCandidateIds: List<String> = candidateIds,
+    /**
+     * Stawy, których dotyczy wzorzec ruchu tego slotu — klucze jak w
+     * [com.stronk.data.JointStress.all] (np. "knee", "lowBack", "shoulder").
+     * Puste = slot nie zależy od żadnego konkretnego stawu ograniczanego w
+     * profilu (zawsze klasyczna kolejność). Sama obecność stawu tutaj NIE
+     * dyskwalifikuje kandydatów — to robi nadal [com.stronk.data.isCompliant];
+     * to pole decyduje wyłącznie, KTÓRA lista kandydatów wchodzi do gry.
+     */
+    val relevantJoints: Set<String> = emptySet(),
     /**
      * Autorska liczba serii — od [generatePresetDays] NIE trafia już wprost do
      * planu (realne serie pochodzą z [com.stronk.data.GoalDefaults] wg celu
