@@ -42,6 +42,8 @@ import com.stronk.ui.schedule.weekPlanBaseline
 import com.stronk.ui.schedule.weekdayAssignmentsFromIso
 import com.stronk.ui.schedule.weekdayAssignmentsToIso
 import java.time.LocalDate
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -50,6 +52,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Ćwiczenie dnia wzbogacone o dane z datasetu i zgodność z profilem. */
 data class EditorExerciseUi(
@@ -162,10 +165,14 @@ data class PlanEditorUiState(
     /** Archiwizować da się tylko plan, który już istnieje w bazie. */
     val canArchive: Boolean = false,
     /**
-     * Plan ma (miał) zapisany wzorzec dni tygodnia — `Plan.weekdayAssignments
-     * != null`. Steruje treścią dialogu usunięcia dnia (razem z
-     * [EditorDayUi.existsInSavedPlan]) i tym, czy [newDayMessage] w ogóle ma
-     * sens po dodaniu dnia (zasada: „żadnych notek gdy plan nie był
+     * Plan ma (miał) harmonogram — `Plan.weekdayAssignments != null` LUB
+     * (plany sprzed wprowadzenia tego pola) istnieją wpisy PLANNED tego planu
+     * w harmonogramie ([PlanEditorViewModel.hasPlannedScheduleEntries] —
+     * inaczej taki plan, realnie zaplanowany, ale nietknięty jeszcze przez
+     * dialog „Zaplanuj tydzień", dostawałby słabszy tekst dialogu usunięcia
+     * dnia i żaden Snackbar o nowym dniu). Steruje treścią dialogu usunięcia
+     * dnia (razem z [EditorDayUi.existsInSavedPlan]) i tym, czy [newDayMessage]
+     * w ogóle ma sens po dodaniu dnia (zasada: „żadnych notek gdy plan nie był
      * zaplanowany").
      */
     val planHasSchedule: Boolean = false,
@@ -265,7 +272,29 @@ class PlanEditorViewModel(
 
     private val saveResult = MutableStateFlow<SaveResult?>(null)
 
-    val uiState: StateFlow<PlanEditorUiState> = combine(
+    /**
+     * Guard podwójnego tapu „Zapisz" na okno między zleceniem zapisu w gałęzi
+     * [reconcileScheduleOnSave] a realnym ustawieniem [saveResult] PO zapisie
+     * (patrz KDoc [save]) — samo `saveResult.value != null` tego okna nie
+     * pokrywa, bo w tej gałęzi jest ono ustawiane później, nie od razu.
+     * Zwykłe pole `var`, nie [MutableStateFlow] — UI nic z tym nie robi
+     * (button nie disable'uje się), to czysto wewnętrzny guard [save].
+     */
+    private var saveInFlight = false
+
+    /**
+     * Czy w harmonogramie istnieje choć jeden wpis PLANNED TEGO planu — fallback
+     * dla [PlanEditorUiState.planHasSchedule] na planach sprzed pola
+     * `Plan.weekdayAssignments` (patrz KDoc tego pola). Obserwacja cache-first
+     * ([ScheduleRepository.observeSchedule] — snapshot listener, zero
+     * `get(Source.SERVER)`), filtrowana po `planId` konstruktora: dla nowego
+     * planu (`planId == null`) nigdy nie ma dopasowania (`ScheduleEntry.planId`
+     * jest zawsze rzeczywistym id), więc zostaje `false` — dokładnie to, czego
+     * ta flaga potrzebuje.
+     */
+    private val hasPlannedScheduleEntries = MutableStateFlow(false)
+
+    private val baseUiState: Flow<PlanEditorUiState> = combine(
         draft, allExercises, profile, overlay, saveResult,
     ) { d, all, currentProfile, ov, savedResult ->
         if (d == null || all == null) {
@@ -310,6 +339,25 @@ class PlanEditorViewModel(
                 newDayMessage = savedResult?.newDayMessage,
             )
         }
+    }
+
+    /**
+     * [baseUiState] dopięty o [hasPlannedScheduleEntries] — osobny stopień
+     * (wzorzec [com.stronk.ui.workout.WorkoutViewModel.uiState]: `combine`
+     * ma typowane przeciążenia tylko do 5 flow, więc szósty wchodzi jako
+     * kolejny stopień, nie przez vararg). Efektywne „lub": jeśli
+     * `Plan.weekdayAssignments != null` już ustawiło `planHasSchedule = true`
+     * w [baseUiState], ten stopień tylko dokłada drugi sygnał (wpisy PLANNED),
+     * nigdy nie gasi pierwszego.
+     */
+    val uiState: StateFlow<PlanEditorUiState> = combine(
+        baseUiState, hasPlannedScheduleEntries,
+    ) { state, plannedEntriesExist ->
+        if (plannedEntriesExist && !state.planHasSchedule) {
+            state.copy(planHasSchedule = true)
+        } else {
+            state
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanEditorUiState())
 
     init {
@@ -347,6 +395,18 @@ class PlanEditorViewModel(
                     base = plan,
                     started = true,
                 )
+            }
+        }
+        // Fallback dla planHasSchedule (patrz KDoc [hasPlannedScheduleEntries]) —
+        // tylko dla planu istniejącego, nowy (planId == null) nigdy nie ma
+        // wpisów, więc nie ma sensu w ogóle podpinać listenera.
+        if (planId != null) {
+            viewModelScope.launch {
+                scheduleRepository.observeSchedule().collect { entries ->
+                    hasPlannedScheduleEntries.value = entries.any {
+                        it.planId == planId && it.status == ScheduleStatus.PLANNED
+                    }
+                }
             }
         }
     }
@@ -726,15 +786,39 @@ class PlanEditorViewModel(
      * — user dostaje zamiast tego [PlanEditorUiState.newDayMessage], żeby
      * wiedział, że ma go ręcznie przypisać w „Zaplanuj tydzień".
      *
-     * Guard `saveResult.value != null`: dwa szybkie tapnięcia „Zapisz" (button
-     * nie disable'uje się po pierwszym) nie mają zlecić [reconcileScheduleOnSave]
-     * dwa razy — drugie wywołanie czytałoby harmonogram sprzed commitu
-     * pierwszego (ten sam typ race'u co [race z rolling generation] niżej,
-     * tylko samozadany), UI i tak nawiguje wstecz po pierwszym `saved=true`.
+     * **Zapis nie może dać się uciąć nawigacją.** `saveResult.value != null`
+     * (→ `state.saved`) każe [com.stronk.ui.plans.PlanEditorScreen] wywołać `onBack()` →
+     * `popBackStack` niszczy `ViewModelStore` tego ekranu → `onCleared()`
+     * anuluje `viewModelScope`. Gałąź [reconcileScheduleOnSave] zaczyna od DWÓCH
+     * `.first()` (zawsze async hop, nawet z cache) i DOPIERO w niej następuje
+     * jedyny zapis planu w tej gałęzi — gdyby `saveResult` był ustawiony przed
+     * jej wykonaniem (jak dawniej), cancel z nawigacji mógłby uciąć funkcję
+     * ZANIM cokolwiek zapisała, a user widziałby ekran wracający tak, jakby
+     * zapis się udał. Fix: cała gałąź async (odczyty + oba zapisy fire-and-forget
+     * + samo ustawienie `saveResult`) leci w JEDNYM `viewModelScope.launch {
+     * withContext(NonCancellable) { ... } }` — `NonCancellable` sprawia, że
+     * zawieszenia w środku (`.first()`) NIE rzucą `CancellationException` nawet
+     * gdy `viewModelScope` jest już w trakcie anulowania, więc funkcja zawsze
+     * dochodzi do zapisów; `saveResult` ustawiony na samym końcu, WEWNĄTRZ
+     * tego samego bloku — samo przeniesienie go za wywołanie (bez
+     * `NonCancellable`) by nie wystarczyło, bo cancel mógłby przyjść w oknie
+     * między powrotem z `.first()` a tym przypisaniem. Gałąź synchroniczna
+     * (bez reconcile) zostaje nietknięta — `planRepository.save(plan)` tam nie
+     * zawiesza się w ogóle (fire-and-forget, wraca natychmiast), więc nie ma
+     * okna, w którym cancel mógłby ją uciąć przed dotarciem do wywołania.
+     *
+     * Guard podwójnego tapu: button nie disable'uje się po pierwszym tapnięciu,
+     * a odkąd `saveResult` w gałęzi async ustawia się DOPIERO po zapisie, samo
+     * `saveResult.value != null` już nie pokrywa okna „kliknięto, zapis w
+     * locie, jeszcze nic nie ustawione" — stąd osobna flaga [saveInFlight] tylko
+     * na to okno (drugie wywołanie w tym oknie czytałoby harmonogram sprzed
+     * commitu pierwszego, ten sam typ race'u co [race z rolling generation]
+     * niżej, tylko samozadany). Gałąź synchroniczna tego okna nie ma (zapis i
+     * `saveResult` w tej samej linii wykonania), więc jej nie dotyczy.
      */
     fun save() {
         val d = draft.value ?: return
-        if (saveResult.value != null) return
+        if (saveResult.value != null || saveInFlight) return
         if (!(d.started && d.name.isNotBlank() && d.days.any { it.day.exercises.isNotEmpty() })) return
 
         val base = d.base
@@ -742,7 +826,7 @@ class PlanEditorViewModel(
         val identityChanged = dayIdentityChanged(remap, base?.days?.size ?: 0)
         val blockChanged = base != null && base.blockLengthWeeks != d.blockLengthWeeks
         val hasNewDay = d.days.any { it.baseDayIndex == null }
-        val hadSchedule = base?.weekdayAssignments != null
+        val hadSchedule = base?.weekdayAssignments != null || hasPlannedScheduleEntries.value
 
         val plan = buildPlanForSave(
             base = base,
@@ -751,16 +835,21 @@ class PlanEditorViewModel(
             days = d.days.map { it.day },
             newId = planRepository::newId,
         )
+        val newDayMessage = if (hasNewDay && hadSchedule) PlanTexts.NEW_DAY_NOT_SCHEDULED else null
 
         if (base != null && (identityChanged || blockChanged)) {
-            viewModelScope.launch { reconcileScheduleOnSave(base, plan, remap) }
+            saveInFlight = true
+            viewModelScope.launch {
+                withContext(NonCancellable) {
+                    reconcileScheduleOnSave(base, plan, remap)
+                    saveInFlight = false
+                    saveResult.value = SaveResult(newDayMessage = newDayMessage)
+                }
+            }
         } else {
             planRepository.save(plan)
+            saveResult.value = SaveResult(newDayMessage = newDayMessage)
         }
-
-        saveResult.value = SaveResult(
-            newDayMessage = if (hasNewDay && hadSchedule) PlanTexts.NEW_DAY_NOT_SCHEDULED else null,
-        )
     }
 
     /**

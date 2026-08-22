@@ -158,6 +158,24 @@ class PlanEditorSaveTest {
         assertEquals(mapOf(0 to 1, 1 to 0), dayIndexRemap(listOf(1, 0)))
     }
 
+    @Test
+    fun `dayIndexRemap po usunieciu PIERWSZEGO dnia przesuwa wszystkie kolejne indeksy`() {
+        // Push/Pull/Legs (0/1/2), usunieto Push (index 0) - draft ma [Pull(base 1), Legs(base 2)].
+        assertEquals(mapOf(1 to 0, 2 to 1), dayIndexRemap(listOf(1, 2)))
+    }
+
+    @Test
+    fun `dayIndexRemap po usunieciu dwoch dni naraz nie ma dla nich wpisow`() {
+        // 4 dni (0/1/2/3), usunieto srodkowe dwa (1 i 2) - draft ma [dzien0, dzien3].
+        assertEquals(mapOf(0 to 0, 3 to 1), dayIndexRemap(listOf(0, 3)))
+    }
+
+    @Test
+    fun `dayIndexRemap usuniecie i dodanie w jednej sesji - nowy dzien nie trafia do mapy, usuniety nie dostaje wpisu`() {
+        // 3 dni (0/1/2), usunieto srodkowy (1) i dodano nowy na koncu (null).
+        assertEquals(mapOf(0 to 0, 2 to 1), dayIndexRemap(listOf(0, 2, null)))
+    }
+
     // ---------- dayIdentityChanged ----------
 
     @Test
@@ -192,5 +210,25 @@ class PlanEditorSaveTest {
     @Test
     fun `dayIdentityChanged false dla calkiem nowego planu (baseDayCount 0)`() {
         assertFalse(dayIdentityChanged(emptyMap(), baseDayCount = 0))
+    }
+
+    @Test
+    fun `dayIdentityChanged true po usunieciu PIERWSZEGO dnia`() {
+        val remap = dayIndexRemap(listOf(1, 2)) // Push (index 0) usuniety z 3-dniowego planu
+        assertTrue(dayIdentityChanged(remap, baseDayCount = 3))
+    }
+
+    @Test
+    fun `dayIdentityChanged true po usunieciu dwoch dni naraz`() {
+        val remap = dayIndexRemap(listOf(0, 3)) // srodkowe dwa (1 i 2) usuniete z 4-dniowego planu
+        assertTrue(dayIdentityChanged(remap, baseDayCount = 4))
+    }
+
+    @Test
+    fun `dayIdentityChanged true przy usunieciu i dodaniu dnia w jednej sesji`() {
+        // 3 dni, usunieto srodkowy (1) i dodano nowy na koncu (null) - usuniecie samo
+        // przesadza o zmianie tozsamosci, mimo ze rownoczesnie przybyl nowy dzien.
+        val remap = dayIndexRemap(listOf(0, 2, null))
+        assertTrue(dayIdentityChanged(remap, baseDayCount = 3))
     }
 }

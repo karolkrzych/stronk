@@ -894,6 +894,49 @@ class WeekPlannerTest {
         assertEquals(emptyMap<DayOfWeek, Int>(), remapWeekdayAssignments(emptyMap(), mapOf(0 to 0)))
     }
 
+    @Test
+    fun `remapWeekdayAssignments po usunieciu PIERWSZEGO dnia przesuwa pozostale i gubi przypisanie usunietego`() {
+        // Push/Pull/Legs (0/1/2) na pn/sr/pt, usunieto Push (index 0) -
+        // remap z PlanEditorSave.dayIndexRemap(listOf(1, 2)): {1 to 0, 2 to 1}.
+        val pattern = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 1, DayOfWeek.FRIDAY to 2)
+        val remap = mapOf(1 to 0, 2 to 1)
+        assertEquals(
+            mapOf(DayOfWeek.WEDNESDAY to 0, DayOfWeek.FRIDAY to 1),
+            remapWeekdayAssignments(pattern, remap),
+        )
+    }
+
+    @Test
+    fun `remapWeekdayAssignments po usunieciu dwoch dni naraz gubi oba przypisania`() {
+        // 4 dni na pn/wt/sr/czw, usunieto srodkowe dwa (1 i 2) -
+        // remap z dayIndexRemap(listOf(0, 3)): {0 to 0, 3 to 1}.
+        val pattern = mapOf(
+            DayOfWeek.MONDAY to 0,
+            DayOfWeek.TUESDAY to 1,
+            DayOfWeek.WEDNESDAY to 2,
+            DayOfWeek.THURSDAY to 3,
+        )
+        val remap = mapOf(0 to 0, 3 to 1)
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.THURSDAY to 1),
+            remapWeekdayAssignments(pattern, remap),
+        )
+    }
+
+    @Test
+    fun `remapWeekdayAssignments usuniecie i dodanie dnia w jednej sesji gubi tylko przypisanie usunietego`() {
+        // 3 dni na pn/sr/pt, usunieto srodkowy (1) i dodano nowy na koncu (null) -
+        // remap z dayIndexRemap(listOf(0, 2, null)): {0 to 0, 2 to 1}. Nowy dzien
+        // (bez odpowiednika w starym wzorcu) nie ma tu czego dostac - wzorzec nigdy
+        // go nie znal, user przypisze go recznie w "Zaplanuj tydzien".
+        val pattern = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 1, DayOfWeek.FRIDAY to 2)
+        val remap = mapOf(0 to 0, 2 to 1)
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.FRIDAY to 1),
+            remapWeekdayAssignments(pattern, remap),
+        )
+    }
+
     // ---------- saveReplanWeeks (horyzont przy zapisie edytora planu) ----------
 
     @Test
