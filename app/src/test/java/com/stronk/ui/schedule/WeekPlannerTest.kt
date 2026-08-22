@@ -614,4 +614,199 @@ class WeekPlannerTest {
         assertTrue(nextExtension.none { it.date.dayOfWeek == DayOfWeek.TUESDAY })
         assertTrue(nextExtension.any { it.date.dayOfWeek == DayOfWeek.WEDNESDAY })
     }
+
+    // ---------- bug: zarchiwizowany plan blokuje planowanie nowego (scenariusz usera) ----------
+
+    // ---------- buildOccupiedEntries ----------
+
+    @Test
+    fun `buildOccupiedEntries pomija PLANNED zarchiwizowanego planu`() {
+        val refs = listOf(
+            ScheduleEntryRef("martwy", monday, "planStary", ScheduleEntryKind.PLANNED, archived = true),
+        )
+        assertEquals(emptyList<OccupiedEntry>(), buildOccupiedEntries(refs) { "Stary plan" })
+    }
+
+    @Test
+    fun `buildOccupiedEntries zachowuje PLANNED niezarchiwizowanego planu`() {
+        val refs = listOf(
+            ScheduleEntryRef("zywy", monday, "planNowy", ScheduleEntryKind.PLANNED, archived = false),
+        )
+        assertEquals(
+            listOf(OccupiedEntry(monday, "planNowy", "Nowy plan")),
+            buildOccupiedEntries(refs) { "Nowy plan" },
+        )
+    }
+
+    @Test
+    fun `buildOccupiedEntries zachowuje DONE nawet jesli plan-wlasciciel jest zarchiwizowany`() {
+        // DONE.archived MUSI zostac false wg kontraktu ScheduleEntryRef.archived
+        // (budowany tak przez ScheduleViewModel/PlanEditorViewModel) - tu wprost
+        // sprawdzamy, ze buildOccupiedEntries nie potrzebuje tego zalozenia:
+        // DONE przechodzi zawsze, niezaleznie od flagi.
+        val refs = listOf(
+            ScheduleEntryRef("zaliczony", monday, "planStary", ScheduleEntryKind.DONE, archived = false),
+        )
+        assertEquals(
+            listOf(OccupiedEntry(monday, "planStary", "Stary plan")),
+            buildOccupiedEntries(refs) { "Stary plan" },
+        )
+    }
+
+    @Test
+    fun `buildOccupiedEntries pomija SKIPPED-MOVED (OTHER) jak dotad`() {
+        val refs = listOf(
+            ScheduleEntryRef("odwolany", monday, "planA", ScheduleEntryKind.OTHER),
+        )
+        assertEquals(emptyList<OccupiedEntry>(), buildOccupiedEntries(refs) { "Plan A" })
+    }
+
+    @Test
+    fun `scenariusz usera - PLANNED zarchiwizowanego planu przepuszczone przez buildOccupiedEntries nie konfliktuje w dialogu`() {
+        // Dokladnie zgloszony bug: user archiwizuje aktywny plan (ma przyszle
+        // wpisy PLANNED w harmonogramie), potem probuje zaplanowac nowy plan na
+        // ten sam okres - CTA nie ma prawa byc zablokowane.
+        val refs = listOf(
+            ScheduleEntryRef("martwy1", monday, "planStary", ScheduleEntryKind.PLANNED, archived = true),
+            ScheduleEntryRef("martwy2", monday.plusDays(2), "planStary", ScheduleEntryKind.PLANNED, archived = true),
+        )
+        val occupied = buildOccupiedEntries(refs) { "Stary plan" }
+        val conflict = conflictingOtherPlanEntry(occupied, "planNowy", monday, weeks = 4)
+        assertEquals(null, conflict)
+    }
+
+    // ---------- planReplacement: martwe wpisy zarchiwizowanego planu ----------
+
+    @Test
+    fun `planReplacement nie blokuje daty zajetej tylko przez PLANNED zarchiwizowanego innego planu`() {
+        val entries = listOf(
+            ScheduleEntryRef("martwy", monday.plusDays(2), "planStary", ScheduleEntryKind.PLANNED, archived = true),
+        )
+        val result = planReplacement(
+            currentEntries = entries,
+            selectedPlanId = "planNowy",
+            assignments = mapOf(DayOfWeek.WEDNESDAY to 0),
+            startDate = monday,
+            weeks = 1,
+            today = monday,
+        )
+        assertTrue("nowy slot MUSI powstac mimo martwego wpisu", result.slots.any { it.date == monday.plusDays(2) })
+    }
+
+    @Test
+    fun `planReplacement kasuje martwy wpis zarchiwizowanego planu na dacie kolidujacej z nowym slotem`() {
+        val entries = listOf(
+            ScheduleEntryRef("martwy", monday.plusDays(2), "planStary", ScheduleEntryKind.PLANNED, archived = true),
+        )
+        val result = planReplacement(
+            currentEntries = entries,
+            selectedPlanId = "planNowy",
+            assignments = mapOf(DayOfWeek.WEDNESDAY to 0),
+            startDate = monday,
+            weeks = 1,
+            today = monday,
+        )
+        assertEquals(listOf("martwy"), result.idsToDelete)
+    }
+
+    @Test
+    fun `planReplacement zostawia martwy wpis zarchiwizowanego planu gdy jego data nie dostaje nowego slotu`() {
+        // User wyzerowal akurat ten dzien tygodnia w nowym wzorcu - martwy wpis
+        // na tej dacie nie koliduje z niczym nowym, wiec go NIE kasujemy tutaj
+        // (posprzata go kolejna archiwizacja albo sweep przy starcie ekranu).
+        val entries = listOf(
+            ScheduleEntryRef("martwy", monday.plusDays(2), "planStary", ScheduleEntryKind.PLANNED, archived = true),
+        )
+        val result = planReplacement(
+            currentEntries = entries,
+            selectedPlanId = "planNowy",
+            assignments = mapOf(DayOfWeek.MONDAY to 0), // nie generuje nic na srode
+            startDate = monday,
+            weeks = 1,
+            today = monday,
+        )
+        assertTrue(result.idsToDelete.isEmpty())
+    }
+
+    @Test
+    fun `planReplacement nadal blokuje na PLANNED innego, NIEzarchiwizowanego planu`() {
+        // Regresja: martwe wpisy nie blokuja, ale zywe (inny aktywny plan) nadal maja blokowac.
+        val entries = listOf(
+            ScheduleEntryRef("zywy", monday.plusDays(2), "planInnyAktywny", ScheduleEntryKind.PLANNED, archived = false),
+        )
+        val result = planReplacement(
+            currentEntries = entries,
+            selectedPlanId = "planNowy",
+            assignments = mapOf(DayOfWeek.WEDNESDAY to 0),
+            startDate = monday,
+            weeks = 1,
+            today = monday,
+        )
+        assertTrue(result.slots.none { it.date == monday.plusDays(2) })
+        assertTrue("wpis zywego planu nie jest kasowany przy cudzym replanie", result.idsToDelete.isEmpty())
+    }
+
+    // ---------- archivedPlanDeadEntryIds ----------
+
+    @Test
+    fun `archivedPlanDeadEntryIds bierze tylko przyszle PLANNED zarchiwizowanych planow`() {
+        val today = monday
+        val entries = listOf(
+            ScheduleEntryRef("przyszly-martwy", today, "planStary", ScheduleEntryKind.PLANNED, archived = true),
+            ScheduleEntryRef("przyszly-zywy", today, "planNowy", ScheduleEntryKind.PLANNED, archived = false),
+            ScheduleEntryRef("przeszly-martwy", today.minusDays(1), "planStary", ScheduleEntryKind.PLANNED, archived = true),
+            ScheduleEntryRef("done-martwy", today, "planStary", ScheduleEntryKind.DONE, archived = false),
+            ScheduleEntryRef("other-martwy", today, "planStary", ScheduleEntryKind.OTHER, archived = true),
+        )
+        assertEquals(listOf("przyszly-martwy"), archivedPlanDeadEntryIds(entries, today))
+    }
+
+    @Test
+    fun `archivedPlanDeadEntryIds nigdy nie rusza DONE nawet gdyby bylo oznaczone archived`() {
+        // DONE.archived=true nie powinno sie zdarzyc w produkcyjnym kodzie (patrz
+        // kontrakt ScheduleEntryRef.archived), ale funkcja ma byc odporna: kind
+        // filtruje wylacznie PLANNED, niezaleznie od flagi archived na DONE.
+        val entries = listOf(
+            ScheduleEntryRef("done", monday, "planStary", ScheduleEntryKind.DONE, archived = true),
+        )
+        assertTrue(archivedPlanDeadEntryIds(entries, monday).isEmpty())
+    }
+
+    @Test
+    fun `archivedPlanDeadEntryIds pusta lista gdy nic nie jest zarchiwizowane`() {
+        val entries = listOf(
+            ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.PLANNED, archived = false),
+        )
+        assertTrue(archivedPlanDeadEntryIds(entries, monday).isEmpty())
+    }
+
+    @Test
+    fun `archivedPlanDeadEntryIds data rowna dzisiaj tez jest kasowana`() {
+        val entries = listOf(
+            ScheduleEntryRef("dzis", monday, "planStary", ScheduleEntryKind.PLANNED, archived = true),
+        )
+        assertEquals(listOf("dzis"), archivedPlanDeadEntryIds(entries, monday))
+    }
+
+    // ---------- isEligibleForRollingExtension ----------
+
+    @Test
+    fun `isEligibleForRollingExtension false dla zarchiwizowanego planu bez bloku`() {
+        assertFalse(isEligibleForRollingExtension(archived = true, blockLengthWeeks = null))
+    }
+
+    @Test
+    fun `isEligibleForRollingExtension true dla aktywnego planu bez bloku`() {
+        assertTrue(isEligibleForRollingExtension(archived = false, blockLengthWeeks = null))
+    }
+
+    @Test
+    fun `isEligibleForRollingExtension false dla aktywnego planu Z blokiem`() {
+        assertFalse(isEligibleForRollingExtension(archived = false, blockLengthWeeks = 6))
+    }
+
+    @Test
+    fun `isEligibleForRollingExtension false dla zarchiwizowanego planu Z blokiem`() {
+        assertFalse(isEligibleForRollingExtension(archived = true, blockLengthWeeks = 6))
+    }
 }

@@ -190,6 +190,40 @@ fun needsRollingExtension(
 ): Boolean = lastPlannedDate.isBefore(today.plusWeeks(thresholdWeeks.toLong()))
 
 /**
+ * Czy plan kwalifikuje się do rolling generation
+ * ([ScheduleViewModel.maybeExtendContinuousPlans]): musi być BEZ bloku
+ * ([blockLengthWeeks] `== null` — plan z blokiem ma własny horyzont z
+ * [blockReplanWeeks]) i NIE może być zarchiwizowany. Zarchiwizowany plan nie
+ * ma dostawać nowych wpisów PLANNED — to on jest źródłem martwych wpisów,
+ * które reszta tego pliku sprząta ([archivedPlanDeadEntryIds],
+ * [planReplacement]), więc rolling nie ma prawa produkować kolejnych.
+ */
+fun isEligibleForRollingExtension(archived: Boolean, blockLengthWeeks: Int?): Boolean =
+    !archived && blockLengthWeeks == null
+
+/**
+ * Id-ki przyszłych (`date >= [today]`) wpisów PLANNED zarchiwizowanych planów
+ * ([ScheduleEntryRef.archived]) — martwe wpisy do skasowania batchem. Dwa
+ * miejsca użycia (ten sam mechanizm, jedna funkcja):
+ * - [PlanEditorViewModel.setArchived]: [refs] ograniczone do JEDNEGO planu
+ *   właśnie archiwizowanego (`archived = true` tylko dla jego wpisów) —
+ *   sprząta świeżo martwe wpisy w chwili archiwizacji;
+ * - sweep przy starcie ekranu Tydzień ([ScheduleViewModel]): [refs] ze
+ *   WSZYSTKICH już zarchiwizowanych planów — samonaprawia stan sprzed
+ *   istnienia czyszczenia w [PlanEditorViewModel.setArchived] (dokładnie
+ *   przypadek usera z tego zgłoszenia), bez migracji danych.
+ *
+ * DONE nigdy nie jest tu brane pod uwagę — [kind] filtruje tylko PLANNED, więc
+ * historia treningu jest nietykalna niezależnie od tego, jak wołający zbudował
+ * [ScheduleEntryRef.archived] dla wpisów DONE. Wpisy sprzed [today] też
+ * zostają — audit-trail (patrz [Plan] KDoc archiwizacji).
+ */
+fun archivedPlanDeadEntryIds(refs: List<ScheduleEntryRef>, today: LocalDate = LocalDate.now()): List<String> =
+    refs
+        .filter { it.kind == ScheduleEntryKind.PLANNED && it.archived && it.date >= today }
+        .map { it.id }
+
+/**
  * Przypisanie dzień tygodnia → indeks dnia planu wyprowadzone z ISTNIEJĄCYCH
  * wpisów (rolling generation nie ma dostępu do assignments z dialogu — te żyją
  * tylko lokalnie w [AssignPlanDialog], nigdzie nie są trwałe).
@@ -258,8 +292,22 @@ enum class ScheduleEntryKind { PLANNED, DONE, OTHER }
 /**
  * Minimalny widok wpisu harmonogramu pod [planReplacement] — zero zależności
  * od modelu Firestore, wzorem [PlannedSlot]/[OccupiedEntry].
+ *
+ * [archived]: plan-właściciel tego wpisu jest zarchiwizowany. Ma sens
+ * WYŁĄCZNIE dla [ScheduleEntryKind.PLANNED] — taki wpis to „martwy" wpis
+ * (plan zarchiwizowany, ale wpis w `schedule` przetrwał archiwizację) i nie ma
+ * prawa blokować niczego, patrz [planReplacement] i [buildOccupiedEntries].
+ * [ScheduleEntryKind.DONE] MUSI zawsze mieć `archived = false` — historia
+ * treningu blokuje datę niezależnie od tego, czy plan, pod którym trening
+ * poszedł, jest dziś zarchiwizowany (wołający pilnuje tego przy budowie).
  */
-data class ScheduleEntryRef(val id: String, val date: LocalDate, val planId: String, val kind: ScheduleEntryKind)
+data class ScheduleEntryRef(
+    val id: String,
+    val date: LocalDate,
+    val planId: String,
+    val kind: ScheduleEntryKind,
+    val archived: Boolean = false,
+)
 
 /**
  * Wynik przeplanowania: id-ki starych wpisów PLANNED wybranego planu do
@@ -318,11 +366,20 @@ fun blockReplanWeeks(
  * miejsce powstają nowe sloty wg [assignments].
  *
  * Nietykalne: wpisy DONE (dowolnego planu — historia treningu) i PLANNED
- * INNEGO planu blokują datę (nowy slot tam nie powstaje), tak jak
- * [conflictingOtherPlanEntry] blokuje CTA w dialogu. SKIPPED/MOVED
- * ([ScheduleEntryKind.OTHER]) nie blokują i nie są kasowane. Stare wpisy
- * PLANNED TEGO SAMEGO planu nie blokują nowych slotów — i tak trafiają do
- * [ReplanResult.idsToDelete].
+ * INNEGO, NIEZARCHIWIZOWANEGO planu blokują datę (nowy slot tam nie
+ * powstaje), tak jak [conflictingOtherPlanEntry]/[buildOccupiedEntries]
+ * blokują CTA w dialogu. SKIPPED/MOVED ([ScheduleEntryKind.OTHER]) nie
+ * blokują i nie są kasowane. Stare wpisy PLANNED TEGO SAMEGO planu nie
+ * blokują nowych slotów — i tak trafiają do [ReplanResult.idsToDelete].
+ *
+ * PLANNED INNEGO, ZARCHIWIZOWANEGO planu ([ScheduleEntryRef.archived]) to
+ * martwy wpis — nie blokuje daty (traktowany jak wolny dzień) I jeśli na jego
+ * dacie powstaje nowy slot, wpis jest KASOWANY razem z resztą przeplanowania
+ * (ta sama paczka [ReplanResult.idsToDelete]) — samonaprawa już zepsutego
+ * stanu (user zarchiwizował plan, zanim istniało czyszczenie z [setArchived])
+ * bez migracji danych. Martwy wpis, którego data NIE dostaje nowego slotu
+ * (np. user wyzerował dany dzień tygodnia), zostaje nietknięty — posprząta go
+ * ewentualna kolejna archiwizacja albo sweep przy starcie ekranu.
  */
 fun planReplacement(
     currentEntries: List<ScheduleEntryRef>,
@@ -333,18 +390,39 @@ fun planReplacement(
     today: LocalDate = LocalDate.now(),
 ): ReplanResult {
     val effectiveStartDate = clampStartDateToToday(startDate, today)
-    val idsToDelete = currentEntries
+    val ownIdsToDelete = currentEntries
         .filter { it.planId == selectedPlanId && it.kind == ScheduleEntryKind.PLANNED && it.date >= effectiveStartDate }
         .map { it.id }
     val occupied = currentEntries
-        .filter { it.kind == ScheduleEntryKind.DONE || (it.kind == ScheduleEntryKind.PLANNED && it.planId != selectedPlanId) }
+        .filter {
+            it.kind == ScheduleEntryKind.DONE ||
+                (it.kind == ScheduleEntryKind.PLANNED && it.planId != selectedPlanId && !it.archived)
+        }
         .map { it.date }
         .toSet()
     val slots = generatePlannedSlots(assignments, effectiveStartDate, weeks, occupied)
-    return ReplanResult(idsToDelete, slots)
+    val newSlotDates = slots.mapTo(HashSet()) { it.date }
+    val deadIdsToDelete = currentEntries
+        .filter { it.kind == ScheduleEntryKind.PLANNED && it.archived && it.date in newSlotDates }
+        .map { it.id }
+    return ReplanResult(ownIdsToDelete + deadIdsToDelete, slots)
 }
 
 // ---------- walidacja kolizji planów ----------
+
+/**
+ * Buduje wejście do [conflictingOtherPlanEntry] z [refs]: DONE zajmuje zawsze
+ * (historia treningu — archiwizacja jej nie kasuje, patrz KDoc
+ * [ScheduleEntryRef.archived]), PLANNED zajmuje TYLKO gdy jego plan NIE jest
+ * zarchiwizowany. PLANNED zarchiwizowanego planu to martwy wpis (plan
+ * zarchiwizowany, wpis w `schedule` przetrwał) — traktowany jak wolny dzień,
+ * ten sam podział źródła prawdy co w [planReplacement]. [planNameOf] dociąga
+ * nazwę planu po id (może zniknąć — wołający decyduje o fallbacku).
+ */
+fun buildOccupiedEntries(refs: List<ScheduleEntryRef>, planNameOf: (String) -> String): List<OccupiedEntry> =
+    refs
+        .filter { it.kind == ScheduleEntryKind.DONE || (it.kind == ScheduleEntryKind.PLANNED && !it.archived) }
+        .map { OccupiedEntry(it.date, it.planId, planNameOf(it.planId)) }
 
 /**
  * Pierwszy (najwcześniejszy) wpis INNEGO planu w oknie [startDate, startDate +
@@ -353,6 +431,9 @@ fun planReplacement(
  *
  * `null` = okno wolne od kolizji z innym planem (może być częściowo zajęte przez
  * TEN SAM plan — to nie blokuje CTA, patrz [ScheduleViewModel.onAssignPlan]).
+ * Wejście [occupied] typowo z [buildOccupiedEntries] — martwe wpisy
+ * zarchiwizowanych planów są tam już odfiltrowane, więc ta funkcja o
+ * archiwizacji nic nie musi wiedzieć.
  */
 fun conflictingOtherPlanEntry(
     occupied: List<OccupiedEntry>,

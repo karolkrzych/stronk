@@ -16,6 +16,9 @@ import com.stronk.data.PlanDay
 import com.stronk.data.PlanExercise
 import com.stronk.data.PlanRepository
 import com.stronk.data.ProfileDetails
+import com.stronk.data.ScheduleEntry
+import com.stronk.data.ScheduleRepository
+import com.stronk.data.ScheduleStatus
 import com.stronk.data.StressLevel
 import com.stronk.data.SubstituteMatch
 import com.stronk.data.SubstituteScoring
@@ -26,6 +29,10 @@ import com.stronk.data.isCompliant
 import com.stronk.progression.ProgressionConstants
 import com.stronk.ui.PlLabels
 import com.stronk.ui.profile.ProfileDefaults
+import com.stronk.ui.schedule.ScheduleEntryKind
+import com.stronk.ui.schedule.ScheduleEntryRef
+import com.stronk.ui.schedule.archivedPlanDeadEntryIds
+import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -145,6 +152,7 @@ class PlanEditorViewModel(
     private val planId: String?,
     private val planRepository: PlanRepository,
     private val userProfileRepository: UserProfileRepository,
+    private val scheduleRepository: ScheduleRepository,
     exerciseRepository: ExerciseRepository,
 ) : ViewModel() {
 
@@ -653,6 +661,16 @@ class PlanEditorViewModel(
      * Archiwizacja / przywrócenie planu — akcja szczegółu, nie listy (na liście
      * planów są same karty). Zapisuje aktualny stan edycji razem z flagą, żeby
      * jedno tapnięcie nie gubiło zmian zrobionych przed nim.
+     *
+     * Archiwizacja (`archived = true`) dodatkowo sprząta przyszłe wpisy PLANNED
+     * TEGO planu ([archivedPlanDeadEntryIds] — batch, [ScheduleRepository.replacePlannedEntries]
+     * z pustą listą nowych wpisów) — inaczej zostają martwe, niewidoczne w
+     * `planOptions` (odfiltrowane jako zarchiwizowane), ale wciąż blokujące
+     * planowanie nowego planu na tych datach (dokładnie bug z tego zgłoszenia).
+     * DONE nietykalne (historia), przeszłe PLANNED/SKIPPED/MOVED zostają
+     * (audit-trail) — [archivedPlanDeadEntryIds] pilnuje obu warunków. Przy
+     * przywróceniu (`archived = false`) nic dodatkowo nie robimy — stare wpisy
+     * już są skasowane, nowe user zaplanuje przez [com.stronk.ui.schedule.AssignPlanDialog].
      */
     fun setArchived(archived: Boolean) {
         val d = draft.value ?: return
@@ -668,6 +686,15 @@ class PlanEditorViewModel(
             ),
         )
         saved.value = true
+        if (archived) {
+            viewModelScope.launch {
+                val schedule = scheduleRepository.observeSchedule().first()
+                val idsToDelete = archivedPlanDeadEntryIds(scheduleEntryRefsFor(schedule, base.id))
+                if (idsToDelete.isNotEmpty()) {
+                    scheduleRepository.replacePlannedEntries(deleteIds = idsToDelete, newEntries = emptyList())
+                }
+            }
+        }
     }
 
     // ---------- pomocnicze ----------
@@ -683,6 +710,32 @@ class PlanEditorViewModel(
             ),
         )
     }
+
+    /**
+     * [ScheduleEntry] → [ScheduleEntryRef] pod [archivedPlanDeadEntryIds]:
+     * `archived = true` wyłącznie dla wpisów PLANNED planu [archivedPlanId]
+     * (właśnie archiwizowanego przez [setArchived]) — pozostałe plany tu nie
+     * mają znaczenia, więc nie potrzeba pełnego `plansById` jak w
+     * [com.stronk.ui.schedule.ScheduleViewModel].
+     */
+    private fun scheduleEntryRefsFor(schedule: List<ScheduleEntry>, archivedPlanId: String): List<ScheduleEntryRef> =
+        schedule.mapNotNull { entry ->
+            parseDate(entry.date)?.let { date ->
+                ScheduleEntryRef(
+                    id = entry.id,
+                    date = date,
+                    planId = entry.planId,
+                    kind = when (entry.status) {
+                        ScheduleStatus.PLANNED -> ScheduleEntryKind.PLANNED
+                        ScheduleStatus.DONE -> ScheduleEntryKind.DONE
+                        else -> ScheduleEntryKind.OTHER
+                    },
+                    archived = entry.status == ScheduleStatus.PLANNED && entry.planId == archivedPlanId,
+                )
+            }
+        }
+
+    private fun parseDate(raw: String): LocalDate? = runCatching { LocalDate.parse(raw) }.getOrNull()
 
     private fun updateDraft(transform: (Draft) -> Draft) {
         draft.value = draft.value?.let(transform)
@@ -710,6 +763,7 @@ class PlanEditorViewModel(
                     planId = planId,
                     planRepository = app.planRepository,
                     userProfileRepository = app.userProfileRepository,
+                    scheduleRepository = app.scheduleRepository,
                     exerciseRepository = app.exerciseRepository,
                 )
             }

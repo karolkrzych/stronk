@@ -204,6 +204,16 @@ class ScheduleViewModel(
         else buildState(schedule, plans, exercises, selected, cardio)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScheduleUiState())
 
+    /**
+     * Idempotencja sweepu martwych wpisów ([cleanupArchivedPlanEntries]): id-ki
+     * wpisów, dla których już zlecono kasację — bez tego każda emisja `uiState`
+     * (Flow odpala się wielokrotnie, zanim własny zapis dotrze do lokalnego
+     * cache'u Firestore) zlecałaby to samo kasowanie od nowa. Wpis znika stąd
+     * naturalnie razem z sobą samym z [latestEntries] (batch delete jest
+     * atomowy) — nie trzeba osobnego czyszczenia tego seta.
+     */
+    private val archivedCleanupRequested = mutableSetOf<String>()
+
     init {
         viewModelScope.launch {
             exercisesById.value = exerciseRepository.getAll().associateBy { it.id }
@@ -213,6 +223,12 @@ class ScheduleViewModel(
         // przy każdej zmianie harmonogramu/planów; guard wyżej robi resztę.
         viewModelScope.launch {
             uiState.collect { maybeExtendContinuousPlans(latestEntries, latestPlans) }
+        }
+        // Jednorazowy sweep martwych wpisów PLANNED zarchiwizowanych planów —
+        // samonaprawa stanu sprzed istnienia czyszczenia w
+        // PlanEditorViewModel.setArchived (patrz KDoc [cleanupArchivedPlanEntries]).
+        viewModelScope.launch {
+            uiState.collect { cleanupArchivedPlanEntries(latestEntries, latestPlans) }
         }
     }
 
@@ -305,20 +321,7 @@ class ScheduleViewModel(
     fun onAssignPlan(planId: String, assignments: Map<DayOfWeek, Int>, startDate: LocalDate) {
         if (planId in pendingReplan) return
         val plan = latestPlans.firstOrNull { it.id == planId } ?: return
-        val currentEntries = latestEntries.mapNotNull { entry ->
-            parseDate(entry.date)?.let { date ->
-                ScheduleEntryRef(
-                    id = entry.id,
-                    date = date,
-                    planId = entry.planId,
-                    kind = when (entry.status) {
-                        ScheduleStatus.PLANNED -> ScheduleEntryKind.PLANNED
-                        ScheduleStatus.DONE -> ScheduleEntryKind.DONE
-                        else -> ScheduleEntryKind.OTHER
-                    },
-                )
-            }
-        }
+        val currentEntries = toEntryRefs(latestEntries, latestPlans.associateBy { it.id })
         val weeks = replanWeeks(plan, startDate, currentEntries)
         val replan = planReplacement(currentEntries, planId, assignments, startDate, weeks)
         if (assignments.isNotEmpty() && replan.slots.isEmpty()) {
@@ -396,7 +399,9 @@ class ScheduleViewModel(
 
         plannedByPlan.forEach { (planId, slots) ->
             val plan = plansById[planId] ?: return@forEach
-            if (plan.archived || plan.blockLengthWeeks != null || planId in pendingReplan) return@forEach
+            if (!isEligibleForRollingExtension(plan.archived, plan.blockLengthWeeks) || planId in pendingReplan) {
+                return@forEach
+            }
 
             val lastPlannedDate = slots.maxOf { it.date }
             // Guard: ten sam stan (planId, ostatnia data) już przetworzony w tym cyklu.
@@ -431,6 +436,54 @@ class ScheduleViewModel(
             }
         }
     }
+
+    /**
+     * Jednorazowy sweep: kasuje przyszłe wpisy PLANNED planów, które są
+     * zarchiwizowane ([WeekPlanner.archivedPlanDeadEntryIds]) — samonaprawa
+     * kont, na których do archiwizacji doszło ZANIM istniało sprzątanie w
+     * [com.stronk.ui.plans.PlanEditorViewModel.setArchived] (dokładnie
+     * przypadek z tego zgłoszenia: plan zarchiwizowany, jego martwe wpisy
+     * zostały w `schedule` i blokowały nowy plan). Bez migracji danych —
+     * odpala się sam przy pierwszym otwarciu ekranu Tydzień.
+     *
+     * Idempotentne przez [archivedCleanupRequested] (patrz KDoc pola) i bez
+     * ryzyka race'u z [maybeExtendContinuousPlans]: rolling już z definicji
+     * pomija zarchiwizowane plany ([isEligibleForRollingExtension]), więc oba
+     * mechanizmy nigdy nie dotykają tych samych wpisów.
+     */
+    private fun cleanupArchivedPlanEntries(schedule: List<ScheduleEntry>, plans: List<Plan>) {
+        if (plans.none { it.archived }) return
+        val plansById = plans.associateBy { it.id }
+        val idsToDelete = archivedPlanDeadEntryIds(toEntryRefs(schedule, plansById))
+            .filterNot { it in archivedCleanupRequested }
+        if (idsToDelete.isEmpty()) return
+        archivedCleanupRequested += idsToDelete
+        scheduleRepository.replacePlannedEntries(deleteIds = idsToDelete, newEntries = emptyList())
+    }
+
+    /**
+     * [ScheduleEntry] → [ScheduleEntryRef]: [ScheduleEntryRef.archived] jest
+     * `true` wyłącznie dla wpisów PLANNED, których plan jest zarchiwizowany —
+     * DONE zawsze zostaje `false` (historia treningu blokuje niezależnie od
+     * archiwizacji, patrz KDoc [ScheduleEntryRef.archived]). Wspólne dla
+     * [onAssignPlan] i [cleanupArchivedPlanEntries].
+     */
+    private fun toEntryRefs(schedule: List<ScheduleEntry>, plansById: Map<String, Plan>): List<ScheduleEntryRef> =
+        schedule.mapNotNull { entry ->
+            parseDate(entry.date)?.let { date ->
+                ScheduleEntryRef(
+                    id = entry.id,
+                    date = date,
+                    planId = entry.planId,
+                    kind = when (entry.status) {
+                        ScheduleStatus.PLANNED -> ScheduleEntryKind.PLANNED
+                        ScheduleStatus.DONE -> ScheduleEntryKind.DONE
+                        else -> ScheduleEntryKind.OTHER
+                    },
+                    archived = entry.status == ScheduleStatus.PLANNED && plansById[entry.planId]?.archived == true,
+                )
+            }
+        }
 
     // ---------- budowa stanu ----------
 
@@ -529,17 +582,13 @@ class ScheduleViewModel(
                     )
                 },
             scheduleEmpty = schedule.isEmpty(),
-            occupiedEntries = schedule
-                .filter { it.status == ScheduleStatus.PLANNED || it.status == ScheduleStatus.DONE }
-                .mapNotNull { entry ->
-                    parseDate(entry.date)?.let { date ->
-                        OccupiedEntry(
-                            date = date,
-                            planId = entry.planId,
-                            planName = plansById[entry.planId]?.name ?: "usunięty plan",
-                        )
-                    }
-                },
+            // buildOccupiedEntries odfiltrowuje martwe PLANNED zarchiwizowanych
+            // planów — takie wpisy nie mają prawa blokować CTA w AssignPlanDialog
+            // (conflictingOtherPlanEntry), DONE blokuje zawsze niezależnie od
+            // archiwizacji planu-właściciela.
+            occupiedEntries = buildOccupiedEntries(toEntryRefs(schedule, plansById)) { id ->
+                plansById[id]?.name ?: "usunięty plan"
+            },
             plannedSlotsByPlan = plannedSlotsByPlan(schedule),
         )
     }
