@@ -19,6 +19,17 @@ internal object PlanTexts {
     /** Znak planu bez końca — stat TYGODNIE planu bez bloku. */
     const val INFINITY = "∞"
 
+    /**
+     * Tytuł zwijanej sekcji z parametrami w arkuszu edycji ćwiczenia planu —
+     * domyślnie ZWINIĘTA, żeby po tapnięciu wiersza jako pierwszy był widoczny
+     * opis ćwiczenia (feedback Karola: "kliknięcie ma pokazywać opis najpierw").
+     */
+    const val SERIES_SECTION_TITLE = "Serie i ciężar"
+
+    /** Content description chevronu zwijanej sekcji [SERIES_SECTION_TITLE]. */
+    fun seriesSectionToggleDescription(expanded: Boolean): String =
+        if (expanded) "Zwiń sekcję serii i ciężaru" else "Rozwiń sekcję serii i ciężaru"
+
     private val polishLocale: Locale = Locale.forLanguageTag("pl")
 
     fun stressLevel(level: StressLevel): String = when (level) {

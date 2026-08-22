@@ -182,9 +182,11 @@ private fun DescriptionTab(exercise: Exercise, jointNote: String?) {
  * Obrazki start/koniec (mock `.shots`) — 4:3, promień `--r-inner`, podpis w rogu.
  * Tap otwiera pełnoekranowy podgląd ([ExerciseImageViewer]): na telefonie kafelek
  * 4:3 jest za mały, żeby zobaczyć chwyt czy ustawienie stóp.
+ *
+ * `internal`: reużywane w arkuszu edycji ćwiczenia planu ([com.stronk.ui.plans.ExerciseEditSheet]).
  */
 @Composable
-private fun ExerciseShots(exercise: Exercise) {
+internal fun ExerciseShots(exercise: Exercise) {
     if (exercise.images.isEmpty()) return
     val shots = exercise.images.take(2)
     var viewerIndex by rememberSaveable { mutableIntStateOf(NO_VIEWER) }
@@ -257,9 +259,13 @@ private fun RowScope.Shot(imagePath: String, caption: String?, onClick: () -> Un
     }
 }
 
-/** Taksonomia jako trzy chipy (mock `.taxo`): partia (limonka), sprzęt, poziom. */
+/**
+ * Taksonomia jako trzy chipy (mock `.taxo`): partia (limonka), sprzęt, poziom.
+ *
+ * `internal`: reużywane w arkuszu edycji ćwiczenia planu ([com.stronk.ui.plans.ExerciseEditSheet]).
+ */
 @Composable
-private fun TaxonomyChips(exercise: Exercise) {
+internal fun TaxonomyChips(exercise: Exercise) {
     FlowRow(
         modifier = Modifier
             .fillMaxWidth()
@@ -290,9 +296,13 @@ private fun levelChipLabel(level: String): String = when (level) {
 /** Ile kroków widać bez rozwijania (mock pokazuje 4 i „Pokaż więcej"). */
 private const val VISIBLE_STEPS = 4
 
-/** WYKONANIE (mock `.steps`) — numerowane kroki, reszta za „Pokaż więcej". */
+/**
+ * WYKONANIE (mock `.steps`) — numerowane kroki, reszta za „Pokaż więcej".
+ *
+ * `internal`: reużywane w arkuszu edycji ćwiczenia planu ([com.stronk.ui.plans.ExerciseEditSheet]).
+ */
 @Composable
-private fun InstructionSteps(exercise: Exercise) {
+internal fun InstructionSteps(exercise: Exercise) {
     if (exercise.instructionsPl.isEmpty()) return
     var expanded by rememberSaveable { mutableStateOf(false) }
     val steps = exercise.instructionsPl
@@ -348,9 +358,11 @@ private fun InstructionStep(number: Int, text: String) {
 /**
  * Notka „Twoje stawy" (mock `.note`) — lewa krecha 2 dp, ikona ostrzeżenia
  * i jedna–dwie linijki. Bez tła: to przypis do opisu, nie osobna karta.
+ *
+ * `internal`: reużywane w arkuszu edycji ćwiczenia planu ([com.stronk.ui.plans.ExerciseEditSheet]).
  */
 @Composable
-private fun JointNoteBlock(text: String, modifier: Modifier = Modifier) {
+internal fun JointNoteBlock(text: String, modifier: Modifier = Modifier) {
     Row(modifier = modifier.height(IntrinsicSize.Min)) {
         Box(
             modifier = Modifier

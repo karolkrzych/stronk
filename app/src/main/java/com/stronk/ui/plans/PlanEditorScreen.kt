@@ -2,6 +2,7 @@ package com.stronk.ui.plans
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,11 +18,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.DragHandle
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,7 +37,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -59,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stronk.data.Exercise
 import com.stronk.data.MeasurementType
 import com.stronk.data.PlanExercise
+import com.stronk.data.ProfileDetails
 import com.stronk.data.SetTarget
 import com.stronk.ui.PlLabels
 import com.stronk.ui.components.MuscleIcons
@@ -69,10 +72,16 @@ import com.stronk.ui.components.StronkExerciseThumb
 import com.stronk.ui.components.StronkGhostButton
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkNoteCard
+import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.components.StronkSectionHeader
 import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
+import com.stronk.ui.detail.ExerciseShots
+import com.stronk.ui.detail.InstructionSteps
+import com.stronk.ui.detail.JointNote
+import com.stronk.ui.detail.JointNoteBlock
+import com.stronk.ui.detail.TaxonomyChips
 import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
@@ -288,11 +297,9 @@ private fun EditorContent(
     editTarget?.let { (dayIndex, exerciseIndex) ->
         val exercise = state.days.getOrNull(dayIndex)?.exercises?.getOrNull(exerciseIndex)
         if (exercise != null) {
-            ExerciseEditDialog(
-                exerciseName = exercise.name,
-                measurementType = exercise.exercise?.measurementType
-                    ?: measurementTypeOf(exercise.planExercise.target),
-                initial = exercise.planExercise,
+            ExerciseEditSheet(
+                exerciseUi = exercise,
+                profile = state.profile,
                 onConfirm = { updated ->
                     viewModel.updateExercise(dayIndex, exerciseIndex, updated)
                     editTarget = null
@@ -707,7 +714,7 @@ private fun SuggestionsSheet(
     }
 }
 
-// ---------- dialog edycji parametrów ćwiczenia ----------
+// ---------- arkusz edycji ćwiczenia ----------
 
 /** Typ pomiaru wywiedziony z celu — dla ćwiczeń spoza datasetu. */
 private fun measurementTypeOf(target: SetTarget): MeasurementType = when (target) {
@@ -718,17 +725,76 @@ private fun measurementTypeOf(target: SetTarget): MeasurementType = when (target
 }
 
 /**
- * Edycja parametrów ćwiczenia w planie: serie + cel zależny od typu pomiaru,
- * ciężar startowy (tylko WEIGHT_REPS) i włącznik progresji (ADR-004).
+ * Arkusz edycji ćwiczenia w planie (wzorzec [SubstitutesSheet]/[SuggestionsSheet]).
+ * Feedback Karola: "kliknięcie na ćwiczenie ma pokazywać jego opis najpierw,
+ * po rozwinięciu opcji ma być widoczny wybór ilości serii i ciężaru" — więc
+ * OPIS (reużyte komponenty z [com.stronk.ui.detail.ExerciseDetailScreen]:
+ * obrazki, taksonomia, wykonanie, notka o stawach) jest na górze i zawsze
+ * widoczny, a parametry siedzą w [SeriesAndWeightSection], domyślnie zwiniętej.
+ *
+ * Ćwiczenie spoza bazy ([EditorExerciseUi.exercise] == null) nie ma opisu do
+ * pokazania — sekcja serii jest wtedy od razu rozwinięta.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ExerciseEditDialog(
-    exerciseName: String,
-    measurementType: MeasurementType,
-    initial: PlanExercise,
+private fun ExerciseEditSheet(
+    exerciseUi: EditorExerciseUi,
+    profile: ProfileDetails,
     onConfirm: (PlanExercise) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val exercise = exerciseUi.exercise
+    val measurementType = exercise?.measurementType
+        ?: measurementTypeOf(exerciseUi.planExercise.target)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = StronkTheme.colors.surfaceCard,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = StronkSpacing.screen)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(
+                text = exerciseUi.name,
+                style = StronkTextStyles.h1Small,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (exercise != null) {
+                ExerciseShots(exercise)
+                TaxonomyChips(exercise)
+                InstructionSteps(exercise)
+                JointNote.text(exercise, profile)?.let { note ->
+                    JointNoteBlock(text = note, modifier = Modifier.padding(top = 26.dp))
+                }
+            }
+            SeriesAndWeightSection(
+                measurementType = measurementType,
+                initial = exerciseUi.planExercise,
+                defaultExpanded = exercise == null,
+                onConfirm = onConfirm,
+            )
+            Spacer(Modifier.height(StronkSpacing.xxl))
+        }
+    }
+}
+
+/**
+ * Zwijana sekcja „Serie i ciężar" — dokładnie zawartość dawnego
+ * `ExerciseEditDialog` (stan/walidacja 1:1): serie + cel zależny od typu
+ * pomiaru, ciężar startowy (tylko WEIGHT_REPS), włącznik progresji (ADR-004)
+ * i przycisk Zapisz. Domyślnie zwinięta — opis ćwiczenia ma być pierwszy.
+ */
+@Composable
+private fun SeriesAndWeightSection(
+    measurementType: MeasurementType,
+    initial: PlanExercise,
+    defaultExpanded: Boolean,
+    onConfirm: (PlanExercise) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(defaultExpanded) }
     var setsText by remember { mutableStateOf(initial.sets.toString()) }
     var repsText by remember {
         mutableStateOf(
@@ -791,10 +857,25 @@ private fun ExerciseEditDialog(
         weightText.isBlank() || (weightKg != null && weightKg > 0)
     val valid = sets != null && target != null && weightValid
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(exerciseName) },
-        text = {
+    Column(modifier = Modifier.padding(top = StronkSpacing.lg)) {
+        StronkSectionHeader(
+            title = PlanTexts.SERIES_SECTION_TITLE,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = StronkSpacing.sm),
+            trailing = {
+                Icon(
+                    imageVector = Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = PlanTexts.seriesSectionToggleDescription(expanded),
+                    tint = StronkTheme.colors.textDim,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .graphicsLayer { rotationZ = if (expanded) 180f else 0f },
+                )
+            },
+        )
+        if (expanded) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 NumberField(value = setsText, onValueChange = { setsText = it }, label = "Serie")
                 when (measurementType) {
@@ -849,36 +930,33 @@ private fun ExerciseEditDialog(
                         onCheckedChange = { progressionEnabled = it },
                     )
                 }
+                StronkPrimaryButton(
+                    text = "Zapisz",
+                    onClick = {
+                        if (sets != null && target != null) {
+                            onConfirm(
+                                initial.copy(
+                                    sets = sets,
+                                    target = target,
+                                    startWeightKg = if (
+                                        measurementType == MeasurementType.WEIGHT_REPS &&
+                                        weightText.isNotBlank()
+                                    ) {
+                                        weightKg
+                                    } else {
+                                        null
+                                    },
+                                    progressionEnabled = progressionEnabled,
+                                ),
+                            )
+                        }
+                    },
+                    enabled = valid,
+                    height = StronkSizes.ctaSmall,
+                )
             }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = valid,
-                onClick = {
-                    if (sets != null && target != null) {
-                        onConfirm(
-                            initial.copy(
-                                sets = sets,
-                                target = target,
-                                startWeightKg = if (
-                                    measurementType == MeasurementType.WEIGHT_REPS &&
-                                    weightText.isNotBlank()
-                                ) {
-                                    weightKg
-                                } else {
-                                    null
-                                },
-                                progressionEnabled = progressionEnabled,
-                            ),
-                        )
-                    }
-                },
-            ) { Text("Zapisz") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Anuluj") }
-        },
-    )
+        }
+    }
 }
 
 @Composable
