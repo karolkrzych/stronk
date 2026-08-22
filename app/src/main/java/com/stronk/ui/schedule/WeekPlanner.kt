@@ -3,6 +3,7 @@ package com.stronk.ui.schedule
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
@@ -204,6 +205,46 @@ fun deriveWeekAssignments(entries: List<PlannedSlot>): Map<DayOfWeek, Int> {
     return byWeek.getValue(lastWeekStart).associate { it.date.dayOfWeek to it.dayIndex }
 }
 
+// ---------- wzorzec tygodnia trwały w planie (Plan.weekdayAssignments) ----------
+
+/**
+ * [Plan.weekdayAssignments] (klucz = ISO dzień tygodnia 1..7) → [DayOfWeek],
+ * format użyty w reszcie tego pliku i w [AssignPlanDialog]. Klucz spoza 1..7
+ * jest pomijany (odporność wzorem [com.stronk.data.FirestoreMappers]).
+ */
+fun weekdayAssignmentsFromIso(raw: Map<Int, Int>): Map<DayOfWeek, Int> =
+    raw.mapNotNull { (iso, dayIndex) ->
+        DayOfWeek.entries.firstOrNull { it.value == iso }?.let { it to dayIndex }
+    }.toMap()
+
+/** Odwrotność [weekdayAssignmentsFromIso] — zapis do [Plan.weekdayAssignments]. */
+fun weekdayAssignmentsToIso(assignments: Map<DayOfWeek, Int>): Map<Int, Int> =
+    assignments.entries.associate { (dayOfWeek, dayIndex) -> dayOfWeek.value to dayIndex }
+
+/**
+ * Wzorzec bazowy dla wybranego planu w [AssignPlanDialog] — punkt odniesienia
+ * do prefillu chipów ORAZ do detekcji zmian ([isWeekPlanDirty]). Zapisany
+ * wzorzec planu ([savedAssignments], już po [weekdayAssignmentsFromIso])
+ * wygrywa zawsze, gdy istnieje — także pusty (user mógł świadomie wyzerować
+ * wszystkie dni). Gdy plan nigdy nie miał zapisanego wzorca (`null` — stary
+ * dokument sprzed tego pola albo plan jeszcze nigdy nie przypisany), spadamy
+ * na wzorzec wyprowadzony z istniejących wpisów PLANNED ([deriveWeekAssignments]);
+ * bez wpisów w ogóle — pusty wzorzec.
+ */
+fun weekPlanBaseline(
+    savedAssignments: Map<DayOfWeek, Int>?,
+    existingEntries: List<PlannedSlot>,
+): Map<DayOfWeek, Int> = savedAssignments ?: deriveWeekAssignments(existingEntries)
+
+/**
+ * Czy CTA „Zapisz" w [AssignPlanDialog] ma być aktywne: [assignments] różnią
+ * się od [baseline]. Prosta nierówność map pokrywa też przypadek „baseline
+ * pusty, przypisania niepuste" (plan bez wcześniejszego wzorca, user dopiero
+ * co coś przypisał) — to tylko szczególny przypadek różnicy, nie osobna reguła.
+ */
+fun isWeekPlanDirty(baseline: Map<DayOfWeek, Int>, assignments: Map<DayOfWeek, Int>): Boolean =
+    assignments != baseline
+
 // ---------- przeplanowanie wybranego planu ----------
 
 /**
@@ -234,6 +275,40 @@ data class ReplanResult(val idsToDelete: List<String>, val slots: List<PlannedSl
  */
 fun clampStartDateToToday(startDate: LocalDate, today: LocalDate = LocalDate.now()): LocalDate =
     if (startDate.isBefore(today)) today else startDate
+
+/**
+ * Horyzont materializacji (w tygodniach od [startDate]) dla planu Z BLOKIEM —
+ * wejście `weeks` do [planReplacement]. [fullBlockWeeks] to PEŁNA długość
+ * bloku (praca + tydzień lekki, `ProgressionEngine.fullBlockWeeks` na
+ * `Plan.blockLengthWeeks` — ta funkcja przyjmuje już przeliczoną wartość, zero
+ * zależności od modułu progresji tutaj).
+ *
+ * Pierwsze planowanie (plan bez ŻADNYCH wcześniejszych wpisów PLANNED,
+ * [existingPlanDates] puste) dostaje dokładnie [fullBlockWeeks] tygodni.
+ * Kolejne przeplanowanie NIE SKRACA horyzontu, który plan już miał: koniec
+ * okna to `max(startDate + fullBlockWeeks, tydzień ostatniego istniejącego
+ * wpisu planu)` — user mógł wcześniej zaplanować dalej, zmiana samego
+ * wzorca dni nie ma prawa tego uciąć.
+ */
+fun blockReplanWeeks(
+    startDate: LocalDate,
+    fullBlockWeeks: Int,
+    existingPlanDates: List<LocalDate>,
+): Int {
+    val minWeeks = fullBlockWeeks.coerceAtLeast(0)
+    val lastEntryDate = existingPlanDates.maxOrNull() ?: return minWeeks
+    // Koniec tygodnia (włącznie z niedzielą) ostatniego istniejącego wpisu,
+    // jako granica wyłączna — poniedziałek tygodnia PO nim.
+    val lastEntryWeekEndExclusive = weekStartOf(lastEntryDate).plusWeeks(1)
+    val minEndExclusive = startDate.plusWeeks(minWeeks.toLong())
+    val horizonEnd = maxOf(minEndExclusive, lastEntryWeekEndExclusive)
+    val daysToHorizon = ChronoUnit.DAYS.between(startDate, horizonEnd)
+    if (daysToHorizon <= 0) return minWeeks
+    // Zaokrąglenie w górę do pełnych tygodni — [generatePlannedSlots] tnie
+    // okno przez `endExclusive`, więc horyzont nie może wypaść za krótki.
+    val weeksToHorizon = ((daysToHorizon + ScheduleConstants.DAYS_IN_WEEK - 1) / ScheduleConstants.DAYS_IN_WEEK).toInt()
+    return maxOf(minWeeks, weeksToHorizon)
+}
 
 /**
  * Przeplanowanie [selectedPlanId]: WSZYSTKIE jego przyszłe (`date >=

@@ -2,6 +2,7 @@ package com.stronk.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -233,6 +234,46 @@ class FirestoreMappersTest {
         val map = FirestoreMappers.planToMap(plan.copy(blockLengthWeeks = null))
         assertFalse(map.containsKey("blockLengthWeeks"))
         assertNull(FirestoreMappers.planFromMap("p1", simulateFirestoreRead(map)).blockLengthWeeks)
+    }
+
+    @Test
+    fun `Plan zapisuje weekdayAssignments i wraca z round-tripu (też na Long, klucze jako String)`() {
+        val custom = plan.copy(weekdayAssignments = mapOf(1 to 0, 3 to 0, 5 to 1))
+        val map = FirestoreMappers.planToMap(custom)
+        @Suppress("UNCHECKED_CAST")
+        val wire = map["weekdayAssignments"] as Map<String, Any?>
+        assertEquals(mapOf("1" to 0, "3" to 0, "5" to 1), wire)
+        assertEquals(custom, FirestoreMappers.planFromMap("p1", map))
+        assertEquals(custom, FirestoreMappers.planFromMap("p1", simulateFirestoreRead(map)))
+    }
+
+    @Test
+    fun `Plan bez weekdayAssignments to wzorzec nigdy nie zapisany, nie pusty wzorzec`() {
+        val map = FirestoreMappers.planToMap(plan) - "weekdayAssignments"
+        val decoded = FirestoreMappers.planFromMap("p1", map)
+        assertNull(decoded.weekdayAssignments)
+        assertEquals(plan, decoded)
+    }
+
+    @Test
+    fun `Plan bez zapisanego wzorca nie zapisuje pola weekdayAssignments`() {
+        val map = FirestoreMappers.planToMap(plan.copy(weekdayAssignments = null))
+        assertFalse(map.containsKey("weekdayAssignments"))
+    }
+
+    @Test
+    fun `Plan z jawnie pustym weekdayAssignments (wyzerowane dni) zapisuje puste pole, nie null`() {
+        val map = FirestoreMappers.planToMap(plan.copy(weekdayAssignments = emptyMap()))
+        assertTrue(map.containsKey("weekdayAssignments"))
+        val decoded = FirestoreMappers.planFromMap("p1", simulateFirestoreRead(map))
+        assertNotNull(decoded.weekdayAssignments)
+        assertEquals(emptyMap<Int, Int>(), decoded.weekdayAssignments)
+    }
+
+    @Test
+    fun `weekdayAssignmentsFromMap ignoruje klucze spoza 1-7 i niepoprawne wartosci`() {
+        val raw = mapOf("1" to 0, "0" to 9, "8" to 9, "x" to 9, "3" to "nie liczba")
+        assertEquals(mapOf(1 to 0), FirestoreMappers.weekdayAssignmentsFromMap(raw))
     }
 
     // ---------- ScheduleEntry ----------

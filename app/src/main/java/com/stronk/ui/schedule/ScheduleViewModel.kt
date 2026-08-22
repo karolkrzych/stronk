@@ -99,8 +99,14 @@ data class PlanOption(
     val name: String,
     /** Nazwy dni planu w kolejności indeksów. */
     val dayNames: List<String>,
-    /** `blockLengthWeeks == null` — plan bez końca, dostaje rolling generation. */
-    val continuous: Boolean,
+    /**
+     * Pełna długość bloku (praca + tydzień lekki, `ProgressionEngine.fullBlockWeeks`
+     * na `Plan.blockLengthWeeks`) — `null` = plan bez końca, dostaje rolling
+     * generation zamiast horyzontu bloku.
+     */
+    val fullBlockWeeks: Int?,
+    /** Zapisany wzorzec dnia tygodnia planu (już po ISO→[DayOfWeek]) — baseline dialogu. */
+    val weekdayAssignments: Map<DayOfWeek, Int>?,
 )
 
 /** Stan ekranu Tydzień. */
@@ -137,7 +143,7 @@ data class ScheduleUiState(
 
 class ScheduleViewModel(
     private val scheduleRepository: ScheduleRepository,
-    planRepository: PlanRepository,
+    private val planRepository: PlanRepository,
     exerciseRepository: ExerciseRepository,
     cardioRepository: CardioRepository,
 ) : ViewModel() {
@@ -257,13 +263,21 @@ class ScheduleViewModel(
     }
 
     /**
-     * Przypisanie planu do tygodnia = PRZEPLANOWANIE: wpisy PLANNED wybranego
-     * planu od [startDate] w przód (WSZYSTKIE, nie tylko okno generacji —
-     * rolling mógł nagenerować dalej) są kasowane i zastępowane nowymi
-     * slotami wg [assignments] na [ScheduleConstants.GENERATION_WEEKS]
-     * tygodni (plan bez bloku dociągnie resztę sam przez rolling generation,
-     * które od teraz czyta NOWY wzorzec — [deriveWeekAssignments] bierze go z
-     * realnych wpisów, nie z tego wywołania).
+     * Zatwierdzenie [AssignPlanDialog] = zapis WZORCA tygodnia w planie +
+     * materializacja harmonogramu na jego podstawie. Dialog jest plannerem
+     * jednego tygodnia, który przekłada się na CAŁY czas życia planu — zapis
+     * [assignments] do `Plan.weekdayAssignments` ([PlanRepository.save]) jest
+     * tym, co przetrwa (kolejne otwarcie dialogu i rolling generation czytają
+     * STĄD, nie z tego wywołania).
+     *
+     * Materializacja (przeplanowanie wpisów PLANNED wybranego planu od
+     * [startDate] w przód — WSZYSTKIE, nie tylko okno jednego wywołania,
+     * rolling mógł nagenerować dalej) ma horyzont zależny od typu planu:
+     * - plan Z BLOKIEM: pełna długość bloku, nie krótszy niż horyzont, jaki
+     *   plan już miał ([blockReplanWeeks]) — nowe ułożenie dni obowiązuje
+     *   przez cały blok, nie tylko okno generacji;
+     * - plan BEZ bloku: [ScheduleConstants.GENERATION_WEEKS] jak dotąd — rolling
+     *   generation dociągnie resztę samo, czytając już zapisany wzorzec.
      *
      * Nietykalne: wpisy DONE (historia treningu, dowolnego planu) i PLANNED
      * INNEGO planu — patrz [planReplacement]. Kasowanie + zapis idą w JEDNEJ
@@ -271,9 +285,14 @@ class ScheduleViewModel(
      * dodatkowo chroni przed rolling generation odpalającym się na starym
      * stanie między zleceniem paczki a jej odbiciem w [latestEntries].
      *
-     * Jeśli po odfiltrowaniu nietykalnych dat nie powstał ŻADEN nowy slot —
-     * nic się nie zapisuje (stare wpisy też zostają nietknięte), Snackbar
-     * tłumaczy czemu ([ScheduleTexts.NOTHING_TO_PLAN]).
+     * Jeśli [assignments] jest NIEPUSTE, a po odfiltrowaniu nietykalnych dat
+     * nie powstał ŻADEN nowy slot — cała operacja jest anulowana (nic się nie
+     * zapisuje, ani harmonogram, ani wzorzec w planie), Snackbar tłumaczy
+     * czemu ([ScheduleTexts.NOTHING_TO_PLAN]). Puste [assignments] to inny
+     * przypadek — user świadomie wyzerował wszystkie dni (CTA to dopuszcza,
+     * patrz [WeekPlanner.isWeekPlanDirty]) — wtedy wzorzec i tak się zapisuje
+     * (jako pusta mapa) i istniejące przyszłe PLANNED tego planu są kasowane
+     * bez zastąpienia.
      *
      * Reentrancja: dopóki dla [planId] wisi niedokończony replan
      * ([pendingReplan] niepusty — poprzednia paczka jeszcze nie odbiła się w
@@ -284,8 +303,8 @@ class ScheduleViewModel(
      * zmienia zachowania UI.
      */
     fun onAssignPlan(planId: String, assignments: Map<DayOfWeek, Int>, startDate: LocalDate) {
-        if (assignments.isEmpty()) return
         if (planId in pendingReplan) return
+        val plan = latestPlans.firstOrNull { it.id == planId } ?: return
         val currentEntries = latestEntries.mapNotNull { entry ->
             parseDate(entry.date)?.let { date ->
                 ScheduleEntryRef(
@@ -300,11 +319,13 @@ class ScheduleViewModel(
                 )
             }
         }
-        val replan = planReplacement(currentEntries, planId, assignments, startDate)
-        if (replan.slots.isEmpty()) {
+        val weeks = replanWeeks(plan, startDate, currentEntries)
+        val replan = planReplacement(currentEntries, planId, assignments, startDate, weeks)
+        if (assignments.isNotEmpty() && replan.slots.isEmpty()) {
             _assignmentMessage.value = ScheduleTexts.NOTHING_TO_PLAN
             return
         }
+        planRepository.save(plan.copy(weekdayAssignments = weekdayAssignmentsToIso(assignments)))
         val newEntries = replan.slots.map { slot ->
             ScheduleEntry(
                 id = scheduleRepository.newId(),
@@ -316,10 +337,27 @@ class ScheduleViewModel(
         if (replan.idsToDelete.isNotEmpty()) {
             pendingReplan[planId] = replan.idsToDelete.toSet()
         }
+        // Paczka sama nie robi nic, gdy obie listy są puste (patrz ScheduleRepository).
         scheduleRepository.replacePlannedEntries(deleteIds = replan.idsToDelete, newEntries = newEntries)
         // Ten sam clamp co w planReplacement — startDate mogła przyjść z UI
         // sprzed dziś tylko przez defensywną ścieżkę (picker to blokuje).
         selectedDate.value = clampStartDateToToday(startDate)
+    }
+
+    /**
+     * Horyzont materializacji (tygodnie od [startDate]) na wejście
+     * [planReplacement]: plan bez bloku dostaje stałe okno generacji jak
+     * dotąd, plan z blokiem — [blockReplanWeeks] liczony z JEGO ISTNIEJĄCYCH
+     * wpisów PLANNED (z [currentEntries], nie z całego harmonogramu — inne
+     * plany nie mają tu znaczenia).
+     */
+    private fun replanWeeks(plan: Plan, startDate: LocalDate, currentEntries: List<ScheduleEntryRef>): Int {
+        val fullBlockWeeks = ProgressionEngine.fullBlockWeeks(plan.blockLengthWeeks)
+            ?: return ScheduleConstants.GENERATION_WEEKS
+        val existingPlanDates = currentEntries
+            .filter { it.planId == plan.id && it.kind == ScheduleEntryKind.PLANNED }
+            .map { it.date }
+        return blockReplanWeeks(clampStartDateToToday(startDate), fullBlockWeeks, existingPlanDates)
     }
 
     /** Snackbar w [ScheduleScreen] pokazał komunikat — czyścimy, żeby się nie powtarzał. */
@@ -333,10 +371,13 @@ class ScheduleViewModel(
      * Dla każdego planu BEZ bloku ([Plan.blockLengthWeeks] `== null`) sprawdza,
      * czy najpóźniejszy zaplanowany wpis jest bliżej niż
      * [ScheduleConstants.ROLLING_THRESHOLD_WEEKS] tygodni od dziś — jeśli tak,
-     * dogenerowuje kolejne [ScheduleConstants.GENERATION_WEEKS] tygodni z
-     * przypisaniami wyprowadzonymi z istniejących wpisów ([deriveWeekAssignments]).
-     * Plany z blokiem — bez zmian. Czysta logika (próg, derywacja, filtr zajętości)
-     * żyje w [WeekPlanner]; ta funkcja tylko orkiestruje odczyt/zapis.
+     * dogenerowuje kolejne [ScheduleConstants.GENERATION_WEEKS] tygodni.
+     * Wzorzec dni bierze z [Plan.weekdayAssignments] (źródło prawdy — pojedyncze
+     * „Przesuń" treningu na inny dzień tygodnia NIE ma prawa zarazić reguły);
+     * dla starych planów bez zapisanego wzorca (`null`) spada na
+     * [deriveWeekAssignments] z istniejących wpisów jak dotąd. Plany z blokiem —
+     * bez zmian. Czysta logika (próg, derywacja, filtr zajętości) żyje w
+     * [WeekPlanner]; ta funkcja tylko orkiestruje odczyt/zapis.
      */
     private fun maybeExtendContinuousPlans(schedule: List<ScheduleEntry>, plans: List<Plan>) {
         // Guard [pendingReplan] czyści się sam: paczka replanu jest atomowa,
@@ -362,7 +403,9 @@ class ScheduleViewModel(
             if (rollingExtensionCursor[planId] == lastPlannedDate) return@forEach
             if (!needsRollingExtension(lastPlannedDate, today)) return@forEach
 
-            val assignments = deriveWeekAssignments(slots)
+            val assignments = plan.weekdayAssignments
+                ?.let { weekdayAssignmentsFromIso(it) }
+                ?: deriveWeekAssignments(slots)
             if (assignments.isEmpty()) return@forEach
             rollingExtensionCursor[planId] = lastPlannedDate
 
@@ -481,7 +524,8 @@ class ScheduleViewModel(
                         id = candidate.id,
                         name = candidate.name,
                         dayNames = candidate.days.map { it.name },
-                        continuous = candidate.blockLengthWeeks == null,
+                        fullBlockWeeks = ProgressionEngine.fullBlockWeeks(candidate.blockLengthWeeks),
+                        weekdayAssignments = candidate.weekdayAssignments?.let { weekdayAssignmentsFromIso(it) },
                     )
                 },
             scheduleEmpty = schedule.isEmpty(),

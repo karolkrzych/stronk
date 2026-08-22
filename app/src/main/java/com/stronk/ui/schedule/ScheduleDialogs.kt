@@ -130,17 +130,19 @@ fun ScheduleDatePickerDialog(
 }
 
 /**
- * Przypisanie planu do dni tygodnia — wybór planu (chipy), daty startu i
+ * Planer tygodnia całego życia planu — wybór planu (chipy), daty startu i
  * mapowania dni. Zero rozwijanych menu: dzień tygodnia przełącza się TAPEM
- * chipa, który krąży „wolne → dzień 1 → dzień 2 → … → wolne".
- * Generację wpisów robi [ScheduleViewModel.onAssignPlan] po potwierdzeniu.
+ * chipa, który krąży „wolne → dzień 1 → dzień 2 → … → wolne". Zatwierdzenie
+ * zapisuje wzorzec w planie i materializuje harmonogram na jego podstawie
+ * ([ScheduleViewModel.onAssignPlan]) — dopóki user niczego nie zmieni względem
+ * [WeekPlanner.weekPlanBaseline], CTA zostaje wyszarzone (nic by się nie stało).
  */
 @Composable
 fun AssignPlanDialog(
     plans: List<PlanOption>,
     /** Zajęte dni ze wszystkich planów — wejście do walidacji kolizji okna. */
     occupiedEntries: List<OccupiedEntry>,
-    /** Aktualny wzorzec PLANNED per plan — pod prefill (patrz niżej). */
+    /** Aktualny wzorzec PLANNED per plan — fallback baseline dla planów bez zapisanego wzorca. */
     plannedSlotsByPlan: Map<String, List<PlannedSlot>>,
     onConfirm: (planId: String, assignments: Map<DayOfWeek, Int>, startDate: LocalDate) -> Unit,
     onDismiss: () -> Unit,
@@ -148,15 +150,12 @@ fun AssignPlanDialog(
     // Jedyny plan od razu wybrany — najczęstszy przypadek bez zbędnego tapnięcia.
     var selectedPlanId by remember { mutableStateOf(plans.firstOrNull()?.id) }
     val selectedPlan = plans.firstOrNull { it.id == selectedPlanId }
-    // Prefill wzorcem, jaki plan MA już w harmonogramie (przeplanowanie ma
-    // pokazać status quo, nie kasować go z pamięci) — a gdy planu jeszcze nie
-    // ma w harmonogramie, spadamy na domyślne rozłożenie dni.
-    var assignments by remember(selectedPlanId) {
-        val current = deriveWeekAssignments(plannedSlotsByPlan[selectedPlanId].orEmpty())
-        mutableStateOf(
-            if (current.isNotEmpty()) current else defaultAssignments(selectedPlan?.dayNames?.size ?: 0),
-        )
+    // Baseline = punkt odniesienia do prefillu I do detekcji zmian (CTA).
+    // Zamrożony na zmianę planu (nie dryfuje przy tle odświeżającym się stanie).
+    val baseline = remember(selectedPlanId) {
+        weekPlanBaseline(selectedPlan?.weekdayAssignments, plannedSlotsByPlan[selectedPlanId].orEmpty())
     }
+    var assignments by remember(selectedPlanId) { mutableStateOf(baseline) }
     var startDate by remember { mutableStateOf(LocalDate.now()) }
     var showStartDatePicker by remember { mutableStateOf(false) }
 
@@ -166,6 +165,10 @@ fun AssignPlanDialog(
     val conflict = remember(selectedPlanId, startDate, occupiedEntries) {
         selectedPlanId?.let { planId -> conflictingOtherPlanEntry(occupiedEntries, planId, startDate) }
     }
+    // Jedyny warunek, kiedy CTA "Zapisz" ma sens: coś się realnie zmieniło
+    // względem baseline. Sama zmiana daty startu bez zmiany przypisań NIE
+    // zmienia wyniku materializacji tego samego wzorca — nie liczy się.
+    val dirty = isWeekPlanDirty(baseline, assignments)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -255,7 +258,7 @@ fun AssignPlanDialog(
                         )
                     } else {
                         StronkNoteCard(
-                            text = ScheduleTexts.assignPlanNote(selectedPlan.continuous),
+                            text = ScheduleTexts.assignPlanNote(selectedPlan.fullBlockWeeks),
                             icon = StronkIcons.info,
                         )
                     }
@@ -263,9 +266,9 @@ fun AssignPlanDialog(
 
                 Spacer(Modifier.height(StronkSpacing.lg))
                 StronkPrimaryButton(
-                    text = ScheduleTexts.assignPlanCta(selectedPlan?.continuous ?: false),
+                    text = ScheduleTexts.ASSIGN_PLAN_CTA,
                     height = StronkSizes.ctaSmall,
-                    enabled = selectedPlan != null && assignments.isNotEmpty() && conflict == null,
+                    enabled = selectedPlan != null && dirty && conflict == null,
                     onClick = { selectedPlan?.let { onConfirm(it.id, assignments, startDate) } },
                 )
                 Box(

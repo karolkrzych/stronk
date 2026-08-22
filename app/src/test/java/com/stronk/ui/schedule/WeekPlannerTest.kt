@@ -466,4 +466,152 @@ class WeekPlannerTest {
             nextExtension.none { it.date.dayOfWeek == DayOfWeek.MONDAY || it.date.dayOfWeek == DayOfWeek.FRIDAY },
         )
     }
+
+    // ---------- weekdayAssignmentsFromIso / weekdayAssignmentsToIso ----------
+
+    @Test
+    fun `weekdayAssignmentsFromIso mapuje ISO 1-7 na DayOfWeek`() {
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 1, DayOfWeek.SUNDAY to 2),
+            weekdayAssignmentsFromIso(mapOf(1 to 0, 3 to 1, 7 to 2)),
+        )
+    }
+
+    @Test
+    fun `weekdayAssignmentsFromIso pomija klucze spoza 1-7`() {
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0),
+            weekdayAssignmentsFromIso(mapOf(1 to 0, 0 to 9, 8 to 9, -1 to 9)),
+        )
+    }
+
+    @Test
+    fun `weekdayAssignmentsToIso jest odwrotnoscia weekdayAssignmentsFromIso`() {
+        val assignments = mapOf(DayOfWeek.TUESDAY to 0, DayOfWeek.THURSDAY to 1, DayOfWeek.SATURDAY to 2)
+        val iso = weekdayAssignmentsToIso(assignments)
+        assertEquals(mapOf(2 to 0, 4 to 1, 6 to 2), iso)
+        assertEquals(assignments, weekdayAssignmentsFromIso(iso))
+    }
+
+    @Test
+    fun `pusta mapa ISO daje pusta mape DayOfWeek i odwrotnie`() {
+        assertEquals(emptyMap<DayOfWeek, Int>(), weekdayAssignmentsFromIso(emptyMap()))
+        assertEquals(emptyMap<Int, Int>(), weekdayAssignmentsToIso(emptyMap()))
+    }
+
+    // ---------- weekPlanBaseline ----------
+
+    @Test
+    fun `weekPlanBaseline uzywa zapisanego wzorca gdy istnieje - nawet pustego`() {
+        val saved = emptyMap<DayOfWeek, Int>()
+        val entries = listOf(PlannedSlot(monday, 0)) // istniejacy wpis - MA byc zignorowany
+        assertEquals(saved, weekPlanBaseline(saved, entries))
+    }
+
+    @Test
+    fun `weekPlanBaseline spada na deriveWeekAssignments gdy zapisany wzorzec to null`() {
+        val entries = listOf(PlannedSlot(monday, 0), PlannedSlot(monday.plusDays(2), 1))
+        assertEquals(deriveWeekAssignments(entries), weekPlanBaseline(null, entries))
+    }
+
+    @Test
+    fun `weekPlanBaseline bez zapisanego wzorca i bez wpisow to pusty wzorzec`() {
+        assertEquals(emptyMap<DayOfWeek, Int>(), weekPlanBaseline(null, emptyList()))
+    }
+
+    // ---------- isWeekPlanDirty ----------
+
+    @Test
+    fun `isWeekPlanDirty false gdy przypisania rowne baseline`() {
+        val pattern = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.FRIDAY to 1)
+        assertFalse(isWeekPlanDirty(pattern, pattern.toMap()))
+    }
+
+    @Test
+    fun `isWeekPlanDirty true gdy przypisania rozne od baseline`() {
+        assertTrue(
+            isWeekPlanDirty(
+                mapOf(DayOfWeek.MONDAY to 0),
+                mapOf(DayOfWeek.TUESDAY to 0),
+            ),
+        )
+    }
+
+    @Test
+    fun `isWeekPlanDirty true gdy baseline pusty a przypisania niepuste`() {
+        assertTrue(isWeekPlanDirty(emptyMap(), mapOf(DayOfWeek.MONDAY to 0)))
+    }
+
+    @Test
+    fun `isWeekPlanDirty false gdy oba puste - sama zmiana daty startu nie liczy sie`() {
+        assertFalse(isWeekPlanDirty(emptyMap(), emptyMap()))
+    }
+
+    // ---------- blockReplanWeeks ----------
+
+    @Test
+    fun `blockReplanWeeks bez istniejacych wpisow to dokladnie fullBlockWeeks`() {
+        assertEquals(6, blockReplanWeeks(monday, fullBlockWeeks = 6, existingPlanDates = emptyList()))
+    }
+
+    @Test
+    fun `blockReplanWeeks nie skraca horyzontu ponizej minimum gdy stare wpisy sa blisko`() {
+        val existing = listOf(monday.plusWeeks(1))
+        assertEquals(6, blockReplanWeeks(monday, fullBlockWeeks = 6, existingPlanDates = existing))
+    }
+
+    @Test
+    fun `blockReplanWeeks rozszerza horyzont gdy plan mial juz wpisy dalej niz blok`() {
+        // Ostatni istniejacy wpis 10 tygodni od startu, blok to tylko 6 tygodni
+        // pracy+lekki - horyzont ma objac ten wpis, nie uciac go.
+        val lastExisting = monday.plusWeeks(10)
+        val weeks = blockReplanWeeks(monday, fullBlockWeeks = 6, existingPlanDates = listOf(lastExisting))
+        assertTrue("horyzont musi objac ostatni istniejacy wpis", weeks > 6)
+        assertTrue(monday.plusWeeks(weeks.toLong()).isAfter(lastExisting))
+    }
+
+    @Test
+    fun `blockReplanWeeks - pierwsze planowanie z data startu w srodku tygodnia`() {
+        val wednesday = LocalDate.of(2026, 8, 19)
+        assertEquals(6, blockReplanWeeks(wednesday, fullBlockWeeks = 6, existingPlanDates = emptyList()))
+    }
+
+    // ---------- rolling wg wzorca z planu (nie wg przesunietego wpisu) ----------
+
+    @Test
+    fun `rolling wg wzorca z planu ignoruje pojedynczy przesuniety wpis`() {
+        // Wzorzec zapisany w planie: pn/sr/pt (dayIndex 0) - to co ScheduleViewModel
+        // czyta z Plan.weekdayAssignments (juz po weekdayAssignmentsFromIso).
+        val planPattern = weekdayAssignmentsFromIso(mapOf(1 to 0, 3 to 0, 5 to 0))
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 0, DayOfWeek.FRIDAY to 0),
+            planPattern,
+        )
+
+        // Realny harmonogram po "Przesun": srodowy trening wyladowal we wtorek
+        // (nowy wpis PLANNED wtorek; oryginalny wpis srody stal sie MOVED, wiec
+        // nie wchodzi juz do listy PLANNED slotow).
+        val entriesAfterMove = listOf(
+            PlannedSlot(monday, 0), // pn - bez zmian
+            PlannedSlot(monday.plusDays(1), 0), // wt - PRZESUNIETY tu (byl sr)
+            PlannedSlot(monday.plusDays(4), 0), // pt - bez zmian
+        )
+
+        // Gdyby rolling patrzyl na surowe wpisy (stare zachowanie sprzed tego
+        // zadania), zarazilby sie przesunieciem - zlapalby wtorek zamiast srody.
+        val derivedFromEntries = deriveWeekAssignments(entriesAfterMove)
+        assertTrue(DayOfWeek.TUESDAY in derivedFromEntries)
+        assertFalse(DayOfWeek.WEDNESDAY in derivedFromEntries)
+
+        // Kolejna generacja WG WZORCA Z PLANU (to co robi maybeExtendContinuousPlans
+        // po tej zmianie) produkuje pn/sr/pt - nigdy wtorek.
+        val nextExtension = generatePlannedSlots(
+            assignments = planPattern,
+            startDate = entriesAfterMove.maxOf { it.date }.plusDays(1),
+            weeks = 2,
+        )
+        assertTrue(nextExtension.isNotEmpty())
+        assertTrue(nextExtension.none { it.date.dayOfWeek == DayOfWeek.TUESDAY })
+        assertTrue(nextExtension.any { it.date.dayOfWeek == DayOfWeek.WEDNESDAY })
+    }
 }
