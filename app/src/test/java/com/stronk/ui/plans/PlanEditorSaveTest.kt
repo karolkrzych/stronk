@@ -5,7 +5,9 @@ import com.stronk.data.PlanDay
 import com.stronk.data.PlanExercise
 import com.stronk.data.SetTarget
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -119,5 +121,76 @@ class PlanEditorSaveTest {
             newId = { error("nie powinno byc wolane") },
         )
         assertEquals(listOf(exercise), saved.days.single().exercises)
+    }
+
+    // ---------- dayIndexRemap ----------
+
+    @Test
+    fun `dayIndexRemap dla planu bez zmian to identity`() {
+        assertEquals(mapOf(0 to 0, 1 to 1, 2 to 2), dayIndexRemap(listOf(0, 1, 2)))
+    }
+
+    @Test
+    fun `dayIndexRemap po usunieciu srodkowego dnia przesuwa kolejne indeksy`() {
+        // Push/Pull/Legs (0/1/2), usunieto Pull (index 1) - draft ma teraz [Push(base 0), Legs(base 2)].
+        assertEquals(mapOf(0 to 0, 2 to 1), dayIndexRemap(listOf(0, 2)))
+    }
+
+    @Test
+    fun `dayIndexRemap po usunieciu ostatniego dnia nie ma dla niego wpisu`() {
+        // 3 dni, usunieto ostatni (index 2) - draft ma [dzien0, dzien1].
+        assertEquals(mapOf(0 to 0, 1 to 1), dayIndexRemap(listOf(0, 1)))
+    }
+
+    @Test
+    fun `dayIndexRemap nowy dzien (baseDayIndex null) nie trafia do mapy`() {
+        // 2 istniejace dni + nowy dodany na koncu (null).
+        assertEquals(mapOf(0 to 0, 1 to 1), dayIndexRemap(listOf(0, 1, null)))
+    }
+
+    @Test
+    fun `dayIndexRemap dla calkiem nowego planu (same nulle) daje pusta mape`() {
+        assertEquals(emptyMap<Int, Int>(), dayIndexRemap(listOf(null, null)))
+    }
+
+    @Test
+    fun `dayIndexRemap obsluguje przestawienie dni`() {
+        assertEquals(mapOf(0 to 1, 1 to 0), dayIndexRemap(listOf(1, 0)))
+    }
+
+    // ---------- dayIdentityChanged ----------
+
+    @Test
+    fun `dayIdentityChanged false gdy remap jest identity (bez zmian albo tylko dodanie dnia)`() {
+        assertFalse(dayIdentityChanged(mapOf(0 to 0, 1 to 1), baseDayCount = 2))
+    }
+
+    @Test
+    fun `dayIdentityChanged true po usunieciu srodkowego dnia`() {
+        val remap = dayIndexRemap(listOf(0, 2)) // Pull (index 1) usuniety z 3-dniowego planu
+        assertTrue(dayIdentityChanged(remap, baseDayCount = 3))
+    }
+
+    @Test
+    fun `dayIdentityChanged true po usunieciu ostatniego dnia`() {
+        val remap = dayIndexRemap(listOf(0, 1)) // ostatni (index 2) usuniety z 3-dniowego planu
+        assertTrue(dayIdentityChanged(remap, baseDayCount = 3))
+    }
+
+    @Test
+    fun `dayIdentityChanged false gdy zmiana to WYLACZNIE dodanie nowego dnia`() {
+        val remap = dayIndexRemap(listOf(0, 1, null)) // 2 stare dni nietkniete + nowy na koncu
+        assertFalse(dayIdentityChanged(remap, baseDayCount = 2))
+    }
+
+    @Test
+    fun `dayIdentityChanged true po przestawieniu dni`() {
+        val remap = dayIndexRemap(listOf(1, 0))
+        assertTrue(dayIdentityChanged(remap, baseDayCount = 2))
+    }
+
+    @Test
+    fun `dayIdentityChanged false dla calkiem nowego planu (baseDayCount 0)`() {
+        assertFalse(dayIdentityChanged(emptyMap(), baseDayCount = 0))
     }
 }

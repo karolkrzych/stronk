@@ -265,6 +265,19 @@ fun weekdayAssignmentsToIso(assignments: Map<DayOfWeek, Int>): Map<Int, Int> =
     assignments.entries.associate { (dayOfWeek, dayIndex) -> dayOfWeek.value to dayIndex }
 
 /**
+ * Przemapowanie wzorca dnia tygodnia ([assignments], dzień tygodnia → indeks
+ * dnia planu) po edycji STRUKTURY dni w edytorze planu
+ * ([com.stronk.ui.plans.PlanEditorViewModel.save]): [remap] to stary indeks
+ * dnia → nowy (z `PlanEditorSave.dayIndexRemap`, zbudowany ze śladu tożsamości
+ * dni draftu). Przypisania wskazujące dzień USUNIĘTY (brak klucza w [remap])
+ * wypadają — user skasował ten dzień w edytorze, więc nie ma już czego
+ * przypisywać. Dzień PRZESTAWIONY dostaje swój nowy indeks; dzień
+ * NIETKNIĘTY (identity remap) zostaje bez zmian.
+ */
+fun remapWeekdayAssignments(assignments: Map<DayOfWeek, Int>, remap: Map<Int, Int>): Map<DayOfWeek, Int> =
+    assignments.mapNotNull { (dayOfWeek, oldDayIndex) -> remap[oldDayIndex]?.let { dayOfWeek to it } }.toMap()
+
+/**
  * Wzorzec bazowy dla wybranego planu w [AssignPlanDialog] — punkt odniesienia
  * do prefillu chipów ORAZ do detekcji zmian ([isWeekPlanDirty]). Zapisany
  * wzorzec planu ([savedAssignments], już po [weekdayAssignmentsFromIso])
@@ -373,6 +386,27 @@ fun blockReplanWeeks(
     val weeksToHorizon = ((daysToHorizon + ScheduleConstants.DAYS_IN_WEEK - 1) / ScheduleConstants.DAYS_IN_WEEK).toInt()
     return maxOf(minWeeks, weeksToHorizon)
 }
+
+/**
+ * Horyzont materializacji (w tygodniach od daty zapisu) przy zapisie edytora
+ * planu ([com.stronk.ui.plans.PlanEditorViewModel.save]) — WEJŚCIE do
+ * [planReplacement], celowo INNE niż [blockReplanWeeks] użyty w dialogu
+ * planowania tygodnia.
+ *
+ * [blockReplanWeeks] nigdy nie SKRACA horyzontu, który plan już miał — słuszne
+ * w dialogu, gdzie user zmienia tylko przypisania dni, nie samą długość bloku.
+ * Zapis edytora jest inny: gdy user właśnie ZMIENIA `Plan.blockLengthWeeks`,
+ * ta nowa wartość ma być autorytatywna — skrócenie bloku MUSI realnie uciąć
+ * nadmiarowe wpisy poza nowym horyzontem (gate: blok 6→3 tyg. kończy wpisy na
+ * 3 tyg.), a nie zostawić stary, dłuższy horyzont.
+ *
+ * [fullBlockWeeks] to już przeliczona pełna długość bloku
+ * (`ProgressionEngine.fullBlockWeeks` na `Plan.blockLengthWeeks`) — `null` =
+ * plan bez bloku, dostaje stałe [ScheduleConstants.GENERATION_WEEKS] jak przy
+ * pierwszym przypisaniu planu bez bloku (rolling generation dociągnie resztę
+ * samo, patrz [needsRollingExtension]).
+ */
+fun saveReplanWeeks(fullBlockWeeks: Int?): Int = fullBlockWeeks ?: ScheduleConstants.GENERATION_WEEKS
 
 /**
  * Przeplanowanie [selectedPlanId]: WSZYSTKIE jego przyszłe (`date >=

@@ -851,4 +851,66 @@ class WeekPlannerTest {
     fun `isEligibleForRollingExtension false dla zarchiwizowanego planu Z blokiem`() {
         assertFalse(isEligibleForRollingExtension(archived = true, blockLengthWeeks = 6))
     }
+
+    // ---------- remapWeekdayAssignments (zapis edytora planu) ----------
+
+    @Test
+    fun `remapWeekdayAssignments przesuwa indeksy po usunieciu srodkowego dnia`() {
+        // Push/Pull/Legs (0/1/2), Pull usuniety - remap z PlanEditorSave.dayIndexRemap: {0 to 0, 2 to 1}.
+        val pattern = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 1, DayOfWeek.FRIDAY to 2)
+        val remap = mapOf(0 to 0, 2 to 1)
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.FRIDAY to 1),
+            remapWeekdayAssignments(pattern, remap),
+        )
+    }
+
+    @Test
+    fun `remapWeekdayAssignments usuwa przypisania wskazujace usuniety ostatni dzien`() {
+        val pattern = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 1)
+        val remap = mapOf(0 to 0) // dzien 1 (ostatni) usuniety, brak wpisu w remap
+        assertEquals(mapOf(DayOfWeek.MONDAY to 0), remapWeekdayAssignments(pattern, remap))
+    }
+
+    @Test
+    fun `remapWeekdayAssignments identity remap po dodaniu dnia nie zmienia niczego`() {
+        val pattern = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.FRIDAY to 1)
+        val remap = mapOf(0 to 0, 1 to 1) // nowy dzien na koncu nie ma starego indeksu
+        assertEquals(pattern, remapWeekdayAssignments(pattern, remap))
+    }
+
+    @Test
+    fun `remapWeekdayAssignments obsluguje przestawienie dni`() {
+        val pattern = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.FRIDAY to 1)
+        val remap = mapOf(0 to 1, 1 to 0) // dni zamienione miejscami
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 1, DayOfWeek.FRIDAY to 0),
+            remapWeekdayAssignments(pattern, remap),
+        )
+    }
+
+    @Test
+    fun `remapWeekdayAssignments pustego wzorca daje pusty wynik`() {
+        assertEquals(emptyMap<DayOfWeek, Int>(), remapWeekdayAssignments(emptyMap(), mapOf(0 to 0)))
+    }
+
+    // ---------- saveReplanWeeks (horyzont przy zapisie edytora planu) ----------
+
+    @Test
+    fun `saveReplanWeeks po skroceniu bloku zwraca dokladnie nowa dlugosc, nie stara`() {
+        // W odroznieniu od blockReplanWeeks (dialog planowania) zapis edytora
+        // MA PRAWO skracac horyzont - funkcja jest bezstanowa, nie zna "starego"
+        // horyzontu, wiec nie moze go przypadkiem zachowac.
+        assertEquals(3, saveReplanWeeks(fullBlockWeeks = 3))
+    }
+
+    @Test
+    fun `saveReplanWeeks po wydluzeniu bloku zwraca nowa, wieksza dlugosc`() {
+        assertEquals(10, saveReplanWeeks(fullBlockWeeks = 10))
+    }
+
+    @Test
+    fun `saveReplanWeeks dla planu bez bloku (blok wylaczony) daje stale okno generacji`() {
+        assertEquals(ScheduleConstants.GENERATION_WEEKS, saveReplanWeeks(fullBlockWeeks = null))
+    }
 }

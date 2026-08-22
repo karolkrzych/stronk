@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,6 +35,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -117,53 +120,71 @@ fun PlanEditorScreen(
     val viewModel: PlanEditorViewModel =
         viewModel(factory = PlanEditorViewModel.factory(planId))
     val state by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
+    // Zapis zleca powrót — gdy w planie z harmonogramem przybył nowy dzień,
+    // NAJPIERW pokazujemy Snackbar (StronkNoteCard w slocie snackbara, ten sam
+    // wzorzec co assignmentMessage w ScheduleScreen), DOPIERO POTEM onBack —
+    // inaczej ekran znikałby, zanim komunikat zdążyłby się w ogóle pokazać.
     LaunchedEffect(state.saved) {
-        if (state.saved) onBack()
+        if (state.saved) {
+            state.newDayMessage?.let { snackbarHostState.showSnackbar(it) }
+            onBack()
+        }
     }
 
-    val wizard = state.wizard
-    when {
-        state.loading -> LoadingScreen(onBack)
+    Box(Modifier.fillMaxSize()) {
+        val wizard = state.wizard
+        when {
+            state.loading -> LoadingScreen(onBack)
 
-        wizard != null -> {
-            // Wstecz z pierwszego kroku = wyjście z kreatora (nic nie powstało).
-            BackHandler(onBack = { if (wizard.stepIndex == 0) onBack() else viewModel.wizardBack() })
-            PlanWizard(wizard = wizard, viewModel = viewModel, onBack = onBack)
-        }
+            wizard != null -> {
+                // Wstecz z pierwszego kroku = wyjście z kreatora (nic nie powstało).
+                BackHandler(onBack = { if (wizard.stepIndex == 0) onBack() else viewModel.wizardBack() })
+                PlanWizard(wizard = wizard, viewModel = viewModel, onBack = onBack)
+            }
 
-        state.pickerDayIndex != null -> {
-            BackHandler(onBack = viewModel::closePicker)
-            ExercisePicker(
-                exercises = state.allExercises,
-                profile = state.profile,
-                onPick = viewModel::pickExercise,
-                onShowSubstitutes = viewModel::openSubstitutesForPicker,
-                onClose = viewModel::closePicker,
+            state.pickerDayIndex != null -> {
+                BackHandler(onBack = viewModel::closePicker)
+                ExercisePicker(
+                    exercises = state.allExercises,
+                    profile = state.profile,
+                    onPick = viewModel::pickExercise,
+                    onShowSubstitutes = viewModel::openSubstitutesForPicker,
+                    onClose = viewModel::closePicker,
+                )
+            }
+
+            else -> EditorContent(
+                state = state,
+                viewModel = viewModel,
+                onBack = onBack,
+                onExerciseClick = onExerciseClick,
             )
         }
 
-        else -> EditorContent(
-            state = state,
-            viewModel = viewModel,
-            onBack = onBack,
-            onExerciseClick = onExerciseClick,
-        )
-    }
+        state.substitutes?.let { substitutes ->
+            SubstitutesSheet(
+                substitutes = substitutes,
+                onChoose = viewModel::chooseSubstitute,
+                onDismiss = viewModel::closeSubstitutes,
+            )
+        }
+        state.suggestions?.let { suggestions ->
+            SuggestionsSheet(
+                suggestions = suggestions,
+                onChoose = viewModel::pickSuggestion,
+                onDismiss = viewModel::closeSuggestions,
+            )
+        }
 
-    state.substitutes?.let { substitutes ->
-        SubstitutesSheet(
-            substitutes = substitutes,
-            onChoose = viewModel::chooseSubstitute,
-            onDismiss = viewModel::closeSubstitutes,
-        )
-    }
-    state.suggestions?.let { suggestions ->
-        SuggestionsSheet(
-            suggestions = suggestions,
-            onChoose = viewModel::pickSuggestion,
-            onDismiss = viewModel::closeSuggestions,
-        )
+        SnackbarHost(snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter)) { data ->
+            StronkNoteCard(
+                text = data.visuals.message,
+                icon = StronkIcons.info,
+                modifier = Modifier.padding(StronkSpacing.screen),
+            )
+        }
     }
 }
 
@@ -213,6 +234,8 @@ private fun EditorContent(
 ) {
     // Edytowane ćwiczenie: (indeks dnia, indeks ćwiczenia); null = dialog zamknięty.
     var editTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    // Dzień czekający na potwierdzenie usunięcia; null = dialog zamknięty.
+    var removeDayTarget by remember { mutableStateOf<Int?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -256,7 +279,7 @@ private fun EditorContent(
                 DayCard(
                     day = day,
                     onRename = { viewModel.renameDay(dayIndex, it) },
-                    onRemoveDay = { viewModel.removeDay(dayIndex) },
+                    onRemoveDay = { removeDayTarget = dayIndex },
                     onExerciseClick = { exerciseIndex -> editTarget = dayIndex to exerciseIndex },
                     onReorder = { from, to -> viewModel.reorderExercise(dayIndex, from, to) },
                     onSubstitutes = { exerciseIndex ->
@@ -308,6 +331,58 @@ private fun EditorContent(
             )
         }
     }
+
+    removeDayTarget?.let { dayIndex ->
+        val day = state.days.getOrNull(dayIndex)
+        if (day != null) {
+            RemoveDayConfirmDialog(
+                // Ostrzeżenie o kalendarzu ma sens tylko gdy TEN dzień już
+                // istniał w zapisanym planie, który MA wzorzec — nowy,
+                // nigdy niezapisany dzień (albo plan bez harmonogramu) nie
+                // ma czego stracić z kalendarza.
+                hasScheduleImpact = state.planHasSchedule && day.existsInSavedPlan,
+                onConfirm = {
+                    viewModel.removeDay(dayIndex)
+                    removeDayTarget = null
+                },
+                onDismiss = { removeDayTarget = null },
+            )
+        }
+    }
+}
+
+/** Potwierdzenie usunięcia dnia (wzorzec [AlertDialog] Stronk — patrz `ScheduleDialogs.AssignPlanDialog`). */
+@Composable
+private fun RemoveDayConfirmDialog(
+    hasScheduleImpact: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = StronkRadius.cardShape,
+        containerColor = StronkTheme.colors.surfaceCard,
+        title = {
+            Text(
+                text = PlanTexts.REMOVE_DAY_TITLE,
+                style = StronkTextStyles.h1Small,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        text = {
+            Text(
+                text = PlanTexts.removeDayMessage(hasScheduleImpact),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        confirmButton = {
+            StronkTextAction(text = PlanTexts.REMOVE_DAY_CONFIRM, tone = StronkTone.ACCENT, onClick = onConfirm)
+        },
+        dismissButton = {
+            StronkTextAction(text = "Anuluj", onClick = onDismiss)
+        },
+    )
 }
 
 // ---------- karta dnia ----------
