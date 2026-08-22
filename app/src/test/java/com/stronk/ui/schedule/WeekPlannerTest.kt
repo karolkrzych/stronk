@@ -260,6 +260,27 @@ class WeekPlannerTest {
         )
     }
 
+    @Test
+    fun `deriveWeekAssignments odfiltrowuje dayIndex poza aktualna liczba dni planu`() {
+        // Plan skurczony do 2 dni (indeksy 0,1) PO wygenerowaniu tych wpisow -
+        // wpis na dzien 2 jest martwy i nie ma prawa wejsc do wzorca.
+        val entries = listOf(
+            PlannedSlot(monday, 0),
+            PlannedSlot(monday.plusDays(2), 1),
+            PlannedSlot(monday.plusDays(4), 2),
+        )
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 1),
+            deriveWeekAssignments(entries, dayCount = 2),
+        )
+    }
+
+    @Test
+    fun `deriveWeekAssignments bez podanego dayCount nie filtruje niczego`() {
+        val entries = listOf(PlannedSlot(monday, 5))
+        assertEquals(mapOf(DayOfWeek.MONDAY to 5), deriveWeekAssignments(entries))
+    }
+
     // ---------- conflictingOtherPlanEntry ----------
 
     @Test
@@ -517,6 +538,27 @@ class WeekPlannerTest {
     @Test
     fun `weekPlanBaseline bez zapisanego wzorca i bez wpisow to pusty wzorzec`() {
         assertEquals(emptyMap<DayOfWeek, Int>(), weekPlanBaseline(null, emptyList()))
+    }
+
+    @Test
+    fun `weekPlanBaseline odfiltrowuje zapisany wzorzec z bazy poza liczba dni planu`() {
+        // Plan mial kiedys 3 dni, skurczony do 2 - zapisany w Plan.weekdayAssignments
+        // wzorzec z dnia o indeksie 2 jest martwy (bug 1 przed poprawka pozwalal
+        // na taki rozjazd, bo edytor gubil to pole przy kazdym zapisie).
+        val saved = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 1, DayOfWeek.FRIDAY to 2)
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 1),
+            weekPlanBaseline(saved, emptyList(), dayCount = 2),
+        )
+    }
+
+    @Test
+    fun `weekPlanBaseline przekazuje dayCount do fallbacku wyprowadzonego z wpisow`() {
+        val entries = listOf(PlannedSlot(monday, 0), PlannedSlot(monday.plusDays(2), 2))
+        assertEquals(
+            mapOf(DayOfWeek.MONDAY to 0),
+            weekPlanBaseline(null, entries, dayCount = 2),
+        )
     }
 
     // ---------- isWeekPlanDirty ----------

@@ -410,7 +410,10 @@ class ScheduleViewModel(
 
             val assignments = plan.weekdayAssignments
                 ?.let { weekdayAssignmentsFromIso(it) }
-                ?: deriveWeekAssignments(slots)
+                // Wzorzec z bazy mógł powstać PRZED usunięciem dni z planu (edytor
+                // planu) — odfiltrowujemy martwe indeksy zamiast kopiować je dalej.
+                ?.filterValues { it < plan.days.size }
+                ?: deriveWeekAssignments(slots, plan.days.size)
             if (assignments.isEmpty()) return@forEach
             rollingExtensionCursor[planId] = lastPlannedDate
 

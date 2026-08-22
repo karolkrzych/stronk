@@ -153,7 +153,11 @@ fun AssignPlanDialog(
     // Baseline = punkt odniesienia do prefillu I do detekcji zmian (CTA).
     // Zamrożony na zmianę planu (nie dryfuje przy tle odświeżającym się stanie).
     val baseline = remember(selectedPlanId) {
-        weekPlanBaseline(selectedPlan?.weekdayAssignments, plannedSlotsByPlan[selectedPlanId].orEmpty())
+        weekPlanBaseline(
+            selectedPlan?.weekdayAssignments,
+            plannedSlotsByPlan[selectedPlanId].orEmpty(),
+            selectedPlan?.dayNames?.size ?: 0,
+        )
     }
     var assignments by remember(selectedPlanId) { mutableStateOf(baseline) }
     var startDate by remember { mutableStateOf(LocalDate.now()) }

@@ -231,12 +231,21 @@ fun archivedPlanDeadEntryIds(refs: List<ScheduleEntryRef>, today: LocalDate = Lo
  * Bierzemy ostatni tydzień (najpóźniejszy poniedziałek) z wpisów w [entries] —
  * generacja produkuje identyczny wzorzec dnia tygodnia w każdym tygodniu, więc
  * jeden tydzień wystarczy jako źródło prawdy. Puste [entries] dają pustą mapę.
+ *
+ * [dayCount] odfiltrowuje wpisy z `dayIndex` poza aktualną liczbą dni planu —
+ * plan mógł stracić dni PO wygenerowaniu tych wpisów (edycja w edytorze planu
+ * usuwa dzień, wpisy w `schedule` zostają ze starym indeksem). Bez tego filtra
+ * martwy indeks kopiowałby się w każdy kolejny tydzień rolling generation
+ * ([ScheduleViewModel.maybeExtendContinuousPlans]). Domyślnie bez ograniczenia
+ * — wołający, których to nie dotyczy, dostają dotychczasowe zachowanie.
  */
-fun deriveWeekAssignments(entries: List<PlannedSlot>): Map<DayOfWeek, Int> {
+fun deriveWeekAssignments(entries: List<PlannedSlot>, dayCount: Int = Int.MAX_VALUE): Map<DayOfWeek, Int> {
     if (entries.isEmpty()) return emptyMap()
     val byWeek = entries.groupBy { weekStartOf(it.date) }
     val lastWeekStart = byWeek.keys.max()
-    return byWeek.getValue(lastWeekStart).associate { it.date.dayOfWeek to it.dayIndex }
+    return byWeek.getValue(lastWeekStart)
+        .filter { it.dayIndex < dayCount }
+        .associate { it.date.dayOfWeek to it.dayIndex }
 }
 
 // ---------- wzorzec tygodnia trwały w planie (Plan.weekdayAssignments) ----------
@@ -264,11 +273,18 @@ fun weekdayAssignmentsToIso(assignments: Map<DayOfWeek, Int>): Map<Int, Int> =
  * dokument sprzed tego pola albo plan jeszcze nigdy nie przypisany), spadamy
  * na wzorzec wyprowadzony z istniejących wpisów PLANNED ([deriveWeekAssignments]);
  * bez wpisów w ogóle — pusty wzorzec.
+ *
+ * [dayCount] odfiltrowuje przypisania (zarówno [savedAssignments], jak i
+ * fallback z [deriveWeekAssignments]) z `dayIndex` poza aktualną liczbą dni
+ * planu — [savedAssignments] to [Plan.weekdayAssignments] z bazy, który mógł
+ * powstać PRZED usunięciem dni z planu (patrz [deriveWeekAssignments]).
  */
 fun weekPlanBaseline(
     savedAssignments: Map<DayOfWeek, Int>?,
     existingEntries: List<PlannedSlot>,
-): Map<DayOfWeek, Int> = savedAssignments ?: deriveWeekAssignments(existingEntries)
+    dayCount: Int = Int.MAX_VALUE,
+): Map<DayOfWeek, Int> =
+    savedAssignments?.filterValues { it < dayCount } ?: deriveWeekAssignments(existingEntries, dayCount)
 
 /**
  * Czy CTA „Zapisz" w [AssignPlanDialog] ma być aktywne: [assignments] różnią

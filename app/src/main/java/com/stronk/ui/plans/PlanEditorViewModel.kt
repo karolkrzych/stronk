@@ -639,19 +639,20 @@ class PlanEditorViewModel(
 
     // ---------- zapis ----------
 
-    /** Buduje dokument planu i zapisuje w całości (fire-and-forget, ADR-002). */
+    /**
+     * Buduje dokument planu ([buildPlanForSave] — czysta funkcja, patrz jej KDoc
+     * o polach nieedytowanych w tym ekranie) i zapisuje w całości
+     * (fire-and-forget, ADR-002).
+     */
     fun save() {
         val d = draft.value ?: return
         if (!(d.started && d.name.isNotBlank() && d.days.any { it.exercises.isNotEmpty() })) return
-        val plan = Plan(
-            id = d.base?.id ?: planRepository.newId(),
-            name = d.name.trim(),
-            createdAt = d.base?.createdAt ?: System.currentTimeMillis(),
-            archived = d.base?.archived ?: false,
+        val plan = buildPlanForSave(
+            base = d.base,
+            name = d.name,
             blockLengthWeeks = d.blockLengthWeeks,
-            days = d.days.mapIndexed { index, day ->
-                day.copy(name = day.name.trim().ifEmpty { dayName(index) })
-            },
+            days = d.days,
+            newId = planRepository::newId,
         )
         planRepository.save(plan)
         saved.value = true
@@ -750,10 +751,6 @@ class PlanEditorViewModel(
     }
 
     companion object {
-        /** Domyślna nazwa dnia: "Dzień A", "Dzień B", … */
-        private fun dayName(index: Int): String =
-            if (index < 26) "Dzień ${'A' + index}" else "Dzień ${index + 1}"
-
         /** Fabryka z parametrem planId — ręczna kompozycja z [StronkApplication]. */
         fun factory(planId: String?): ViewModelProvider.Factory = viewModelFactory {
             initializer {
