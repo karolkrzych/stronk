@@ -69,6 +69,8 @@ data class SubstitutesUi(
     val matches: List<SubstituteMatch>,
     val dayIndex: Int,
     val replaceIndex: Int?,
+    /** Profil w momencie otwarcia arkusza — pod notkę „Twoje stawy" w podglądzie ćwiczenia. */
+    val profile: ProfileDetails,
 )
 
 /**
@@ -550,6 +552,7 @@ class PlanEditorViewModel(
                 matches = findSubstitutes(exercise, all, profile.value, limit = SubstituteScoring.NO_LIMIT),
                 dayIndex = dayIndex,
                 replaceIndex = exerciseIndex,
+                profile = profile.value,
             ),
         )
     }
@@ -564,6 +567,7 @@ class PlanEditorViewModel(
                 matches = findSubstitutes(exercise, all, profile.value, limit = SubstituteScoring.NO_LIMIT),
                 dayIndex = dayIndex,
                 replaceIndex = null,
+                profile = profile.value,
             ),
         )
     }
