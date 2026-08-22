@@ -101,8 +101,12 @@ internal object ScheduleTexts {
             "Wpisy na ${ScheduleConstants.GENERATION_WEEKS} tygodnie; zajęte dni pomijamy."
         }
 
-    /** Po nieudanym potwierdzeniu: cały wybrany okres zajmuje już TEN SAM plan. */
-    const val PERIOD_ALREADY_PLANNED = "Ten okres jest już zaplanowany."
+    /**
+     * Po zatwierdzeniu, gdy żaden nowy wpis nie powstał — wszystkie wybrane
+     * dni pokrywają się z ukończonymi treningami albo innym planem. Stare
+     * wpisy w takim wypadku ZOSTAJĄ nietknięte (patrz [ScheduleViewModel.onAssignPlan]).
+     */
+    const val NOTHING_TO_PLAN = "Nie udało się zaplanować — wybrane dni są już zajęte."
 
     /** Notka w dialogu, gdy okres koliduje z INNYM planem — blokuje CTA. */
     fun periodConflictNote(otherPlanName: String): String =

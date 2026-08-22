@@ -218,6 +218,7 @@ fun ScheduleScreen(
         AssignPlanDialog(
             plans = state.planOptions,
             occupiedEntries = state.occupiedEntries,
+            plannedSlotsByPlan = state.plannedSlotsByPlan,
             onConfirm = { planId, assignments, startDate ->
                 viewModel.onAssignPlan(planId, assignments, startDate)
                 showAssignDialog = false

@@ -204,6 +204,59 @@ fun deriveWeekAssignments(entries: List<PlannedSlot>): Map<DayOfWeek, Int> {
     return byWeek.getValue(lastWeekStart).associate { it.date.dayOfWeek to it.dayIndex }
 }
 
+// ---------- przeplanowanie wybranego planu ----------
+
+/**
+ * Rodzaj wpisu istotny dla przeplanowania: [PLANNED] wybranego planu jest
+ * kasowany i zastępowany, [DONE] (dowolnego planu, także tego samego —
+ * historia treningu) blokuje datę, [OTHER] (SKIPPED/MOVED) jest neutralny —
+ * nie blokuje i nie jest kasowany (obecne traktowanie occupied, zachowane).
+ */
+enum class ScheduleEntryKind { PLANNED, DONE, OTHER }
+
+/**
+ * Minimalny widok wpisu harmonogramu pod [planReplacement] — zero zależności
+ * od modelu Firestore, wzorem [PlannedSlot]/[OccupiedEntry].
+ */
+data class ScheduleEntryRef(val id: String, val date: LocalDate, val planId: String, val kind: ScheduleEntryKind)
+
+/**
+ * Wynik przeplanowania: id-ki starych wpisów PLANNED wybranego planu do
+ * skasowania + nowe sloty do zapisania w ich miejsce.
+ */
+data class ReplanResult(val idsToDelete: List<String>, val slots: List<PlannedSlot>)
+
+/**
+ * Przeplanowanie [selectedPlanId]: WSZYSTKIE jego przyszłe (`date >=
+ * [startDate]`) wpisy PLANNED lecą do kasacji — rolling generation mógł je
+ * nagenerować dalej niż jedno okno [weeks], stąd „wszystkie", nie tylko okno
+ * generacji — a w ich miejsce powstają nowe sloty wg [assignments].
+ *
+ * Nietykalne: wpisy DONE (dowolnego planu — historia treningu) i PLANNED
+ * INNEGO planu blokują datę (nowy slot tam nie powstaje), tak jak
+ * [conflictingOtherPlanEntry] blokuje CTA w dialogu. SKIPPED/MOVED
+ * ([ScheduleEntryKind.OTHER]) nie blokują i nie są kasowane. Stare wpisy
+ * PLANNED TEGO SAMEGO planu nie blokują nowych slotów — i tak trafiają do
+ * [ReplanResult.idsToDelete].
+ */
+fun planReplacement(
+    currentEntries: List<ScheduleEntryRef>,
+    selectedPlanId: String,
+    assignments: Map<DayOfWeek, Int>,
+    startDate: LocalDate,
+    weeks: Int = ScheduleConstants.GENERATION_WEEKS,
+): ReplanResult {
+    val idsToDelete = currentEntries
+        .filter { it.planId == selectedPlanId && it.kind == ScheduleEntryKind.PLANNED && it.date >= startDate }
+        .map { it.id }
+    val occupied = currentEntries
+        .filter { it.kind == ScheduleEntryKind.DONE || (it.kind == ScheduleEntryKind.PLANNED && it.planId != selectedPlanId) }
+        .map { it.date }
+        .toSet()
+    val slots = generatePlannedSlots(assignments, startDate, weeks, occupied)
+    return ReplanResult(idsToDelete, slots)
+}
+
 // ---------- walidacja kolizji planów ----------
 
 /**

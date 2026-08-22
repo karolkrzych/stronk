@@ -127,6 +127,12 @@ data class ScheduleUiState(
     val scheduleEmpty: Boolean = true,
     /** Zajęte dni (PLANNED/DONE) ze wszystkich planów — walidacja kolizji w [AssignPlanDialog]. */
     val occupiedEntries: List<OccupiedEntry> = emptyList(),
+    /**
+     * Aktualny wzorzec wpisów PLANNED per plan — prefill dni w [AssignPlanDialog]
+     * ([deriveWeekAssignments] na tym daje wzorzec, jaki user by dostał, gdyby
+     * nic nie zmienił).
+     */
+    val plannedSlotsByPlan: Map<String, List<PlannedSlot>> = emptyMap(),
 )
 
 class ScheduleViewModel(
@@ -160,6 +166,24 @@ class ScheduleViewModel(
      * realnej potrzeby przedłużenia, gdy `lastPlannedDate` ruszy dalej.
      */
     private val rollingExtensionCursor = mutableMapOf<String, LocalDate>()
+
+    /**
+     * Guard przeciwko race'owi z rolling generation: [onAssignPlan] przy
+     * przeplanowaniu kasuje stare wpisy PLANNED i zapisuje nowe w JEDNEJ
+     * paczce ([ScheduleRepository.replacePlannedEntries], atomowej też w
+     * lokalnym cache'u). Ale między ZLECENIEM paczki a jej odbiciem w
+     * [latestEntries] (kolejna emisja `uiState`) [maybeExtendContinuousPlans]
+     * mogłaby się odpalić na wciąż STARYM stanie i dogenerować kolejne wpisy
+     * wg STAREGO wzorca — nasz `delete` (policzony wcześniej) o nich nie wie,
+     * więc zostałyby jako śmieci poza oknem nowego wzorca.
+     *
+     * planId → id-ki starych wpisów, które właśnie kasujemy. Dopóki
+     * którykolwiek z nich wciąż widnieje w harmonogramie, rolling dla tego
+     * planu jest wstrzymana; guard czyści się sam (patrz góra
+     * [maybeExtendContinuousPlans]), gdy żaden z tych id już nie występuje —
+     * paczka jest atomowa, więc „stare zniknęły" ⇔ „nowe już są".
+     */
+    private val pendingReplan = mutableMapOf<String, Set<String>>()
 
     val uiState: StateFlow<ScheduleUiState> = combine(
         scheduleRepository.observeSchedule(),
@@ -233,36 +257,57 @@ class ScheduleViewModel(
     }
 
     /**
-     * Przypisanie planu do tygodnia: generuje wpisy PLANNED na
-     * [ScheduleConstants.GENERATION_WEEKS] tygodni od [startDate].
-     * Dni z już aktywnym wpisem (PLANNED/DONE, dowolnego planu) są pomijane.
+     * Przypisanie planu do tygodnia = PRZEPLANOWANIE: wpisy PLANNED wybranego
+     * planu od [startDate] w przód (WSZYSTKIE, nie tylko okno generacji —
+     * rolling mógł nagenerować dalej) są kasowane i zastępowane nowymi
+     * slotami wg [assignments] na [ScheduleConstants.GENERATION_WEEKS]
+     * tygodni (plan bez bloku dociągnie resztę sam przez rolling generation,
+     * które od teraz czyta NOWY wzorzec — [deriveWeekAssignments] bierze go z
+     * realnych wpisów, nie z tego wywołania).
      *
-     * Kolizja z INNYM planem w oknie blokuje CTA już w [AssignPlanDialog] (patrz
-     * [conflictingOtherPlanEntry]) — więc jeśli mimo to nic się nie wygenerowało,
-     * to dlatego, że cały wybrany okres zajmuje już TEN SAM plan; user dostaje o
-     * tym komunikat zamiast cichej no-op.
+     * Nietykalne: wpisy DONE (historia treningu, dowolnego planu) i PLANNED
+     * INNEGO planu — patrz [planReplacement]. Kasowanie + zapis idą w JEDNEJ
+     * paczce ([ScheduleRepository.replacePlannedEntries]); [pendingReplan]
+     * dodatkowo chroni przed rolling generation odpalającym się na starym
+     * stanie między zleceniem paczki a jej odbiciem w [latestEntries].
+     *
+     * Jeśli po odfiltrowaniu nietykalnych dat nie powstał ŻADEN nowy slot —
+     * nic się nie zapisuje (stare wpisy też zostają nietknięte), Snackbar
+     * tłumaczy czemu ([ScheduleTexts.NOTHING_TO_PLAN]).
      */
     fun onAssignPlan(planId: String, assignments: Map<DayOfWeek, Int>, startDate: LocalDate) {
         if (assignments.isEmpty()) return
-        val occupied = latestEntries
-            .filter { it.status == ScheduleStatus.PLANNED || it.status == ScheduleStatus.DONE }
-            .mapNotNull { entry -> parseDate(entry.date) }
-            .toSet()
-        val slots = generatePlannedSlots(assignments, startDate, occupiedDates = occupied)
-        if (slots.isEmpty()) {
-            _assignmentMessage.value = ScheduleTexts.PERIOD_ALREADY_PLANNED
+        val currentEntries = latestEntries.mapNotNull { entry ->
+            parseDate(entry.date)?.let { date ->
+                ScheduleEntryRef(
+                    id = entry.id,
+                    date = date,
+                    planId = entry.planId,
+                    kind = when (entry.status) {
+                        ScheduleStatus.PLANNED -> ScheduleEntryKind.PLANNED
+                        ScheduleStatus.DONE -> ScheduleEntryKind.DONE
+                        else -> ScheduleEntryKind.OTHER
+                    },
+                )
+            }
+        }
+        val replan = planReplacement(currentEntries, planId, assignments, startDate)
+        if (replan.slots.isEmpty()) {
+            _assignmentMessage.value = ScheduleTexts.NOTHING_TO_PLAN
             return
         }
-        slots.forEach { slot ->
-            scheduleRepository.save(
-                ScheduleEntry(
-                    id = scheduleRepository.newId(),
-                    date = slot.date.toString(),
-                    planId = planId,
-                    dayIndex = slot.dayIndex,
-                ),
+        val newEntries = replan.slots.map { slot ->
+            ScheduleEntry(
+                id = scheduleRepository.newId(),
+                date = slot.date.toString(),
+                planId = planId,
+                dayIndex = slot.dayIndex,
             )
         }
+        if (replan.idsToDelete.isNotEmpty()) {
+            pendingReplan[planId] = replan.idsToDelete.toSet()
+        }
+        scheduleRepository.replacePlannedEntries(deleteIds = replan.idsToDelete, newEntries = newEntries)
         selectedDate.value = startDate
     }
 
@@ -283,16 +328,23 @@ class ScheduleViewModel(
      * żyje w [WeekPlanner]; ta funkcja tylko orkiestruje odczyt/zapis.
      */
     private fun maybeExtendContinuousPlans(schedule: List<ScheduleEntry>, plans: List<Plan>) {
+        // Guard [pendingReplan] czyści się sam: paczka replanu jest atomowa,
+        // więc gdy żaden ze skasowanych id już nie występuje w schedule —
+        // nowe wpisy na pewno już tam są (patrz KDoc pola).
+        val scheduleIds = schedule.mapTo(HashSet()) { it.id }
+        pendingReplan.keys.toList().forEach { planId ->
+            if (pendingReplan.getValue(planId).none { it in scheduleIds }) {
+                pendingReplan.remove(planId)
+            }
+        }
+
         val today = LocalDate.now()
         val plansById = plans.associateBy { it.id }
-        val plannedSlotsByPlan = schedule
-            .filter { it.status == ScheduleStatus.PLANNED }
-            .mapNotNull { entry -> parseDate(entry.date)?.let { date -> entry.planId to PlannedSlot(date, entry.dayIndex) } }
-            .groupBy({ it.first }, { it.second })
+        val plannedByPlan = plannedSlotsByPlan(schedule)
 
-        plannedSlotsByPlan.forEach { (planId, slots) ->
+        plannedByPlan.forEach { (planId, slots) ->
             val plan = plansById[planId] ?: return@forEach
-            if (plan.archived || plan.blockLengthWeeks != null) return@forEach
+            if (plan.archived || plan.blockLengthWeeks != null || planId in pendingReplan) return@forEach
 
             val lastPlannedDate = slots.maxOf { it.date }
             // Guard: ten sam stan (planId, ostatnia data) już przetworzony w tym cyklu.
@@ -433,6 +485,7 @@ class ScheduleViewModel(
                         )
                     }
                 },
+            plannedSlotsByPlan = plannedSlotsByPlan(schedule),
         )
     }
 
@@ -513,6 +566,17 @@ class ScheduleViewModel(
     }
 
     private fun parseDate(raw: String): LocalDate? = runCatching { LocalDate.parse(raw) }.getOrNull()
+
+    /**
+     * Wpisy PLANNED pogrupowane po planId jako [PlannedSlot] — wspólne dla
+     * rolling generation ([maybeExtendContinuousPlans]) i prefillu dialogu
+     * przypisania ([ScheduleUiState.plannedSlotsByPlan]).
+     */
+    private fun plannedSlotsByPlan(schedule: List<ScheduleEntry>): Map<String, List<PlannedSlot>> =
+        schedule
+            .filter { it.status == ScheduleStatus.PLANNED }
+            .mapNotNull { entry -> parseDate(entry.date)?.let { date -> entry.planId to PlannedSlot(date, entry.dayIndex) } }
+            .groupBy({ it.first }, { it.second })
 
     companion object {
         /** Ręczna kompozycja: zależności z [StronkApplication]. */

@@ -115,14 +115,22 @@ fun AssignPlanDialog(
     plans: List<PlanOption>,
     /** Zajęte dni ze wszystkich planów — wejście do walidacji kolizji okna. */
     occupiedEntries: List<OccupiedEntry>,
+    /** Aktualny wzorzec PLANNED per plan — pod prefill (patrz niżej). */
+    plannedSlotsByPlan: Map<String, List<PlannedSlot>>,
     onConfirm: (planId: String, assignments: Map<DayOfWeek, Int>, startDate: LocalDate) -> Unit,
     onDismiss: () -> Unit,
 ) {
     // Jedyny plan od razu wybrany — najczęstszy przypadek bez zbędnego tapnięcia.
     var selectedPlanId by remember { mutableStateOf(plans.firstOrNull()?.id) }
     val selectedPlan = plans.firstOrNull { it.id == selectedPlanId }
+    // Prefill wzorcem, jaki plan MA już w harmonogramie (przeplanowanie ma
+    // pokazać status quo, nie kasować go z pamięci) — a gdy planu jeszcze nie
+    // ma w harmonogramie, spadamy na domyślne rozłożenie dni.
     var assignments by remember(selectedPlanId) {
-        mutableStateOf(defaultAssignments(selectedPlan?.dayNames?.size ?: 0))
+        val current = deriveWeekAssignments(plannedSlotsByPlan[selectedPlanId].orEmpty())
+        mutableStateOf(
+            if (current.isNotEmpty()) current else defaultAssignments(selectedPlan?.dayNames?.size ?: 0),
+        )
     }
     var startDate by remember { mutableStateOf(LocalDate.now()) }
     var showStartDatePicker by remember { mutableStateOf(false) }

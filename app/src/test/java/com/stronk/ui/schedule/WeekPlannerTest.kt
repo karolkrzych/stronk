@@ -302,4 +302,124 @@ class WeekPlannerTest {
         val conflict = conflictingOtherPlanEntry(occupied, "planA", monday, weeks = 4)
         assertEquals(OccupiedEntry(monday.plusDays(1), "planC", "Nogi"), conflict)
     }
+
+    // ---------- planReplacement ----------
+
+    @Test
+    fun `planReplacement kasuje przyszle PLANNED wybranego planu i generuje nowe sloty wg nowego wzorca`() {
+        val entries = listOf(
+            ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.PLANNED), // poniedzialek
+            ScheduleEntryRef("e2", monday.plusDays(2), "planA", ScheduleEntryKind.PLANNED), // sroda
+            ScheduleEntryRef("e3", monday.plusDays(4), "planA", ScheduleEntryKind.PLANNED), // piatek
+        )
+        val result = planReplacement(
+            currentEntries = entries,
+            selectedPlanId = "planA",
+            assignments = mapOf(DayOfWeek.TUESDAY to 0, DayOfWeek.THURSDAY to 1),
+            startDate = monday,
+            weeks = 1,
+        )
+        assertEquals(setOf("e1", "e2", "e3"), result.idsToDelete.toSet())
+        assertTrue(result.slots.isNotEmpty())
+        assertTrue(result.slots.all { it.date.dayOfWeek == DayOfWeek.TUESDAY || it.date.dayOfWeek == DayOfWeek.THURSDAY })
+    }
+
+    @Test
+    fun `planReplacement nie kasuje wpisow PLANNED sprzed startDate`() {
+        val entries = listOf(
+            ScheduleEntryRef("przeszly", monday.minusWeeks(1), "planA", ScheduleEntryKind.PLANNED),
+            ScheduleEntryRef("przyszly", monday, "planA", ScheduleEntryKind.PLANNED),
+        )
+        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 1)
+        assertEquals(listOf("przyszly"), result.idsToDelete)
+    }
+
+    @Test
+    fun `planReplacement kasuje przyszle PLANNED tego samego planu nawet daleko poza oknem generacji`() {
+        // Rolling generation mogl dogenerowac np. 12 tygodni do przodu —
+        // przeplanowanie ma to wszystko skasowac, nie tylko okno [weeks].
+        val entries = listOf(
+            ScheduleEntryRef("daleko", monday.plusWeeks(12), "planA", ScheduleEntryKind.PLANNED),
+        )
+        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 4)
+        assertEquals(listOf("daleko"), result.idsToDelete)
+    }
+
+    @Test
+    fun `planReplacement nie tyka wpisow DONE i omija ich daty przy generowaniu nowych slotow`() {
+        val entries = listOf(
+            ScheduleEntryRef("done", monday, "planA", ScheduleEntryKind.DONE), // poniedzialek zaliczony
+        )
+        val result = planReplacement(
+            currentEntries = entries,
+            selectedPlanId = "planA",
+            assignments = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 0),
+            startDate = monday,
+            weeks = 1,
+        )
+        assertTrue("DONE nie jest kasowany", result.idsToDelete.isEmpty())
+        assertTrue("data z DONE nie dostaje nowego slotu", result.slots.none { it.date == monday })
+        assertTrue("inna data z nowego wzorca dalej powstaje", result.slots.any { it.date == monday.plusDays(2) })
+    }
+
+    @Test
+    fun `planReplacement omija daty zajete przez PLANNED innego planu`() {
+        val entries = listOf(
+            ScheduleEntryRef("innyPlan", monday.plusDays(2), "planB", ScheduleEntryKind.PLANNED), // sroda
+        )
+        val result = planReplacement(
+            currentEntries = entries,
+            selectedPlanId = "planA",
+            assignments = mapOf(DayOfWeek.WEDNESDAY to 0),
+            startDate = monday,
+            weeks = 1,
+        )
+        assertTrue(result.slots.isEmpty())
+        assertTrue(result.idsToDelete.isEmpty())
+    }
+
+    @Test
+    fun `planReplacement ignoruje SKIPPED - nie blokuje nowego slotu i nie jest kasowany`() {
+        val entries = listOf(
+            ScheduleEntryRef("skipped", monday, "planA", ScheduleEntryKind.OTHER),
+        )
+        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 1)
+        assertTrue(result.idsToDelete.isEmpty())
+        assertTrue(result.slots.any { it.date == monday })
+    }
+
+    // ---------- rolling po przeplanowaniu podaza za NOWYM wzorcem ----------
+
+    @Test
+    fun `po przeplanowaniu deriveWeekAssignments z nowego harmonogramu daje nowy wzorzec, nie stary`() {
+        // Stary wzorzec: pn/sr/pt (dayIndex 0). Przeplanowanie na wt/czw (dayIndex 1).
+        val oldEntries = listOf(
+            ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.PLANNED),
+            ScheduleEntryRef("e2", monday.plusDays(2), "planA", ScheduleEntryKind.PLANNED),
+            ScheduleEntryRef("e3", monday.plusDays(4), "planA", ScheduleEntryKind.PLANNED),
+        )
+        val newAssignments = mapOf(DayOfWeek.TUESDAY to 1, DayOfWeek.THURSDAY to 1)
+        val replan = planReplacement(oldEntries, "planA", newAssignments, monday, weeks = 4)
+
+        // To, co po zapisie realnie ladowaloby do harmonogramu jako PLANNED tego planu.
+        val scheduleAfter = replan.slots
+        val derived = deriveWeekAssignments(scheduleAfter)
+        assertEquals(newAssignments, derived)
+
+        // Dowod na "rolling wg nowego wzorca": kolejna generacja (jak w
+        // maybeExtendContinuousPlans) uzywajac WYPROWADZONEGO wzorca produkuje
+        // wtorek/czwartek — nigdy stary poniedzialek/piatek.
+        val nextExtension = generatePlannedSlots(
+            assignments = derived,
+            startDate = scheduleAfter.maxOf { it.date }.plusDays(1),
+            weeks = 4,
+        )
+        assertTrue(nextExtension.isNotEmpty())
+        assertTrue(
+            nextExtension.all { it.date.dayOfWeek == DayOfWeek.TUESDAY || it.date.dayOfWeek == DayOfWeek.THURSDAY },
+        )
+        assertTrue(
+            nextExtension.none { it.date.dayOfWeek == DayOfWeek.MONDAY || it.date.dayOfWeek == DayOfWeek.FRIDAY },
+        )
+    }
 }
