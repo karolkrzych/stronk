@@ -85,24 +85,32 @@ internal object ScheduleTexts {
     fun startDateLabel(date: LocalDate): String = startDateFormatter.format(date)
 
     /**
-     * CTA przypisania planu w [AssignPlanDialog]. Plan z blokiem faktycznie
-     * generuje dokładnie [ScheduleConstants.GENERATION_WEEKS] tygodni na raz —
-     * tekst to mówi wprost. Plan bez bloku dogeneruje sobie kolejne tygodnie
-     * sam (rolling generation), więc „X tyg." by kłamało — samo „Zaplanuj".
+     * CTA dialogu planowania tygodnia ([AssignPlanDialog]) — dialog to planner
+     * WZORCA dnia tygodnia całego życia planu, nie jednorazowej generacji na
+     * X tygodni, więc CTA nie mówi już o oknie generacji. Aktywne tylko przy
+     * realnej zmianie wzorca ([WeekPlanner.isWeekPlanDirty]) — „Zapisz", nie
+     * „Zaplanuj", bo najczęściej user tylko POTWIERDZA status quo.
      */
-    fun assignPlanCta(continuous: Boolean): String =
-        if (continuous) "Zaplanuj" else "Zaplanuj ${ScheduleConstants.GENERATION_WEEKS} tyg."
+    const val ASSIGN_PLAN_CTA = "Zapisz"
 
-    /** Notka pod przypisaniami dni — różna treść dla planu z blokiem i bez. */
-    fun assignPlanNote(continuous: Boolean): String =
-        if (continuous) {
-            "Harmonogram przedłuża się sam — kolejne tygodnie dopiszą się, gdy zapas się skróci."
+    /**
+     * Notka pod przypisaniami dni — różna treść dla planu z blokiem i bez.
+     * [fullBlockWeeks] = pełna długość bloku (praca + tydzień lekki, ta sama
+     * liczba co mianownik w [weekHeaderLabel]); `null` = plan bez bloku.
+     */
+    fun assignPlanNote(fullBlockWeeks: Int?): String =
+        if (fullBlockWeeks == null) {
+            "Harmonogram przedłuża się sam według tego ułożenia — kolejne tygodnie dopiszą się, gdy zapas się skróci."
         } else {
-            "Wpisy na ${ScheduleConstants.GENERATION_WEEKS} tygodnie; zajęte dni pomijamy."
+            "Ułożenie obowiązuje przez cały blok ($fullBlockWeeks tyg.)."
         }
 
-    /** Po nieudanym potwierdzeniu: cały wybrany okres zajmuje już TEN SAM plan. */
-    const val PERIOD_ALREADY_PLANNED = "Ten okres jest już zaplanowany."
+    /**
+     * Po zatwierdzeniu, gdy żaden nowy wpis nie powstał — wszystkie wybrane
+     * dni pokrywają się z ukończonymi treningami albo innym planem. Stare
+     * wpisy w takim wypadku ZOSTAJĄ nietknięte (patrz [ScheduleViewModel.onAssignPlan]).
+     */
+    const val NOTHING_TO_PLAN = "Nie udało się zaplanować — wybrane dni są już zajęte."
 
     /** Notka w dialogu, gdy okres koliduje z INNYM planem — blokuje CTA. */
     fun periodConflictNote(otherPlanName: String): String =

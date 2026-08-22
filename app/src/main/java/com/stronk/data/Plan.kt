@@ -25,6 +25,22 @@ data class Plan(
      * Nowe plany ręczne startują bez bloku; presety włączają go jawnie.
      */
     val blockLengthWeeks: Int? = null,
+    /**
+     * Wzorzec dnia tygodnia → indeks dnia planu (klucz = ISO 1=poniedziałek..
+     * 7=niedziela) zapisany przy ostatnim zatwierdzeniu dialogu planowania
+     * tygodnia — źródło prawdy dla materializacji harmonogramu
+     * (`ScheduleViewModel.onAssignPlan`) i rolling generation
+     * (`ScheduleViewModel.maybeExtendContinuousPlans`), niezależne od tego,
+     * co akurat leży w kolekcji `schedule` (pojedyncze „Przesuń" treningu nie
+     * ma prawa zmienić tej reguły).
+     *
+     * `null` = wzorzec nigdy nie zapisany (stary dokument sprzed tego pola,
+     * albo plan jeszcze nigdy nie przypisany do tygodnia) — wtedy odczyt
+     * spada na `deriveWeekAssignments` z istniejących wpisów PLANNED. Pusta
+     * mapa (w odróżnieniu od `null`) to ŚWIADOMY wybór usera: wyzerował
+     * wszystkie dni.
+     */
+    val weekdayAssignments: Map<Int, Int>? = null,
     val days: List<PlanDay> = emptyList(),
 )
 

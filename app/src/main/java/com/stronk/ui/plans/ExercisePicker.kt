@@ -46,6 +46,7 @@ import com.stronk.data.filterExercises
 import com.stronk.data.filterSubstitutesByGroup
 import com.stronk.data.isCompliant
 import com.stronk.ui.PlLabels
+import com.stronk.ui.components.ExercisePreviewSheet
 import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkChoiceChip
 import com.stronk.ui.components.StronkEmptyState
@@ -55,6 +56,7 @@ import com.stronk.ui.components.StronkIconBadgeSize
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkInsetCard
 import com.stronk.ui.components.StronkSectionHeader
+import com.stronk.ui.detail.JointNote
 import com.stronk.ui.profile.ProfileEquipment
 import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
@@ -78,6 +80,7 @@ internal fun ExercisePicker(
 ) {
     var query by remember { mutableStateOf("") }
     var muscle by remember { mutableStateOf<String?>(null) }
+    var previewExercise by remember { mutableStateOf<Exercise?>(null) }
 
     val muscleOptions = remember(exercises) {
         exercises.flatMap { it.primaryMuscles }.distinct().sortedBy { PlLabels.muscle(it) }
@@ -150,10 +153,19 @@ internal fun ExercisePicker(
                         warning = !compliance.isFullyCompliant,
                         onClick = { onPick(exercise) },
                         onWarningClick = { onShowSubstitutes(exercise) },
+                        onPreviewClick = { previewExercise = exercise },
                     )
                 }
             }
         }
+    }
+
+    previewExercise?.let { exercise ->
+        ExercisePreviewSheet(
+            exercise = exercise,
+            jointNote = JointNote.text(exercise, profile),
+            onDismiss = { previewExercise = null },
+        )
     }
 }
 
@@ -206,6 +218,7 @@ internal fun ExercisePickerRow(
     warning: Boolean,
     onClick: () -> Unit,
     onWarningClick: (() -> Unit)? = null,
+    onPreviewClick: (() -> Unit)? = null,
 ) {
     val thumbnail = exercise.images.firstOrNull()
     StronkInsetCard(onClick = onClick, contentPadding = PaddingValues(StronkSpacing.xs)) {
@@ -242,6 +255,16 @@ internal fun ExercisePickerRow(
                     modifier = Modifier.padding(top = 3.dp),
                 )
             }
+            if (onPreviewClick != null) {
+                IconButton(onClick = onPreviewClick) {
+                    Icon(
+                        imageVector = StronkIcons.info,
+                        contentDescription = "Podgląd ćwiczenia",
+                        tint = StronkTheme.colors.textDim,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
             if (warning) {
                 IconButton(onClick = { onWarningClick?.invoke() }, enabled = onWarningClick != null) {
                     Icon(
@@ -272,6 +295,7 @@ internal fun SubstitutesSheet(
     // (PlanEditorViewModel woła findSubstitutes bez limitu); limit (SUBSTITUTE_LIMIT)
     // stosujemy DOPIERO PO filtrze grupowym, patrz filterSubstitutesByGroup.
     var selectedGroups by remember { mutableStateOf(setOf<String>()) }
+    var previewMatch by remember { mutableStateOf<SubstituteMatch?>(null) }
     val equipmentGroups = remember(substitutes) {
         ProfileEquipment.sortGroupIds(
             substitutes.matches.map { ProfileEquipment.groupIdOf(it.exercise.equipment) }.distinct(),
@@ -321,16 +345,28 @@ internal fun SubstitutesSheet(
                 verticalArrangement = Arrangement.spacedBy(StronkSpacing.row),
             ) {
                 visibleMatches.forEach { match ->
-                    SubstituteRow(match = match, onChoose = { onChoose(match) })
+                    SubstituteRow(
+                        match = match,
+                        onChoose = { onChoose(match) },
+                        onPreview = { previewMatch = match },
+                    )
                 }
             }
         }
         Spacer(Modifier.height(StronkSpacing.lg))
     }
+
+    previewMatch?.let { match ->
+        ExercisePreviewSheet(
+            exercise = match.exercise,
+            jointNote = JointNote.text(match.exercise, substitutes.profile),
+            onDismiss = { previewMatch = null },
+        )
+    }
 }
 
 @Composable
-private fun SubstituteRow(match: SubstituteMatch, onChoose: () -> Unit) {
+private fun SubstituteRow(match: SubstituteMatch, onChoose: () -> Unit, onPreview: () -> Unit) {
     val exercise = match.exercise
     val thumbnail = exercise.images.firstOrNull()
     StronkInsetCard(onClick = onChoose, contentPadding = PaddingValues(StronkSpacing.xs)) {
@@ -379,6 +415,14 @@ private fun SubstituteRow(match: SubstituteMatch, onChoose: () -> Unit) {
                         modifier = Modifier.padding(top = 3.dp),
                     )
                 }
+            }
+            IconButton(onClick = onPreview) {
+                Icon(
+                    imageVector = StronkIcons.info,
+                    contentDescription = "Podgląd ćwiczenia",
+                    tint = StronkTheme.colors.textDim,
+                    modifier = Modifier.size(20.dp),
+                )
             }
             if (match.warnings.isNotEmpty()) {
                 Icon(

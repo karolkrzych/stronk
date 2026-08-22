@@ -19,6 +19,44 @@ internal object PlanTexts {
     /** Znak planu bez końca — stat TYGODNIE planu bez bloku. */
     const val INFINITY = "∞"
 
+    /**
+     * Tytuł zwijanej sekcji z parametrami w arkuszu edycji ćwiczenia planu —
+     * domyślnie ZWINIĘTA, żeby po tapnięciu wiersza jako pierwszy był widoczny
+     * opis ćwiczenia (feedback Karola: "kliknięcie ma pokazywać opis najpierw").
+     */
+    const val SERIES_SECTION_TITLE = "Serie i ciężar"
+
+    /** Content description chevronu zwijanej sekcji [SERIES_SECTION_TITLE]. */
+    fun seriesSectionToggleDescription(expanded: Boolean): String =
+        if (expanded) "Zwiń sekcję serii i ciężaru" else "Rozwiń sekcję serii i ciężaru"
+
+    /** Tytuł dialogu potwierdzenia usunięcia dnia ([removeDayMessage] to treść). */
+    const val REMOVE_DAY_TITLE = "Usunąć dzień?"
+
+    const val REMOVE_DAY_CONFIRM = "Usuń dzień"
+
+    /**
+     * Treść dialogu usunięcia dnia — [hasScheduleImpact] (dzień istniał w
+     * zapisanym planie, który MA wzorzec — [PlanEditorUiState.planHasSchedule]
+     * razem z [EditorDayUi.existsInSavedPlan]) dopisuje ostrzeżenie o
+     * kalendarzu; nowy, nigdy niezapisany dzień (albo plan bez harmonogramu)
+     * dostaje samo proste potwierdzenie — nie ma czego ostrzegać.
+     */
+    fun removeDayMessage(hasScheduleImpact: Boolean): String = if (hasScheduleImpact) {
+        "Zaplanowane treningi tego dnia znikną z kalendarza po zapisie planu."
+    } else {
+        "Ten dzień zostanie usunięty z planu."
+    }
+
+    /**
+     * Snackbar po zapisie planu, w którym przybył nowy dzień, a plan MA
+     * harmonogram ([PlanEditorUiState.planHasSchedule]) — nowy dzień nie
+     * wchodzi sam do wzorca tygodnia (przypisanie robi user w dialogu
+     * planowania), więc trzeba mu to powiedzieć wprost.
+     */
+    const val NEW_DAY_NOT_SCHEDULED =
+        "Nowy dzień nie jest jeszcze w harmonogramie — ustaw go w \"Zaplanuj tydzień\"."
+
     private val polishLocale: Locale = Locale.forLanguageTag("pl")
 
     fun stressLevel(level: StressLevel): String = when (level) {

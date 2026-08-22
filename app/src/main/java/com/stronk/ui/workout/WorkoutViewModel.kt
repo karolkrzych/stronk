@@ -20,6 +20,7 @@ import com.stronk.data.findSubstitutes
 import com.stronk.progression.ProgressionEngine
 import com.stronk.service.RestTimerService
 import com.stronk.ui.PlLabels
+import com.stronk.ui.detail.JointNote
 import com.stronk.ui.profile.ProfileEquipment
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -107,6 +108,8 @@ data class SubstituteUi(
     val equipmentGroupId: String,
     /** Naruszenia limitów stawów z profilu — flagujemy, nie ukrywamy. */
     val warningLabels: List<String>,
+    /** Notka „Twoje stawy" pod podgląd ćwiczenia ([com.stronk.ui.components.ExercisePreviewSheet]). */
+    val jointNote: String? = null,
 )
 
 data class SubstitutesState(
@@ -506,6 +509,7 @@ class WorkoutViewModel(
                     equipmentLabel = PlLabels.equipment(match.exercise.equipment),
                     equipmentGroupId = ProfileEquipment.groupIdOf(match.exercise.equipment),
                     warningLabels = match.warnings.map { "obciąża: ${PlLabels.joint(it.joint)}" },
+                    jointNote = JointNote.text(match.exercise, profileDetails),
                 )
             },
         )

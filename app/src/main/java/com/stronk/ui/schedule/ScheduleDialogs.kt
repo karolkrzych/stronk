@@ -13,9 +13,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
@@ -63,10 +65,33 @@ private fun utcMillisToLocalDate(millis: Long): LocalDate =
 fun ScheduleDatePickerDialog(
     title: String,
     initialDate: LocalDate,
+    /**
+     * Najwcześniejsza wybieralna data; `null` = bez ograniczenia (wzorzec
+     * „Przesuń trening" w [ScheduleScreen]). Data startu przy przypisaniu
+     * planu ([AssignPlanDialog]) przekazuje tu dzisiaj — przeplanowanie nie
+     * ma prawa kasować przeszłych, niezaliczonych wpisów PLANNED.
+     */
+    minSelectableDate: LocalDate? = null,
     onConfirm: (LocalDate) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialDate.toUtcMillis())
+    val selectableDates = remember(minSelectableDate) {
+        val minDate = minSelectableDate
+        if (minDate == null) {
+            DatePickerDefaults.AllDates
+        } else {
+            object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                    !utcMillisToLocalDate(utcTimeMillis).isBefore(minDate)
+
+                override fun isSelectableYear(year: Int): Boolean = year >= minDate.year
+            }
+        }
+    }
+    val pickerState = rememberDatePickerState(
+        initialSelectedDateMillis = initialDate.toUtcMillis(),
+        selectableDates = selectableDates,
+    )
     DatePickerDialog(
         onDismissRequest = onDismiss,
         shape = StronkRadius.cardShape,
@@ -105,25 +130,36 @@ fun ScheduleDatePickerDialog(
 }
 
 /**
- * Przypisanie planu do dni tygodnia — wybór planu (chipy), daty startu i
+ * Planer tygodnia całego życia planu — wybór planu (chipy), daty startu i
  * mapowania dni. Zero rozwijanych menu: dzień tygodnia przełącza się TAPEM
- * chipa, który krąży „wolne → dzień 1 → dzień 2 → … → wolne".
- * Generację wpisów robi [ScheduleViewModel.onAssignPlan] po potwierdzeniu.
+ * chipa, który krąży „wolne → dzień 1 → dzień 2 → … → wolne". Zatwierdzenie
+ * zapisuje wzorzec w planie i materializuje harmonogram na jego podstawie
+ * ([ScheduleViewModel.onAssignPlan]) — dopóki user niczego nie zmieni względem
+ * [WeekPlanner.weekPlanBaseline], CTA zostaje wyszarzone (nic by się nie stało).
  */
 @Composable
 fun AssignPlanDialog(
     plans: List<PlanOption>,
     /** Zajęte dni ze wszystkich planów — wejście do walidacji kolizji okna. */
     occupiedEntries: List<OccupiedEntry>,
+    /** Aktualny wzorzec PLANNED per plan — fallback baseline dla planów bez zapisanego wzorca. */
+    plannedSlotsByPlan: Map<String, List<PlannedSlot>>,
     onConfirm: (planId: String, assignments: Map<DayOfWeek, Int>, startDate: LocalDate) -> Unit,
     onDismiss: () -> Unit,
 ) {
     // Jedyny plan od razu wybrany — najczęstszy przypadek bez zbędnego tapnięcia.
     var selectedPlanId by remember { mutableStateOf(plans.firstOrNull()?.id) }
     val selectedPlan = plans.firstOrNull { it.id == selectedPlanId }
-    var assignments by remember(selectedPlanId) {
-        mutableStateOf(defaultAssignments(selectedPlan?.dayNames?.size ?: 0))
+    // Baseline = punkt odniesienia do prefillu I do detekcji zmian (CTA).
+    // Zamrożony na zmianę planu (nie dryfuje przy tle odświeżającym się stanie).
+    val baseline = remember(selectedPlanId) {
+        weekPlanBaseline(
+            selectedPlan?.weekdayAssignments,
+            plannedSlotsByPlan[selectedPlanId].orEmpty(),
+            selectedPlan?.dayNames?.size ?: 0,
+        )
     }
+    var assignments by remember(selectedPlanId) { mutableStateOf(baseline) }
     var startDate by remember { mutableStateOf(LocalDate.now()) }
     var showStartDatePicker by remember { mutableStateOf(false) }
 
@@ -133,6 +169,10 @@ fun AssignPlanDialog(
     val conflict = remember(selectedPlanId, startDate, occupiedEntries) {
         selectedPlanId?.let { planId -> conflictingOtherPlanEntry(occupiedEntries, planId, startDate) }
     }
+    // Jedyny warunek, kiedy CTA "Zapisz" ma sens: coś się realnie zmieniło
+    // względem baseline. Sama zmiana daty startu bez zmiany przypisań NIE
+    // zmienia wyniku materializacji tego samego wzorca — nie liczy się.
+    val dirty = isWeekPlanDirty(baseline, assignments)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -222,7 +262,7 @@ fun AssignPlanDialog(
                         )
                     } else {
                         StronkNoteCard(
-                            text = ScheduleTexts.assignPlanNote(selectedPlan.continuous),
+                            text = ScheduleTexts.assignPlanNote(selectedPlan.fullBlockWeeks),
                             icon = StronkIcons.info,
                         )
                     }
@@ -230,9 +270,9 @@ fun AssignPlanDialog(
 
                 Spacer(Modifier.height(StronkSpacing.lg))
                 StronkPrimaryButton(
-                    text = ScheduleTexts.assignPlanCta(selectedPlan?.continuous ?: false),
+                    text = ScheduleTexts.ASSIGN_PLAN_CTA,
                     height = StronkSizes.ctaSmall,
-                    enabled = selectedPlan != null && assignments.isNotEmpty() && conflict == null,
+                    enabled = selectedPlan != null && dirty && conflict == null,
                     onClick = { selectedPlan?.let { onConfirm(it.id, assignments, startDate) } },
                 )
                 Box(
@@ -251,6 +291,7 @@ fun AssignPlanDialog(
         ScheduleDatePickerDialog(
             title = "Data startu",
             initialDate = startDate,
+            minSelectableDate = LocalDate.now(),
             onConfirm = { date ->
                 startDate = date
                 showStartDatePicker = false

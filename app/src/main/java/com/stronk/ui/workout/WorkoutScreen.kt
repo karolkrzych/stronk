@@ -76,6 +76,7 @@ import com.stronk.data.SetLog
 import com.stronk.data.SubstituteScoring
 import com.stronk.data.filterSubstitutesByGroup
 import com.stronk.ui.PlLabels
+import com.stronk.ui.components.ExercisePreviewSheet
 import com.stronk.ui.components.MuscleIcons
 import com.stronk.ui.components.StronkBadge
 import com.stronk.ui.components.StronkChip
@@ -1134,6 +1135,7 @@ private fun SubstitutesSheet(
     // subs.options to PEŁNA lista kandydatów (WorkoutViewModel woła findSubstitutes bez limitu);
     // limit (DEFAULT_LIMIT) stosujemy DOPIERO PO filtrze grupowym, patrz filterSubstitutesByGroup.
     var selectedGroups by remember { mutableStateOf(setOf<String>()) }
+    var previewOption by remember { mutableStateOf<SubstituteUi?>(null) }
     val equipmentGroups = remember(subs) {
         ProfileEquipment.sortGroupIds(subs.options.map { it.equipmentGroupId }.distinct())
     }
@@ -1185,12 +1187,24 @@ private fun SubstitutesSheet(
             } else {
                 LazyColumn(modifier = Modifier.heightIn(max = 480.dp)) {
                     items(visibleOptions, key = { it.exercise.id }) { option ->
-                        SubstituteRow(option = option, onPick = onPick)
+                        SubstituteRow(
+                            option = option,
+                            onPick = onPick,
+                            onPreview = { previewOption = option },
+                        )
                     }
                 }
             }
             Spacer(Modifier.height(StronkSpacing.xl))
         }
+    }
+
+    previewOption?.let { option ->
+        ExercisePreviewSheet(
+            exercise = option.exercise,
+            jointNote = option.jointNote,
+            onDismiss = { previewOption = null },
+        )
     }
 }
 
@@ -1198,6 +1212,7 @@ private fun SubstitutesSheet(
 private fun SubstituteRow(
     option: SubstituteUi,
     onPick: (exercise: com.stronk.data.Exercise, permanent: Boolean) -> Unit,
+    onPreview: () -> Unit,
 ) {
     Column {
         StronkListRow(
@@ -1206,6 +1221,14 @@ private fun SubstituteRow(
             subtitle = option.equipmentLabel,
             divider = false,
             trailingContent = {
+                IconButton(onClick = onPreview) {
+                    Icon(
+                        imageVector = StronkIcons.info,
+                        contentDescription = "Podgląd ćwiczenia",
+                        tint = StronkTheme.colors.textDim,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
                 option.warningLabels.firstOrNull()?.let {
                     StronkBadge(text = it, tone = StronkTone.WARNING, icon = StronkIcons.injury)
                 }

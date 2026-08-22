@@ -99,8 +99,14 @@ data class PlanOption(
     val name: String,
     /** Nazwy dni planu w kolejności indeksów. */
     val dayNames: List<String>,
-    /** `blockLengthWeeks == null` — plan bez końca, dostaje rolling generation. */
-    val continuous: Boolean,
+    /**
+     * Pełna długość bloku (praca + tydzień lekki, `ProgressionEngine.fullBlockWeeks`
+     * na `Plan.blockLengthWeeks`) — `null` = plan bez końca, dostaje rolling
+     * generation zamiast horyzontu bloku.
+     */
+    val fullBlockWeeks: Int?,
+    /** Zapisany wzorzec dnia tygodnia planu (już po ISO→[DayOfWeek]) — baseline dialogu. */
+    val weekdayAssignments: Map<DayOfWeek, Int>?,
 )
 
 /** Stan ekranu Tydzień. */
@@ -127,11 +133,17 @@ data class ScheduleUiState(
     val scheduleEmpty: Boolean = true,
     /** Zajęte dni (PLANNED/DONE) ze wszystkich planów — walidacja kolizji w [AssignPlanDialog]. */
     val occupiedEntries: List<OccupiedEntry> = emptyList(),
+    /**
+     * Aktualny wzorzec wpisów PLANNED per plan — prefill dni w [AssignPlanDialog]
+     * ([deriveWeekAssignments] na tym daje wzorzec, jaki user by dostał, gdyby
+     * nic nie zmienił).
+     */
+    val plannedSlotsByPlan: Map<String, List<PlannedSlot>> = emptyMap(),
 )
 
 class ScheduleViewModel(
     private val scheduleRepository: ScheduleRepository,
-    planRepository: PlanRepository,
+    private val planRepository: PlanRepository,
     exerciseRepository: ExerciseRepository,
     cardioRepository: CardioRepository,
 ) : ViewModel() {
@@ -161,6 +173,24 @@ class ScheduleViewModel(
      */
     private val rollingExtensionCursor = mutableMapOf<String, LocalDate>()
 
+    /**
+     * Guard przeciwko race'owi z rolling generation: [onAssignPlan] przy
+     * przeplanowaniu kasuje stare wpisy PLANNED i zapisuje nowe w JEDNEJ
+     * paczce ([ScheduleRepository.replacePlannedEntries], atomowej też w
+     * lokalnym cache'u). Ale między ZLECENIEM paczki a jej odbiciem w
+     * [latestEntries] (kolejna emisja `uiState`) [maybeExtendContinuousPlans]
+     * mogłaby się odpalić na wciąż STARYM stanie i dogenerować kolejne wpisy
+     * wg STAREGO wzorca — nasz `delete` (policzony wcześniej) o nich nie wie,
+     * więc zostałyby jako śmieci poza oknem nowego wzorca.
+     *
+     * planId → id-ki starych wpisów, które właśnie kasujemy. Dopóki
+     * którykolwiek z nich wciąż widnieje w harmonogramie, rolling dla tego
+     * planu jest wstrzymana; guard czyści się sam (patrz góra
+     * [maybeExtendContinuousPlans]), gdy żaden z tych id już nie występuje —
+     * paczka jest atomowa, więc „stare zniknęły" ⇔ „nowe już są".
+     */
+    private val pendingReplan = mutableMapOf<String, Set<String>>()
+
     val uiState: StateFlow<ScheduleUiState> = combine(
         scheduleRepository.observeSchedule(),
         planRepository.observePlans(),
@@ -174,6 +204,16 @@ class ScheduleViewModel(
         else buildState(schedule, plans, exercises, selected, cardio)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScheduleUiState())
 
+    /**
+     * Idempotencja sweepu martwych wpisów ([cleanupArchivedPlanEntries]): id-ki
+     * wpisów, dla których już zlecono kasację — bez tego każda emisja `uiState`
+     * (Flow odpala się wielokrotnie, zanim własny zapis dotrze do lokalnego
+     * cache'u Firestore) zlecałaby to samo kasowanie od nowa. Wpis znika stąd
+     * naturalnie razem z sobą samym z [latestEntries] (batch delete jest
+     * atomowy) — nie trzeba osobnego czyszczenia tego seta.
+     */
+    private val archivedCleanupRequested = mutableSetOf<String>()
+
     init {
         viewModelScope.launch {
             exercisesById.value = exerciseRepository.getAll().associateBy { it.id }
@@ -183,6 +223,12 @@ class ScheduleViewModel(
         // przy każdej zmianie harmonogramu/planów; guard wyżej robi resztę.
         viewModelScope.launch {
             uiState.collect { maybeExtendContinuousPlans(latestEntries, latestPlans) }
+        }
+        // Jednorazowy sweep martwych wpisów PLANNED zarchiwizowanych planów —
+        // samonaprawa stanu sprzed istnienia czyszczenia w
+        // PlanEditorViewModel.setArchived (patrz KDoc [cleanupArchivedPlanEntries]).
+        viewModelScope.launch {
+            uiState.collect { cleanupArchivedPlanEntries(latestEntries, latestPlans) }
         }
     }
 
@@ -233,37 +279,88 @@ class ScheduleViewModel(
     }
 
     /**
-     * Przypisanie planu do tygodnia: generuje wpisy PLANNED na
-     * [ScheduleConstants.GENERATION_WEEKS] tygodni od [startDate].
-     * Dni z już aktywnym wpisem (PLANNED/DONE, dowolnego planu) są pomijane.
+     * Zatwierdzenie [AssignPlanDialog] = zapis WZORCA tygodnia w planie +
+     * materializacja harmonogramu na jego podstawie. Dialog jest plannerem
+     * jednego tygodnia, który przekłada się na CAŁY czas życia planu — zapis
+     * [assignments] do `Plan.weekdayAssignments` ([PlanRepository.save]) jest
+     * tym, co przetrwa (kolejne otwarcie dialogu i rolling generation czytają
+     * STĄD, nie z tego wywołania).
      *
-     * Kolizja z INNYM planem w oknie blokuje CTA już w [AssignPlanDialog] (patrz
-     * [conflictingOtherPlanEntry]) — więc jeśli mimo to nic się nie wygenerowało,
-     * to dlatego, że cały wybrany okres zajmuje już TEN SAM plan; user dostaje o
-     * tym komunikat zamiast cichej no-op.
+     * Materializacja (przeplanowanie wpisów PLANNED wybranego planu od
+     * [startDate] w przód — WSZYSTKIE, nie tylko okno jednego wywołania,
+     * rolling mógł nagenerować dalej) ma horyzont zależny od typu planu:
+     * - plan Z BLOKIEM: pełna długość bloku, nie krótszy niż horyzont, jaki
+     *   plan już miał ([blockReplanWeeks]) — nowe ułożenie dni obowiązuje
+     *   przez cały blok, nie tylko okno generacji;
+     * - plan BEZ bloku: [ScheduleConstants.GENERATION_WEEKS] jak dotąd — rolling
+     *   generation dociągnie resztę samo, czytając już zapisany wzorzec.
+     *
+     * Nietykalne: wpisy DONE (historia treningu, dowolnego planu) i PLANNED
+     * INNEGO planu — patrz [planReplacement]. Kasowanie + zapis idą w JEDNEJ
+     * paczce ([ScheduleRepository.replacePlannedEntries]); [pendingReplan]
+     * dodatkowo chroni przed rolling generation odpalającym się na starym
+     * stanie między zleceniem paczki a jej odbiciem w [latestEntries].
+     *
+     * Jeśli [assignments] jest NIEPUSTE, a po odfiltrowaniu nietykalnych dat
+     * nie powstał ŻADEN nowy slot — cała operacja jest anulowana (nic się nie
+     * zapisuje, ani harmonogram, ani wzorzec w planie), Snackbar tłumaczy
+     * czemu ([ScheduleTexts.NOTHING_TO_PLAN]). Puste [assignments] to inny
+     * przypadek — user świadomie wyzerował wszystkie dni (CTA to dopuszcza,
+     * patrz [WeekPlanner.isWeekPlanDirty]) — wtedy wzorzec i tak się zapisuje
+     * (jako pusta mapa) i istniejące przyszłe PLANNED tego planu są kasowane
+     * bez zastąpienia.
+     *
+     * Reentrancja: dopóki dla [planId] wisi niedokończony replan
+     * ([pendingReplan] niepusty — poprzednia paczka jeszcze nie odbiła się w
+     * [latestEntries]), kolejne wywołanie jest ignorowane. Bez tego dwa
+     * szybkie zatwierdzenia policzyłyby `idsToDelete`/zajętość ze STARYCH
+     * danych → duplikaty PLANNED na tych samych datach. Dialog i tak zamyka
+     * się od razu po `onConfirm` ([ScheduleScreen]), więc early return nie
+     * zmienia zachowania UI.
      */
     fun onAssignPlan(planId: String, assignments: Map<DayOfWeek, Int>, startDate: LocalDate) {
-        if (assignments.isEmpty()) return
-        val occupied = latestEntries
-            .filter { it.status == ScheduleStatus.PLANNED || it.status == ScheduleStatus.DONE }
-            .mapNotNull { entry -> parseDate(entry.date) }
-            .toSet()
-        val slots = generatePlannedSlots(assignments, startDate, occupiedDates = occupied)
-        if (slots.isEmpty()) {
-            _assignmentMessage.value = ScheduleTexts.PERIOD_ALREADY_PLANNED
+        if (planId in pendingReplan) return
+        val plan = latestPlans.firstOrNull { it.id == planId } ?: return
+        val currentEntries = toEntryRefs(latestEntries, latestPlans.associateBy { it.id })
+        val weeks = replanWeeks(plan, startDate, currentEntries)
+        val replan = planReplacement(currentEntries, planId, assignments, startDate, weeks)
+        if (assignments.isNotEmpty() && replan.slots.isEmpty()) {
+            _assignmentMessage.value = ScheduleTexts.NOTHING_TO_PLAN
             return
         }
-        slots.forEach { slot ->
-            scheduleRepository.save(
-                ScheduleEntry(
-                    id = scheduleRepository.newId(),
-                    date = slot.date.toString(),
-                    planId = planId,
-                    dayIndex = slot.dayIndex,
-                ),
+        planRepository.save(plan.copy(weekdayAssignments = weekdayAssignmentsToIso(assignments)))
+        val newEntries = replan.slots.map { slot ->
+            ScheduleEntry(
+                id = scheduleRepository.newId(),
+                date = slot.date.toString(),
+                planId = planId,
+                dayIndex = slot.dayIndex,
             )
         }
-        selectedDate.value = startDate
+        if (replan.idsToDelete.isNotEmpty()) {
+            pendingReplan[planId] = replan.idsToDelete.toSet()
+        }
+        // Paczka sama nie robi nic, gdy obie listy są puste (patrz ScheduleRepository).
+        scheduleRepository.replacePlannedEntries(deleteIds = replan.idsToDelete, newEntries = newEntries)
+        // Ten sam clamp co w planReplacement — startDate mogła przyjść z UI
+        // sprzed dziś tylko przez defensywną ścieżkę (picker to blokuje).
+        selectedDate.value = clampStartDateToToday(startDate)
+    }
+
+    /**
+     * Horyzont materializacji (tygodnie od [startDate]) na wejście
+     * [planReplacement]: plan bez bloku dostaje stałe okno generacji jak
+     * dotąd, plan z blokiem — [blockReplanWeeks] liczony z JEGO ISTNIEJĄCYCH
+     * wpisów PLANNED (z [currentEntries], nie z całego harmonogramu — inne
+     * plany nie mają tu znaczenia).
+     */
+    private fun replanWeeks(plan: Plan, startDate: LocalDate, currentEntries: List<ScheduleEntryRef>): Int {
+        val fullBlockWeeks = ProgressionEngine.fullBlockWeeks(plan.blockLengthWeeks)
+            ?: return ScheduleConstants.GENERATION_WEEKS
+        val existingPlanDates = currentEntries
+            .filter { it.planId == plan.id && it.kind == ScheduleEntryKind.PLANNED }
+            .map { it.date }
+        return blockReplanWeeks(clampStartDateToToday(startDate), fullBlockWeeks, existingPlanDates)
     }
 
     /** Snackbar w [ScheduleScreen] pokazał komunikat — czyścimy, żeby się nie powtarzał. */
@@ -277,29 +374,46 @@ class ScheduleViewModel(
      * Dla każdego planu BEZ bloku ([Plan.blockLengthWeeks] `== null`) sprawdza,
      * czy najpóźniejszy zaplanowany wpis jest bliżej niż
      * [ScheduleConstants.ROLLING_THRESHOLD_WEEKS] tygodni od dziś — jeśli tak,
-     * dogenerowuje kolejne [ScheduleConstants.GENERATION_WEEKS] tygodni z
-     * przypisaniami wyprowadzonymi z istniejących wpisów ([deriveWeekAssignments]).
-     * Plany z blokiem — bez zmian. Czysta logika (próg, derywacja, filtr zajętości)
-     * żyje w [WeekPlanner]; ta funkcja tylko orkiestruje odczyt/zapis.
+     * dogenerowuje kolejne [ScheduleConstants.GENERATION_WEEKS] tygodni.
+     * Wzorzec dni bierze z [Plan.weekdayAssignments] (źródło prawdy — pojedyncze
+     * „Przesuń" treningu na inny dzień tygodnia NIE ma prawa zarazić reguły);
+     * dla starych planów bez zapisanego wzorca (`null`) spada na
+     * [deriveWeekAssignments] z istniejących wpisów jak dotąd. Plany z blokiem —
+     * bez zmian. Czysta logika (próg, derywacja, filtr zajętości) żyje w
+     * [WeekPlanner]; ta funkcja tylko orkiestruje odczyt/zapis.
      */
     private fun maybeExtendContinuousPlans(schedule: List<ScheduleEntry>, plans: List<Plan>) {
+        // Guard [pendingReplan] czyści się sam: paczka replanu jest atomowa,
+        // więc gdy żaden ze skasowanych id już nie występuje w schedule —
+        // nowe wpisy na pewno już tam są (patrz KDoc pola).
+        val scheduleIds = schedule.mapTo(HashSet()) { it.id }
+        pendingReplan.keys.toList().forEach { planId ->
+            if (pendingReplan.getValue(planId).none { it in scheduleIds }) {
+                pendingReplan.remove(planId)
+            }
+        }
+
         val today = LocalDate.now()
         val plansById = plans.associateBy { it.id }
-        val plannedSlotsByPlan = schedule
-            .filter { it.status == ScheduleStatus.PLANNED }
-            .mapNotNull { entry -> parseDate(entry.date)?.let { date -> entry.planId to PlannedSlot(date, entry.dayIndex) } }
-            .groupBy({ it.first }, { it.second })
+        val plannedByPlan = plannedSlotsByPlan(schedule)
 
-        plannedSlotsByPlan.forEach { (planId, slots) ->
+        plannedByPlan.forEach { (planId, slots) ->
             val plan = plansById[planId] ?: return@forEach
-            if (plan.archived || plan.blockLengthWeeks != null) return@forEach
+            if (!isEligibleForRollingExtension(plan.archived, plan.blockLengthWeeks) || planId in pendingReplan) {
+                return@forEach
+            }
 
             val lastPlannedDate = slots.maxOf { it.date }
             // Guard: ten sam stan (planId, ostatnia data) już przetworzony w tym cyklu.
             if (rollingExtensionCursor[planId] == lastPlannedDate) return@forEach
             if (!needsRollingExtension(lastPlannedDate, today)) return@forEach
 
-            val assignments = deriveWeekAssignments(slots)
+            val assignments = plan.weekdayAssignments
+                ?.let { weekdayAssignmentsFromIso(it) }
+                // Wzorzec z bazy mógł powstać PRZED usunięciem dni z planu (edytor
+                // planu) — odfiltrowujemy martwe indeksy zamiast kopiować je dalej.
+                ?.filterValues { it < plan.days.size }
+                ?: deriveWeekAssignments(slots, plan.days.size)
             if (assignments.isEmpty()) return@forEach
             rollingExtensionCursor[planId] = lastPlannedDate
 
@@ -325,6 +439,54 @@ class ScheduleViewModel(
             }
         }
     }
+
+    /**
+     * Jednorazowy sweep: kasuje przyszłe wpisy PLANNED planów, które są
+     * zarchiwizowane ([WeekPlanner.archivedPlanDeadEntryIds]) — samonaprawa
+     * kont, na których do archiwizacji doszło ZANIM istniało sprzątanie w
+     * [com.stronk.ui.plans.PlanEditorViewModel.setArchived] (dokładnie
+     * przypadek z tego zgłoszenia: plan zarchiwizowany, jego martwe wpisy
+     * zostały w `schedule` i blokowały nowy plan). Bez migracji danych —
+     * odpala się sam przy pierwszym otwarciu ekranu Tydzień.
+     *
+     * Idempotentne przez [archivedCleanupRequested] (patrz KDoc pola) i bez
+     * ryzyka race'u z [maybeExtendContinuousPlans]: rolling już z definicji
+     * pomija zarchiwizowane plany ([isEligibleForRollingExtension]), więc oba
+     * mechanizmy nigdy nie dotykają tych samych wpisów.
+     */
+    private fun cleanupArchivedPlanEntries(schedule: List<ScheduleEntry>, plans: List<Plan>) {
+        if (plans.none { it.archived }) return
+        val plansById = plans.associateBy { it.id }
+        val idsToDelete = archivedPlanDeadEntryIds(toEntryRefs(schedule, plansById))
+            .filterNot { it in archivedCleanupRequested }
+        if (idsToDelete.isEmpty()) return
+        archivedCleanupRequested += idsToDelete
+        scheduleRepository.replacePlannedEntries(deleteIds = idsToDelete, newEntries = emptyList())
+    }
+
+    /**
+     * [ScheduleEntry] → [ScheduleEntryRef]: [ScheduleEntryRef.archived] jest
+     * `true` wyłącznie dla wpisów PLANNED, których plan jest zarchiwizowany —
+     * DONE zawsze zostaje `false` (historia treningu blokuje niezależnie od
+     * archiwizacji, patrz KDoc [ScheduleEntryRef.archived]). Wspólne dla
+     * [onAssignPlan] i [cleanupArchivedPlanEntries].
+     */
+    private fun toEntryRefs(schedule: List<ScheduleEntry>, plansById: Map<String, Plan>): List<ScheduleEntryRef> =
+        schedule.mapNotNull { entry ->
+            parseDate(entry.date)?.let { date ->
+                ScheduleEntryRef(
+                    id = entry.id,
+                    date = date,
+                    planId = entry.planId,
+                    kind = when (entry.status) {
+                        ScheduleStatus.PLANNED -> ScheduleEntryKind.PLANNED
+                        ScheduleStatus.DONE -> ScheduleEntryKind.DONE
+                        else -> ScheduleEntryKind.OTHER
+                    },
+                    archived = entry.status == ScheduleStatus.PLANNED && plansById[entry.planId]?.archived == true,
+                )
+            }
+        }
 
     // ---------- budowa stanu ----------
 
@@ -418,21 +580,19 @@ class ScheduleViewModel(
                         id = candidate.id,
                         name = candidate.name,
                         dayNames = candidate.days.map { it.name },
-                        continuous = candidate.blockLengthWeeks == null,
+                        fullBlockWeeks = ProgressionEngine.fullBlockWeeks(candidate.blockLengthWeeks),
+                        weekdayAssignments = candidate.weekdayAssignments?.let { weekdayAssignmentsFromIso(it) },
                     )
                 },
             scheduleEmpty = schedule.isEmpty(),
-            occupiedEntries = schedule
-                .filter { it.status == ScheduleStatus.PLANNED || it.status == ScheduleStatus.DONE }
-                .mapNotNull { entry ->
-                    parseDate(entry.date)?.let { date ->
-                        OccupiedEntry(
-                            date = date,
-                            planId = entry.planId,
-                            planName = plansById[entry.planId]?.name ?: "usunięty plan",
-                        )
-                    }
-                },
+            // buildOccupiedEntries odfiltrowuje martwe PLANNED zarchiwizowanych
+            // planów — takie wpisy nie mają prawa blokować CTA w AssignPlanDialog
+            // (conflictingOtherPlanEntry), DONE blokuje zawsze niezależnie od
+            // archiwizacji planu-właściciela.
+            occupiedEntries = buildOccupiedEntries(toEntryRefs(schedule, plansById)) { id ->
+                plansById[id]?.name ?: "usunięty plan"
+            },
+            plannedSlotsByPlan = plannedSlotsByPlan(schedule),
         )
     }
 
@@ -513,6 +673,17 @@ class ScheduleViewModel(
     }
 
     private fun parseDate(raw: String): LocalDate? = runCatching { LocalDate.parse(raw) }.getOrNull()
+
+    /**
+     * Wpisy PLANNED pogrupowane po planId jako [PlannedSlot] — wspólne dla
+     * rolling generation ([maybeExtendContinuousPlans]) i prefillu dialogu
+     * przypisania ([ScheduleUiState.plannedSlotsByPlan]).
+     */
+    private fun plannedSlotsByPlan(schedule: List<ScheduleEntry>): Map<String, List<PlannedSlot>> =
+        schedule
+            .filter { it.status == ScheduleStatus.PLANNED }
+            .mapNotNull { entry -> parseDate(entry.date)?.let { date -> entry.planId to PlannedSlot(date, entry.dayIndex) } }
+            .groupBy({ it.first }, { it.second })
 
     companion object {
         /** Ręczna kompozycja: zależności z [StronkApplication]. */

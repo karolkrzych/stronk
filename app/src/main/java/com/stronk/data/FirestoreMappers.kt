@@ -132,14 +132,33 @@ object FirestoreMappers {
     // ---------- Plan ----------
 
     /**
+     * Wzorzec dnia tygodnia [Plan.weekdayAssignments] na wire: klucze Firestore
+     * mapy muszą być Stringami, więc ISO dzień tygodnia (Int) idzie jako tekst
+     * ("1".."7"); wartość (indeks dnia planu) zostaje liczbą.
+     */
+    fun weekdayAssignmentsToMap(assignments: Map<Int, Int>): Map<String, Any?> =
+        assignments.entries.associate { (isoDay, dayIndex) -> isoDay.toString() to dayIndex }
+
+    /** Odwrotność [weekdayAssignmentsToMap]; klucz spoza 1..7 albo nie-liczba → wpis pomijany. */
+    fun weekdayAssignmentsFromMap(map: Map<String, Any?>): Map<Int, Int> =
+        map.entries.mapNotNull { (key, value) ->
+            val isoDay = key.toIntOrNull()?.takeIf { it in 1..7 } ?: return@mapNotNull null
+            val dayIndex = (value as? Number)?.toInt() ?: return@mapNotNull null
+            isoDay to dayIndex
+        }.toMap()
+
+    /**
      * Plan bez bloku (`blockLengthWeeks == null`) NIE zapisuje tego pola — brak
-     * pola na wire znaczy dokładnie „plan bez bloku, ciągła progresja".
+     * pola na wire znaczy dokładnie „plan bez bloku, ciągła progresja". Analogicznie
+     * `weekdayAssignments == null` (wzorzec nigdy nie zapisany) nie zapisuje pola —
+     * pusta mapa (świadome wyzerowanie wszystkich dni) JEST zapisywana.
      */
     fun planToMap(plan: Plan): Map<String, Any?> = buildMap {
         put("name", plan.name)
         put("createdAt", plan.createdAt)
         put("archived", plan.archived)
         plan.blockLengthWeeks?.let { put("blockLengthWeeks", it) }
+        plan.weekdayAssignments?.let { put("weekdayAssignments", weekdayAssignmentsToMap(it)) }
         put(
             "days",
             plan.days.map { day ->
@@ -158,6 +177,8 @@ object FirestoreMappers {
         archived = map.boolOrNull("archived") ?: false,
         // Brak pola = plan bez bloku (null), nie „domyślne 5 tygodni".
         blockLengthWeeks = map.intOrNull("blockLengthWeeks"),
+        // Brak pola = wzorzec nigdy nie zapisany (null), nie „pusty wzorzec".
+        weekdayAssignments = map.mapOrNull("weekdayAssignments")?.let { weekdayAssignmentsFromMap(it) },
         days = map.mapList("days").map { day ->
             PlanDay(
                 name = day.stringOrNull("name").orEmpty(),
