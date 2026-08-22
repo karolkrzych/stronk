@@ -227,10 +227,20 @@ data class ScheduleEntryRef(val id: String, val date: LocalDate, val planId: Str
 data class ReplanResult(val idsToDelete: List<String>, val slots: List<PlannedSlot>)
 
 /**
+ * Zabezpieczenie „pas i szelki" pod datę startu przeplanowania: nawet gdyby
+ * UI ([ScheduleDatePickerDialog.minSelectableDate]) przepuściło datę sprzed
+ * dziś, [planReplacement] nie ma prawa skasować przeszłych, niezaliczonych
+ * (missed) wpisów PLANNED — clampujemy do `max(startDate, today)`.
+ */
+fun clampStartDateToToday(startDate: LocalDate, today: LocalDate = LocalDate.now()): LocalDate =
+    if (startDate.isBefore(today)) today else startDate
+
+/**
  * Przeplanowanie [selectedPlanId]: WSZYSTKIE jego przyszłe (`date >=
- * [startDate]`) wpisy PLANNED lecą do kasacji — rolling generation mógł je
- * nagenerować dalej niż jedno okno [weeks], stąd „wszystkie", nie tylko okno
- * generacji — a w ich miejsce powstają nowe sloty wg [assignments].
+ * [startDate]`, clampowanej do [today] — patrz [clampStartDateToToday]) wpisy
+ * PLANNED lecą do kasacji — rolling generation mógł je nagenerować dalej niż
+ * jedno okno [weeks], stąd „wszystkie", nie tylko okno generacji — a w ich
+ * miejsce powstają nowe sloty wg [assignments].
  *
  * Nietykalne: wpisy DONE (dowolnego planu — historia treningu) i PLANNED
  * INNEGO planu blokują datę (nowy slot tam nie powstaje), tak jak
@@ -245,15 +255,17 @@ fun planReplacement(
     assignments: Map<DayOfWeek, Int>,
     startDate: LocalDate,
     weeks: Int = ScheduleConstants.GENERATION_WEEKS,
+    today: LocalDate = LocalDate.now(),
 ): ReplanResult {
+    val effectiveStartDate = clampStartDateToToday(startDate, today)
     val idsToDelete = currentEntries
-        .filter { it.planId == selectedPlanId && it.kind == ScheduleEntryKind.PLANNED && it.date >= startDate }
+        .filter { it.planId == selectedPlanId && it.kind == ScheduleEntryKind.PLANNED && it.date >= effectiveStartDate }
         .map { it.id }
     val occupied = currentEntries
         .filter { it.kind == ScheduleEntryKind.DONE || (it.kind == ScheduleEntryKind.PLANNED && it.planId != selectedPlanId) }
         .map { it.date }
         .toSet()
-    val slots = generatePlannedSlots(assignments, startDate, weeks, occupied)
+    val slots = generatePlannedSlots(assignments, effectiveStartDate, weeks, occupied)
     return ReplanResult(idsToDelete, slots)
 }
 

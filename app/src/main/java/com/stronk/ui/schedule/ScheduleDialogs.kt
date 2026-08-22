@@ -13,9 +13,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
@@ -63,10 +65,33 @@ private fun utcMillisToLocalDate(millis: Long): LocalDate =
 fun ScheduleDatePickerDialog(
     title: String,
     initialDate: LocalDate,
+    /**
+     * Najwcześniejsza wybieralna data; `null` = bez ograniczenia (wzorzec
+     * „Przesuń trening" w [ScheduleScreen]). Data startu przy przypisaniu
+     * planu ([AssignPlanDialog]) przekazuje tu dzisiaj — przeplanowanie nie
+     * ma prawa kasować przeszłych, niezaliczonych wpisów PLANNED.
+     */
+    minSelectableDate: LocalDate? = null,
     onConfirm: (LocalDate) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialDate.toUtcMillis())
+    val selectableDates = remember(minSelectableDate) {
+        val minDate = minSelectableDate
+        if (minDate == null) {
+            DatePickerDefaults.AllDates
+        } else {
+            object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                    !utcMillisToLocalDate(utcTimeMillis).isBefore(minDate)
+
+                override fun isSelectableYear(year: Int): Boolean = year >= minDate.year
+            }
+        }
+    }
+    val pickerState = rememberDatePickerState(
+        initialSelectedDateMillis = initialDate.toUtcMillis(),
+        selectableDates = selectableDates,
+    )
     DatePickerDialog(
         onDismissRequest = onDismiss,
         shape = StronkRadius.cardShape,
@@ -259,6 +284,7 @@ fun AssignPlanDialog(
         ScheduleDatePickerDialog(
             title = "Data startu",
             initialDate = startDate,
+            minSelectableDate = LocalDate.now(),
             onConfirm = { date ->
                 startDate = date
                 showStartDatePicker = false

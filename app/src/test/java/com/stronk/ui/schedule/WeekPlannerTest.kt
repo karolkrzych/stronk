@@ -318,6 +318,7 @@ class WeekPlannerTest {
             assignments = mapOf(DayOfWeek.TUESDAY to 0, DayOfWeek.THURSDAY to 1),
             startDate = monday,
             weeks = 1,
+            today = monday,
         )
         assertEquals(setOf("e1", "e2", "e3"), result.idsToDelete.toSet())
         assertTrue(result.slots.isNotEmpty())
@@ -330,7 +331,7 @@ class WeekPlannerTest {
             ScheduleEntryRef("przeszly", monday.minusWeeks(1), "planA", ScheduleEntryKind.PLANNED),
             ScheduleEntryRef("przyszly", monday, "planA", ScheduleEntryKind.PLANNED),
         )
-        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 1)
+        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 1, today = monday)
         assertEquals(listOf("przyszly"), result.idsToDelete)
     }
 
@@ -341,7 +342,7 @@ class WeekPlannerTest {
         val entries = listOf(
             ScheduleEntryRef("daleko", monday.plusWeeks(12), "planA", ScheduleEntryKind.PLANNED),
         )
-        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 4)
+        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 4, today = monday)
         assertEquals(listOf("daleko"), result.idsToDelete)
     }
 
@@ -356,6 +357,7 @@ class WeekPlannerTest {
             assignments = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 0),
             startDate = monday,
             weeks = 1,
+            today = monday,
         )
         assertTrue("DONE nie jest kasowany", result.idsToDelete.isEmpty())
         assertTrue("data z DONE nie dostaje nowego slotu", result.slots.none { it.date == monday })
@@ -373,6 +375,7 @@ class WeekPlannerTest {
             assignments = mapOf(DayOfWeek.WEDNESDAY to 0),
             startDate = monday,
             weeks = 1,
+            today = monday,
         )
         assertTrue(result.slots.isEmpty())
         assertTrue(result.idsToDelete.isEmpty())
@@ -383,9 +386,50 @@ class WeekPlannerTest {
         val entries = listOf(
             ScheduleEntryRef("skipped", monday, "planA", ScheduleEntryKind.OTHER),
         )
-        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 1)
+        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 1, today = monday)
         assertTrue(result.idsToDelete.isEmpty())
         assertTrue(result.slots.any { it.date == monday })
+    }
+
+    // ---------- clampStartDateToToday (Łatka 1: data startu w przeszłości) ----------
+
+    @Test
+    fun `clampStartDateToToday zostawia dzisiejsza date bez zmian`() {
+        assertEquals(monday, clampStartDateToToday(monday, today = monday))
+    }
+
+    @Test
+    fun `clampStartDateToToday zostawia date w przyszlosci bez zmian`() {
+        val future = monday.plusDays(3)
+        assertEquals(future, clampStartDateToToday(future, today = monday))
+    }
+
+    @Test
+    fun `clampStartDateToToday podciaga date sprzed dzisiaj do dzisiaj`() {
+        assertEquals(monday, clampStartDateToToday(monday.minusDays(5), today = monday))
+    }
+
+    @Test
+    fun `planReplacement clampuje startDate sprzed dzisiaj - nie kasuje przeszlych PLANNED ani nie generuje przeszlych slotow`() {
+        // "Dzisiaj" jest tydzień PO wybranej (defensywnie: UI już to blokuje)
+        // startDate — symuluje przepuszczoną datę sprzed dziś.
+        val today = monday.plusWeeks(1)
+        val entries = listOf(
+            ScheduleEntryRef("przeszly", monday, "planA", ScheduleEntryKind.PLANNED),
+            ScheduleEntryRef("dzisiejszy", today, "planA", ScheduleEntryKind.PLANNED),
+        )
+        val result = planReplacement(
+            currentEntries = entries,
+            selectedPlanId = "planA",
+            assignments = mapOf(DayOfWeek.MONDAY to 0),
+            startDate = monday,
+            weeks = 1,
+            today = today,
+        )
+        // Przeszły (sprzed "dzisiaj") wpis PLANNED zostaje nietknięty — clamp
+        // chroni go, mimo że formalnie spełnia `date >= startDate`.
+        assertEquals(listOf("dzisiejszy"), result.idsToDelete)
+        assertTrue("nie generuje slotow sprzed dzisiaj", result.slots.all { it.date >= today })
     }
 
     // ---------- rolling po przeplanowaniu podaza za NOWYM wzorcem ----------
@@ -399,7 +443,7 @@ class WeekPlannerTest {
             ScheduleEntryRef("e3", monday.plusDays(4), "planA", ScheduleEntryKind.PLANNED),
         )
         val newAssignments = mapOf(DayOfWeek.TUESDAY to 1, DayOfWeek.THURSDAY to 1)
-        val replan = planReplacement(oldEntries, "planA", newAssignments, monday, weeks = 4)
+        val replan = planReplacement(oldEntries, "planA", newAssignments, monday, weeks = 4, today = monday)
 
         // To, co po zapisie realnie ladowaloby do harmonogramu jako PLANNED tego planu.
         val scheduleAfter = replan.slots

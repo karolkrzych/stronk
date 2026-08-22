@@ -274,9 +274,18 @@ class ScheduleViewModel(
      * Jeśli po odfiltrowaniu nietykalnych dat nie powstał ŻADEN nowy slot —
      * nic się nie zapisuje (stare wpisy też zostają nietknięte), Snackbar
      * tłumaczy czemu ([ScheduleTexts.NOTHING_TO_PLAN]).
+     *
+     * Reentrancja: dopóki dla [planId] wisi niedokończony replan
+     * ([pendingReplan] niepusty — poprzednia paczka jeszcze nie odbiła się w
+     * [latestEntries]), kolejne wywołanie jest ignorowane. Bez tego dwa
+     * szybkie zatwierdzenia policzyłyby `idsToDelete`/zajętość ze STARYCH
+     * danych → duplikaty PLANNED na tych samych datach. Dialog i tak zamyka
+     * się od razu po `onConfirm` ([ScheduleScreen]), więc early return nie
+     * zmienia zachowania UI.
      */
     fun onAssignPlan(planId: String, assignments: Map<DayOfWeek, Int>, startDate: LocalDate) {
         if (assignments.isEmpty()) return
+        if (planId in pendingReplan) return
         val currentEntries = latestEntries.mapNotNull { entry ->
             parseDate(entry.date)?.let { date ->
                 ScheduleEntryRef(
@@ -308,7 +317,9 @@ class ScheduleViewModel(
             pendingReplan[planId] = replan.idsToDelete.toSet()
         }
         scheduleRepository.replacePlannedEntries(deleteIds = replan.idsToDelete, newEntries = newEntries)
-        selectedDate.value = startDate
+        // Ten sam clamp co w planReplacement — startDate mogła przyjść z UI
+        // sprzed dziś tylko przez defensywną ścieżkę (picker to blokuje).
+        selectedDate.value = clampStartDateToToday(startDate)
     }
 
     /** Snackbar w [ScheduleScreen] pokazał komunikat — czyścimy, żeby się nie powtarzał. */
