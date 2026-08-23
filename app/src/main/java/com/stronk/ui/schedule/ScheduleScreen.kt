@@ -121,18 +121,29 @@ fun ScheduleScreen(
     // dało się trafić w „Cofnij" (gate: 2 z 3 prób nie zdążyły) — okno na
     // wycofanie przypadkowego tapu musi być realne, inaczej cała siatka
     // bezpieczeństwa jest dekoracją.
-    LaunchedEffect(cancelEvent) {
+    // Klucz to TOKEN, nie całe zdarzenie: gdy [ScheduleViewModel.onCancelEventShown]
+    // wyzeruje zdarzenie, klucz zmienia się na `null` i efekt startuje od nowa —
+    // wynik `showSnackbar` musi więc być obsłużony ZANIM zdarzenie zniknie
+    // (inaczej restart ubiłby korutynę czekającą na „Cofnij").
+    // `finally` domyka drugi przypadek: efekt anulowany razem z kompozycją
+    // (przełączenie zakładki przy widocznym snackbarze) też KONSUMUJE zdarzenie —
+    // bez tego wisiałoby ono w [ScheduleViewModel] i po powrocie na ekran
+    // odpalało snackbar „Cofnij" do dawno odwołanego treningu.
+    LaunchedEffect(cancelEvent?.token) {
         val event = cancelEvent ?: return@LaunchedEffect
         snackbarHostState.currentSnackbarData?.dismiss()
-        val result = snackbarHostState.showSnackbar(
-            message = ScheduleTexts.WORKOUT_CANCELLED,
-            actionLabel = ScheduleTexts.UNDO_CANCEL,
-            duration = SnackbarDuration.Long,
-        )
-        if (result == SnackbarResult.ActionPerformed) {
-            viewModel.onRestoreEntry(event.entryId)
+        try {
+            val result = snackbarHostState.showSnackbar(
+                message = ScheduleTexts.WORKOUT_CANCELLED,
+                actionLabel = ScheduleTexts.UNDO_CANCEL,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.onRestoreEntry(event.entryId)
+            }
+        } finally {
+            viewModel.onCancelEventShown()
         }
-        viewModel.onCancelEventShown()
     }
 
     Scaffold(

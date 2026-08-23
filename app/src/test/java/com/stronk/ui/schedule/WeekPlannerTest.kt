@@ -551,6 +551,187 @@ class WeekPlannerTest {
         assertTrue(shadowedEntryIds(entries).isEmpty())
     }
 
+    // ---------- moveResolution (sklejanie łańcucha okruchów MOVED) ----------
+
+    /** Stan po przesunięciu: harmonogram + id wpisu PLANNED, który wylądował na nowej dacie. */
+    private data class MoveOutcome(val entries: List<ScheduleEntryRef>, val movedEntryId: String)
+
+    /**
+     * Symulacja tego, co [ScheduleViewModel.onMoveEntry] robi z wynikiem
+     * [moveResolution] — dzięki niej testy sprawdzają STAN KOŃCOWY łańcucha
+     * przesunięć, a nie tylko kształt pojedynczej operacji.
+     */
+    private fun applyMove(
+        entries: List<ScheduleEntryRef>,
+        entryId: String,
+        newDate: LocalDate,
+    ): MoveOutcome {
+        val moved = entries.first { it.id == entryId }
+        val resolution = moveResolution(entries, moved, newDate)
+        val redirects = resolution.crumbsToRedirect.associate { it.id to it.movedTo }
+        val kept = entries
+            .filterNot { it.id in resolution.crumbIdsToDelete }
+            .map { entry -> redirects[entry.id]?.let { entry.copy(movedTo = it) } ?: entry }
+        return if (resolution.createCrumbAtSource) {
+            val newId = "$entryId-na-$newDate"
+            MoveOutcome(
+                entries = kept.map {
+                    if (it.id == entryId) it.copy(kind = ScheduleEntryKind.MOVED, movedTo = newDate) else it
+                } + ScheduleEntryRef(
+                    id = newId,
+                    date = newDate,
+                    planId = moved.planId,
+                    kind = ScheduleEntryKind.PLANNED,
+                    dayIndex = moved.dayIndex,
+                ),
+                movedEntryId = newId,
+            )
+        } else {
+            MoveOutcome(
+                entries = kept.map { if (it.id == entryId) it.copy(date = newDate) else it },
+                movedEntryId = entryId,
+            )
+        }
+    }
+
+    private fun crumbs(entries: List<ScheduleEntryRef>) =
+        entries.filter { it.kind == ScheduleEntryKind.MOVED }
+
+    private fun plannedDates(entries: List<ScheduleEntryRef>) =
+        entries.filter { it.kind == ScheduleEntryKind.PLANNED }.map { it.date }
+
+    @Test
+    fun `moveResolution z normalnego dnia wzorca tworzy okruch na dacie zrodlowej`() {
+        val entries = listOf(ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.PLANNED))
+        val resolution = moveResolution(entries, entries.first(), monday.plusDays(1))
+        assertTrue(resolution.crumbIdsToDelete.isEmpty())
+        assertTrue(resolution.crumbsToRedirect.isEmpty())
+        assertTrue(resolution.createCrumbAtSource)
+    }
+
+    @Test
+    fun `pojedyncze przesuniecie zostawia jeden okruch na dacie zrodlowej`() {
+        val tuesday = monday.plusDays(1)
+        val start = listOf(ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.PLANNED))
+
+        val after = applyMove(start, "e1", tuesday).entries
+
+        assertEquals(listOf(tuesday), plannedDates(after))
+        assertEquals(1, crumbs(after).size)
+        assertEquals(monday, crumbs(after).first().date)
+        assertEquals(tuesday, crumbs(after).first().movedTo)
+    }
+
+    @Test
+    fun `round-trip X-Y-X konczy sie zerowa liczba okruchow`() {
+        // Repro ze zgloszenia: poniedzialek 24 -> wtorek 25 -> z powrotem poniedzialek 24.
+        val tuesday = monday.plusDays(1)
+        val start = listOf(ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.PLANNED))
+
+        val first = applyMove(start, "e1", tuesday)
+        val after = applyMove(first.entries, first.movedEntryId, monday).entries
+
+        assertTrue("wtorek nie moze trzymac karty 'Przesuniety'", crumbs(after).isEmpty())
+        assertEquals(listOf(monday), plannedDates(after))
+    }
+
+    @Test
+    fun `lancuch X-Y-Z konczy sie jednym okruchem MOVED z X na Z`() {
+        val tuesday = monday.plusDays(1)
+        val wednesday = monday.plusDays(2)
+        val start = listOf(ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.PLANNED))
+
+        val first = applyMove(start, "e1", tuesday)
+        val after = applyMove(first.entries, first.movedEntryId, wednesday).entries
+
+        assertEquals(1, crumbs(after).size)
+        assertEquals(monday, crumbs(after).first().date)
+        assertEquals(wednesday, crumbs(after).first().movedTo)
+        assertEquals(listOf(wednesday), plannedDates(after))
+    }
+
+    @Test
+    fun `dlugi lancuch i powrot na start kasuje okruch calkiem`() {
+        val tuesday = monday.plusDays(1)
+        val wednesday = monday.plusDays(2)
+        val start = listOf(ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.PLANNED))
+
+        val first = applyMove(start, "e1", tuesday)
+        val second = applyMove(first.entries, first.movedEntryId, wednesday)
+        val after = applyMove(second.entries, second.movedEntryId, monday).entries
+
+        assertTrue(crumbs(after).isEmpty())
+        assertEquals(listOf(monday), plannedDates(after))
+    }
+
+    @Test
+    fun `moveResolution nie sklei sie z okruchem INNEGO planu`() {
+        val tuesday = monday.plusDays(1)
+        val entries = listOf(
+            ScheduleEntryRef("cudzy", monday, "planB", ScheduleEntryKind.MOVED, movedTo = tuesday),
+            ScheduleEntryRef("e1", tuesday, "planA", ScheduleEntryKind.PLANNED),
+        )
+        val resolution = moveResolution(entries, entries.last(), monday)
+        assertTrue(resolution.crumbIdsToDelete.isEmpty())
+        assertTrue(resolution.crumbsToRedirect.isEmpty())
+        assertTrue("cudzy okruch nie robi z wtorku przystanku", resolution.createCrumbAtSource)
+    }
+
+    @Test
+    fun `moveResolution nie sklei sie z okruchem INNEGO dnia tego samego planu`() {
+        // Zlapane na emulatorze: „Full body A" pojechal z wtorku na srode, a ze
+        // srody rusza „Full body B" (jej wlasny dzien wzorca). To inny trening,
+        // wiec okruch A ma zostac nietkniety, a B ma zostawic wlasny okruch.
+        val tuesday = monday.plusDays(1)
+        val wednesday = monday.plusDays(2)
+        val entries = listOf(
+            ScheduleEntryRef(
+                id = "okruch-A",
+                date = tuesday,
+                planId = "planA",
+                kind = ScheduleEntryKind.MOVED,
+                movedTo = wednesday,
+                dayIndex = 0,
+            ),
+            ScheduleEntryRef("a", wednesday, "planA", ScheduleEntryKind.PLANNED, dayIndex = 0),
+            ScheduleEntryRef("b", wednesday, "planA", ScheduleEntryKind.PLANNED, dayIndex = 1),
+        )
+        val resolution = moveResolution(entries, entries.last(), tuesday)
+        assertTrue(resolution.crumbIdsToDelete.isEmpty())
+        assertTrue(resolution.crumbsToRedirect.isEmpty())
+        assertTrue(resolution.createCrumbAtSource)
+    }
+
+    @Test
+    fun `moveResolution nie rusza okruchow wskazujacych inne daty`() {
+        val tuesday = monday.plusDays(1)
+        val thursday = monday.plusDays(3)
+        val entries = listOf(
+            // okruch z zupelnie innego przesuniecia tego samego planu
+            ScheduleEntryRef("inny", monday.plusDays(2), "planA", ScheduleEntryKind.MOVED, movedTo = thursday),
+            ScheduleEntryRef("cel", thursday, "planA", ScheduleEntryKind.PLANNED),
+            ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.PLANNED),
+        )
+        val resolution = moveResolution(entries, entries.last(), tuesday)
+        assertTrue(resolution.crumbIdsToDelete.isEmpty())
+        assertTrue(resolution.crumbsToRedirect.isEmpty())
+        assertTrue(resolution.createCrumbAtSource)
+    }
+
+    @Test
+    fun `przeplanowanie widzi sklejony lancuch jako jedno aktywne przesuniecie`() {
+        // Po X -> Y -> Z zajete dla planu maja byc X (dzien wzorca) i Z (cel),
+        // a Y ma wrocic do puli — inaczej przystanek wykluczalby dzien na zawsze.
+        val tuesday = monday.plusDays(1)
+        val wednesday = monday.plusDays(2)
+        val start = listOf(ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.PLANNED))
+
+        val first = applyMove(start, "e1", tuesday)
+        val after = applyMove(first.entries, first.movedEntryId, wednesday).entries
+
+        assertEquals(listOf(MovedSlot(monday, wednesday)), activeMovedSlots(after, "planA", monday))
+    }
+
     // ---------- clampStartDateToToday (Łatka 1: data startu w przeszłości) ----------
 
     @Test

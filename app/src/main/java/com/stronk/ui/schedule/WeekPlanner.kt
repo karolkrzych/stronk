@@ -373,6 +373,13 @@ enum class ScheduleEntryKind { PLANNED, DONE, MOVED, SKIPPED }
  * [ScheduleEntryKind.MOVED] (`ScheduleEntry.movedTo`). Bez niej nie da się
  * odróżnić żywego przesunięcia (cel wciąż istnieje) od osieroconego wpisu po
  * skasowanym celu, patrz [activeMovedSlots].
+ *
+ * [dayIndex]: indeks dnia planu (`ScheduleEntry.dayIndex`) — jedyna tożsamość
+ * TRENINGU, jaką niesie wpis. Potrzebna w [moveResolution]: bez niej okruch
+ * „Full body A pojechał na środę" skleiłby się z przesunięciem „Full body B"
+ * wychodzącym z tej samej środy (ten sam plan, ta sama data) i skasował cudzy,
+ * całkiem poprawny breadcrumb. Domyślnie 0 — wołający, których sklejanie
+ * łańcucha nie dotyczy, nie muszą go wypełniać.
  */
 data class ScheduleEntryRef(
     val id: String,
@@ -381,6 +388,7 @@ data class ScheduleEntryRef(
     val kind: ScheduleEntryKind,
     val archived: Boolean = false,
     val movedTo: LocalDate? = null,
+    val dayIndex: Int = 0,
 )
 
 /** Aktywne przesunięcie: trening z dnia [from] leży pod datą [to]. */
@@ -450,6 +458,84 @@ fun shadowedEntryIds(entries: List<ScheduleEntryRef>): List<String> {
         .filter { it.kind == ScheduleEntryKind.MOVED || it.kind == ScheduleEntryKind.SKIPPED }
         .filter { (it.planId to it.date) in liveKeys }
         .map { it.id }
+}
+
+// ---------- przesunięcie pojedynczego treningu (łańcuch okruchów) ----------
+
+/** Okruch MOVED do przekierowania: wpis [id] ma odtąd wskazywać [movedTo]. */
+data class MovedCrumbRedirect(val id: String, val movedTo: LocalDate)
+
+/**
+ * Co zrobić z okruchami MOVED przy przesunięciu jednego treningu — wynik
+ * [moveResolution], wykonywany przez [ScheduleViewModel.onMoveEntry].
+ *
+ * [crumbIdsToDelete]: okruchy do skasowania (trening wrócił do punktu wyjścia).
+ * [crumbsToRedirect]: okruchy, które mają wskazywać nową datę docelową.
+ * [createCrumbAtSource]: czy na dacie ŹRÓDŁOWEJ ma powstać NOWY okruch
+ * („Przesunięty → …"). `false` znaczy „data źródłowa była tylko przystankiem" —
+ * wpis po prostu jedzie dalej pod nową datę, bez zostawiania śladu.
+ */
+data class MoveResolution(
+    val crumbIdsToDelete: List<String>,
+    val crumbsToRedirect: List<MovedCrumbRedirect>,
+    val createCrumbAtSource: Boolean,
+)
+
+/**
+ * Przesunięcie wpisu [movedEntry] z jego daty (dalej „X") na [newDate] („Y") —
+ * reguła SKLEJANIA łańcucha okruchów. Bez niej każdy przystanek zostawiał
+ * własną kartę „Przesunięty → …" i po odesłaniu treningu z powrotem zostawał
+ * na kalendarzu śmieć: dzień, który nigdy nie był dniem wzorca, trzymał trwałą
+ * notatkę o przesunięciu (zgłoszenie: pon → wt → pon zostawiało wtorek z kartą
+ * „Przesunięty → poniedziałek", której nie łapie ani [shadowedEntryIds] — na
+ * wtorku nie ma żywego wpisu — ani [activeMovedSlots], bo cel przesunięcia żyje).
+ *
+ * Reguła:
+ * - X BYŁO PRZYSTANKIEM (istnieje okruch MOVED tego samego planu z
+ *   `movedTo == X`, czyli trening przyszedł na X przesunięciem z jakiegoś W):
+ *   ten okruch przejmuje nowy cel — `movedTo = Y` — a gdy Y jest jego WŁASNĄ
+ *   datą (`W == Y`, trening wrócił do punktu wyjścia), okruch leci do kasacji.
+ *   Na X nowy okruch NIE powstaje: przystanek nie zostawia śladu.
+ * - X NIE było przystankiem (normalny dzień wzorca): powstaje zwykły okruch
+ *   MOVED(X → Y), jak dotąd.
+ *
+ * Własności, które z tego wynikają (pokryte w `WeekPlannerTest`):
+ * - X → Y → X kończy się ZEROWĄ liczbą okruchów (X znów ma PLANNED, Y jest puste);
+ * - X → Y → Z kończy się JEDNYM okruchem MOVED(X → Z) (Y puste, Z ma PLANNED);
+ * - pojedyncze X → Y zachowuje się dokładnie jak dotąd.
+ *
+ * Liczą się wyłącznie okruchy TEGO SAMEGO treningu: ten sam plan I ten sam
+ * [ScheduleEntryRef.dayIndex]. Sam plan + data to za mało — na jednej dacie
+ * potrafią spotkać się dwa różne dni tego samego planu („Full body A"
+ * przesunięty na środę, na której od zawsze siedzi „Full body B"), a wtedy
+ * przesunięcie B skleiłoby się z okruchem A i skasowało cudzy, poprawny
+ * breadcrumb (złapane na emulatorze przy weryfikacji tej reguły).
+ */
+fun moveResolution(
+    entries: List<ScheduleEntryRef>,
+    movedEntry: ScheduleEntryRef,
+    newDate: LocalDate,
+): MoveResolution {
+    val stopoverCrumbs = entries.filter {
+        it.kind == ScheduleEntryKind.MOVED &&
+            it.planId == movedEntry.planId &&
+            it.dayIndex == movedEntry.dayIndex &&
+            it.id != movedEntry.id &&
+            it.movedTo == movedEntry.date
+    }
+    if (stopoverCrumbs.isEmpty()) {
+        return MoveResolution(
+            crumbIdsToDelete = emptyList(),
+            crumbsToRedirect = emptyList(),
+            createCrumbAtSource = true,
+        )
+    }
+    val (returnedHome, redirected) = stopoverCrumbs.partition { it.date == newDate }
+    return MoveResolution(
+        crumbIdsToDelete = returnedHome.map { it.id },
+        crumbsToRedirect = redirected.map { MovedCrumbRedirect(it.id, newDate) },
+        createCrumbAtSource = false,
+    )
 }
 
 /**

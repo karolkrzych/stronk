@@ -264,21 +264,48 @@ class ScheduleViewModel(
     // ---------- akcje na wpisach ----------
 
     /**
-     * Przesunięcie: oryginał dostaje status MOVED + movedTo, na docelowy dzień
-     * powstaje nowy wpis PLANNED (model danych, sekcja schedule).
+     * Przesunięcie treningu na inny dzień. Co się dzieje z okruchami MOVED
+     * („Przesunięty → …") decyduje czysta funkcja
+     * [WeekPlanner.moveResolution] — tu zostaje samo wykonanie operacji na
+     * repozytorium, w JEDNEJ paczce ([ScheduleRepository.replacePlannedEntries]),
+     * żeby snapshot listenery nigdy nie zobaczyły stanu pośredniego.
+     *
+     * Dwa warianty (pełna semantyka w KDoc [WeekPlanner.moveResolution]):
+     * - data źródłowa to normalny dzień wzorca → oryginał dostaje status MOVED +
+     *   `movedTo`, a na docelowym dniu powstaje nowy wpis PLANNED (jak dotąd);
+     * - data źródłowa była tylko PRZYSTANKIEM (trening już tam przyjechał
+     *   przesunięciem) → nowy okruch NIE powstaje, wpis po prostu jedzie dalej
+     *   pod nową datę, a okruch z początku łańcucha przejmuje nowy cel albo —
+     *   gdy trening wrócił do punktu wyjścia — leci do kasacji.
      */
     fun onMoveEntry(entryId: String, newDate: LocalDate) {
         val entry = latestEntries.firstOrNull { it.id == entryId } ?: return
         val newDateKey = newDate.toString()
         if (entry.status != ScheduleStatus.PLANNED || entry.date == newDateKey) return
-        scheduleRepository.save(entry.copy(status = ScheduleStatus.MOVED, movedTo = newDateKey))
-        scheduleRepository.save(
-            ScheduleEntry(
-                id = scheduleRepository.newId(),
-                date = newDateKey,
-                planId = entry.planId,
-                dayIndex = entry.dayIndex,
-            ),
+        val refs = toEntryRefs(latestEntries, latestPlans.associateBy { it.id })
+        val movedRef = refs.firstOrNull { it.id == entryId } ?: return
+        val resolution = moveResolution(refs, movedRef, newDate)
+
+        val redirectedCrumbs = resolution.crumbsToRedirect.mapNotNull { redirect ->
+            latestEntries.firstOrNull { it.id == redirect.id }
+                ?.copy(movedTo = redirect.movedTo.toString())
+        }
+        val sourceWrites = if (resolution.createCrumbAtSource) {
+            listOf(
+                entry.copy(status = ScheduleStatus.MOVED, movedTo = newDateKey),
+                ScheduleEntry(
+                    id = scheduleRepository.newId(),
+                    date = newDateKey,
+                    planId = entry.planId,
+                    dayIndex = entry.dayIndex,
+                ),
+            )
+        } else {
+            listOf(entry.copy(date = newDateKey))
+        }
+        scheduleRepository.replacePlannedEntries(
+            deleteIds = resolution.crumbIdsToDelete,
+            newEntries = redirectedCrumbs + sourceWrites,
         )
         // Pokaż od razu dzień, na który trening się przeniósł.
         selectedDate.value = newDate
@@ -553,6 +580,7 @@ class ScheduleViewModel(
                     },
                     archived = entry.status != ScheduleStatus.DONE && plansById[entry.planId]?.archived == true,
                     movedTo = entry.movedTo?.let { parseDate(it) },
+                    dayIndex = entry.dayIndex,
                 )
             }
         }
