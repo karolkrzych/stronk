@@ -20,6 +20,7 @@ import com.stronk.progression.ProgressionEngine
 import com.stronk.ui.cardio.CardioRowUi
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.YearMonth
 import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -81,13 +82,16 @@ data class ScheduleDayUi(
     val hasCardio: Boolean = false,
 )
 
-/** Jeden rząd siatki = tydzień bloku (7 kwadratów, poniedziałek–niedziela). */
-data class ScheduleWeekUi(
-    /** 1-based pozycja tygodnia w bloku. */
-    val weekNumber: Int,
-    val isCurrentWeek: Boolean,
-    val days: List<ScheduleDayUi>,
-)
+/**
+ * Jeden rząd siatki = tydzień kalendarzowy (7 pozycji, poniedziałek–niedziela).
+ *
+ * `null` w [days] to dzień SPOZA pokazywanego miesiąca: siatka zawsze rysuje
+ * pełne tygodnie (inaczej kolumny dni tygodnia by się rozjechały), ale taka
+ * pozycja jest pustym placeholderem — bez liczby, bez stanu, bez tapu. Slot
+ * `null` zamiast flagi `inMonth`, żeby nie dało się przypadkiem policzyć stanu
+ * (cardio, „dziś", zaznaczenie) dla dnia, którego siatka i tak nie pokazuje.
+ */
+data class ScheduleWeekUi(val days: List<ScheduleDayUi?>)
 
 /** Plan możliwy do przypisania do tygodnia (niearchiwalny, z co najmniej 1 dniem). */
 data class PlanOption(
@@ -109,18 +113,25 @@ data class PlanOption(
 data class ScheduleUiState(
     val loading: Boolean = true,
     /**
-     * Nagłówek: „Tydzień 1/6" w planie z blokiem, samo „Tydzień 7" w planie bez
-     * bloku (nie ma mianownika, plan biegnie bez końca); pusty bez planu.
+     * Podtytuł nagłówka: „Tydzień 1/6" w planie z blokiem, samo „Tydzień 7" w
+     * planie bez bloku (nie ma mianownika, plan biegnie bez końca); pusty bez
+     * planu. Mówi o TERAŹNIEJSZOŚCI (pozycja w bloku dziś), nie o miesiącu
+     * pokazywanym w siatce — strzałki ‹ › go nie ruszają.
      */
     val blockLabel: String = "",
-    /** Podtytuł: miesiąc(-e) objęte siatką, np. „Sierpień – wrzesień". */
-    val monthLabel: String = "",
-    /** Rzędy siatki kwadratów — tygodnie bieżącego bloku. */
+    /** Tytuł nagłówka: pokazywany miesiąc z rokiem, np. „Sierpień 2026". */
+    val monthTitle: String = "",
+    /** Rzędy siatki kwadratów — tygodnie pokrywające pokazywany miesiąc. */
     val weeks: List<ScheduleWeekUi> = emptyList(),
     val selectedDate: LocalDate = LocalDate.now(),
     /** „Dziś" albo np. „Piątek 22 sierpnia" — dla dnia bez treningu. */
     val selectedDayLabel: String = "",
-    val todaySelected: Boolean = true,
+    /**
+     * Czy pokazać akcję „Dziś": widok odjechał od teraźniejszości — albo
+     * zaznaczony jest inny dzień niż dzisiejszy, albo siatka stoi na innym
+     * miesiącu niż bieżący (strzałki ‹ ›).
+     */
+    val showTodayAction: Boolean = false,
     val selectedEntries: List<ScheduleEntryUi> = emptyList(),
     /** Cardio wybranego dnia — także w dniach przeszłych i przyszłych. */
     val selectedCardio: List<CardioRowUi> = emptyList(),
@@ -149,6 +160,20 @@ class ScheduleViewModel(
 
     /** Jedyne źródło pozycji w kalendarzu: który dzień pokazuje karta pod siatką. */
     private val selectedDate = MutableStateFlow(LocalDate.now())
+
+    /**
+     * Miesiąc pokazywany w siatce — klasyczny widok miesiąca, przewijany
+     * strzałkami ‹ › ([onPreviousMonth]/[onNextMonth]). Czysto rendering:
+     * generacja wpisów, rolling i silnik progresji o tym stanie nie wiedzą.
+     */
+    private val visibleMonth = MutableStateFlow(YearMonth.now())
+
+    /** Pozycja w kalendarzu jako jedna wartość — [combine] przyjmuje maks 5 flow. */
+    private data class CalendarPosition(val selectedDate: LocalDate, val visibleMonth: YearMonth)
+
+    private val calendarPosition = combine(selectedDate, visibleMonth) { date, month ->
+        CalendarPosition(date, month)
+    }
 
     /** Ostatni znany harmonogram — pod akcje (przesuń/odwołaj/generacja). */
     private var latestEntries: List<ScheduleEntry> = emptyList()
@@ -208,13 +233,13 @@ class ScheduleViewModel(
         scheduleRepository.observeSchedule(),
         planRepository.observePlans(),
         exercisesById,
-        selectedDate,
+        calendarPosition,
         cardioRepository.observeCardio(),
-    ) { schedule, plans, exercises, selected, cardio ->
+    ) { schedule, plans, exercises, position, cardio ->
         latestEntries = schedule
         latestPlans = plans
         if (exercises == null) ScheduleUiState(loading = true)
-        else buildState(schedule, plans, exercises, selected, cardio)
+        else buildState(schedule, plans, exercises, position, cardio)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScheduleUiState())
 
     /**
@@ -257,8 +282,32 @@ class ScheduleViewModel(
         selectedDate.value = date
     }
 
+    /** Poprzedni miesiąc w całości (siatka nie kotwiczy się już blokiem treningowym). */
+    fun onPreviousMonth() {
+        visibleMonth.value = visibleMonth.value.minusMonths(1)
+    }
+
+    /** Kolejny miesiąc w całości. */
+    fun onNextMonth() {
+        visibleMonth.value = visibleMonth.value.plusMonths(1)
+    }
+
+    /** Powrót do teraźniejszości: i zaznaczenie, i siatka wracają na dziś. */
     fun onBackToToday() {
-        selectedDate.value = LocalDate.now()
+        val today = LocalDate.now()
+        selectedDate.value = today
+        visibleMonth.value = YearMonth.from(today)
+    }
+
+    /**
+     * Zaznaczony dzień MUSI być widoczny w siatce — akcje, które przestawiają
+     * [selectedDate] na dowolną datę (przesunięcie treningu, start planowania),
+     * przeciągają za sobą [visibleMonth]. Bez tego karta dnia pokazywałaby dzień
+     * spoza pokazywanego miesiąca, którego w siatce nawet nie widać.
+     */
+    private fun selectDayAndReveal(date: LocalDate) {
+        selectedDate.value = date
+        visibleMonth.value = YearMonth.from(date)
     }
 
     // ---------- akcje na wpisach ----------
@@ -307,8 +356,9 @@ class ScheduleViewModel(
             deleteIds = resolution.crumbIdsToDelete,
             newEntries = redirectedCrumbs + sourceWrites,
         )
-        // Pokaż od razu dzień, na który trening się przeniósł.
-        selectedDate.value = newDate
+        // Pokaż od razu dzień, na który trening się przeniósł — razem z jego
+        // miesiącem, bo przesunięcie potrafi przeskoczyć przełom miesiąca.
+        selectDayAndReveal(newDate)
     }
 
     fun onCancelEntry(entryId: String) {
@@ -397,7 +447,8 @@ class ScheduleViewModel(
         scheduleRepository.replacePlannedEntries(deleteIds = replan.idsToDelete, newEntries = newEntries)
         // Ten sam clamp co w planReplacement — startDate mogła przyjść z UI
         // sprzed dziś tylko przez defensywną ścieżkę (picker to blokuje).
-        selectedDate.value = clampStartDateToToday(startDate)
+        // Data startu bywa w kolejnym miesiącu — siatka jedzie za nią.
+        selectDayAndReveal(clampStartDateToToday(startDate))
     }
 
     /**
@@ -591,9 +642,11 @@ class ScheduleViewModel(
         schedule: List<ScheduleEntry>,
         plans: List<Plan>,
         exercises: Map<String, Exercise>,
-        selected: LocalDate,
+        position: CalendarPosition,
         cardio: List<CardioEntry>,
     ): ScheduleUiState {
+        val selected = position.selectedDate
+        val month = position.visibleMonth
         val today = LocalDate.now()
         val entriesByDate = schedule.groupBy { it.date }
         val cardioByDate = cardio.groupBy { it.date }
@@ -612,9 +665,10 @@ class ScheduleViewModel(
         // DONE nie wpada do żadnej z nich — historia treningu jest nietykalna.
         val hiddenIds = shadowedEntryIds(refs).toSet() + archivedPlanGhostEntryIds(refs)
 
-        // Pozycja w bloku liczona WYŁĄCZNIE przez silnik progresji (ADR-004).
-        // null = plan bez bloku: tygodnie lecą liniowo, siatka jedzie oknem.
-        // Bez planu w ogóle zostaje domyślny blok — siatka ma znajomy kształt.
+        // Pozycja w bloku liczona WYŁĄCZNIE przez silnik progresji (ADR-004) —
+        // po przejściu na klasyczny widok miesiąca służy JUŻ TYLKO etykiecie
+        // „Tydzień X/Y" w podtytule; siatka nie kotwiczy się blokiem.
+        // Bez planu w ogóle zostaje domyślny blok — etykieta i tak nie powstaje.
         val blockWeeks = if (plan == null) {
             ProgressionConstants.BLOCK_LENGTH_WEEKS_DEFAULT
         } else {
@@ -627,36 +681,28 @@ class ScheduleViewModel(
                 blockWeeks,
             )
         } ?: 0
-        val window = gridWindow(weekIndex, blockWeeks)
-        val mondays = blockWeekMondays(today, weekIndex, window)
 
-        val weeks = mondays.mapIndexed { row, monday ->
-            val weekIndexOfRow = window.startWeek + row
+        // Klasyczny widok miesiąca: pełne tygodnie od 1. do ostatniego dnia
+        // [month], dni spoza miesiąca jako puste placeholdery (slot `null`).
+        val weeks = monthGridMondays(month).map { monday ->
             ScheduleWeekUi(
-                // Bez bloku numeracja jest liniowa — nie ma czego zawijać modulo.
-                weekNumber = if (blockWeeks == null) {
-                    weekIndexOfRow + 1
-                } else {
-                    weekIndexOfRow % blockWeeks + 1
-                },
-                isCurrentWeek = weekIndexOfRow == weekIndex,
                 days = (0 until ScheduleConstants.DAYS_IN_WEEK).map { offset ->
                     val date = monday.plusDays(offset.toLong())
-                    ScheduleDayUi(
-                        date = date,
-                        dayOfMonth = date.dayOfMonth,
-                        isToday = date == today,
-                        isSelected = date == selected,
-                        status = dayStatus(entriesByDate[date.toString()].orEmpty(), date, today),
-                        hasCardio = cardioByDate.containsKey(date.toString()),
-                    )
+                    if (YearMonth.from(date) != month) {
+                        null
+                    } else {
+                        ScheduleDayUi(
+                            date = date,
+                            dayOfMonth = date.dayOfMonth,
+                            isToday = date == today,
+                            isSelected = date == selected,
+                            status = dayStatus(entriesByDate[date.toString()].orEmpty(), date, today),
+                            hasCardio = cardioByDate.containsKey(date.toString()),
+                        )
+                    }
                 },
             )
         }
-
-        val gridFrom = mondays.firstOrNull() ?: weekStartOf(today)
-        val gridTo = mondays.lastOrNull()?.plusDays((ScheduleConstants.DAYS_IN_WEEK - 1).toLong())
-            ?: gridFrom
 
         return ScheduleUiState(
             loading = false,
@@ -665,11 +711,11 @@ class ScheduleViewModel(
             } else {
                 ScheduleTexts.weekHeaderLabel(weekIndex + 1, blockWeeks)
             },
-            monthLabel = ScheduleTexts.monthRangeLabel(gridFrom, gridTo, today),
+            monthTitle = ScheduleTexts.monthTitle(month),
             weeks = weeks,
             selectedDate = selected,
             selectedDayLabel = ScheduleTexts.selectedDayLabel(selected, today),
-            todaySelected = selected == today,
+            showTodayAction = selected != today || month != YearMonth.from(today),
             selectedEntries = entriesByDate[selected.toString()].orEmpty()
                 .filterNot { it.id in hiddenIds }
                 .sortedBy { it.dayIndex }

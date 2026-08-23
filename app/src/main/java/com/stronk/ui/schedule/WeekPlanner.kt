@@ -2,6 +2,7 @@ package com.stronk.ui.schedule
 
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
@@ -23,12 +24,6 @@ data class PlannedSlot(val date: LocalDate, val dayIndex: Int)
  * to nazwa planu w chwili budowy stanu (nie referencja — plan może zniknąć).
  */
 data class OccupiedEntry(val date: LocalDate, val planId: String, val planName: String)
-
-/**
- * Okno tygodni bloku pokazywane w siatce kwadratów: [startWeek] to 0-based
- * indeks pierwszego rzędu w bloku, [rows] to liczba rzędów.
- */
-data class BlockWindow(val startWeek: Int, val rows: Int)
 
 private val polishLocale = Locale.forLanguageTag("pl")
 private val dayMonthFormatter = DateTimeFormatter.ofPattern("d MMMM", polishLocale)
@@ -60,76 +55,21 @@ fun weekLabel(weekStart: LocalDate, today: LocalDate): String {
 }
 
 /**
- * Które tygodnie bloku trafiają do siatki kwadratów.
+ * Poniedziałki rzędów KLASYCZNEJ siatki miesiąca [month]: od poniedziałku
+ * tygodnia, w którym leży 1. dzień miesiąca, po poniedziałek tygodnia, w którym
+ * leży ostatni dzień. Zawsze pełne tygodnie (kolumny = dni tygodnia się nie
+ * rozjeżdżają) — dni spoza [month] renderują się jako PUSTE placeholdery, patrz
+ * [ScheduleViewModel.buildState].
  *
- * Blok mieszczący się w limicie pokazujemy w całości od tygodnia 0 (typowy
- * przypadek: 5 tygodni pracy + 1 lekki = 6 rzędów, dokładnie jak mock).
- * Blok krótszy niż [minRows] dopełniamy kolejnymi tygodniami kalendarza
- * (siatka ma być dominantą ekranu, a nie dwoma rzędami), a blok dłuższy niż
- * [maxRows] pokazujemy oknem wyśrodkowanym na bieżącym tygodniu.
- *
- * @param weekIndexInBlock 0-based pozycja bieżącego tygodnia w bloku
- *   (z `ProgressionEngine.weekIndexInBlock` — silnik jest źródłem prawdy)
- * @param blockLengthWeeks pełna długość bloku (praca + tydzień lekki)
+ * Liczba rzędów wychodzi z kalendarza, nie z konfiguracji: 4 (luty roku
+ * nieprzestępnego zaczynający się w poniedziałek) do 6 (długi miesiąc
+ * zaczynający się pod koniec tygodnia).
  */
-fun blockGridWindow(
-    weekIndexInBlock: Int,
-    blockLengthWeeks: Int,
-    minRows: Int = ScheduleConstants.GRID_WEEKS_MIN,
-    maxRows: Int = ScheduleConstants.GRID_WEEKS_MAX,
-): BlockWindow {
-    val length = blockLengthWeeks.coerceAtLeast(1)
-    val rows = length.coerceIn(minRows.coerceAtMost(maxRows), maxRows)
-    if (rows >= length) return BlockWindow(startWeek = 0, rows = rows)
-    val centered = weekIndexInBlock - (rows - 1) / 2
-    return BlockWindow(startWeek = centered.coerceIn(0, length - rows), rows = rows)
-}
-
-/**
- * Okno siatki dla planu BEZ bloku (`Plan.blockLengthWeeks == null`): stałe
- * [rows] tygodni wokół bieżącego, z [past] tygodniami przeszłości. Bloku nie ma
- * czego domykać, więc siatka po prostu jedzie razem z planem w nieskończoność.
- *
- * @param weekIndex liniowy numer tygodnia planu, 0-based
- *   (z `ProgressionEngine.weekIndexForBlock` dla planu bez bloku)
- */
-fun continuousGridWindow(
-    weekIndex: Int,
-    rows: Int = ScheduleConstants.GRID_WEEKS_CONTINUOUS,
-    past: Int = ScheduleConstants.GRID_WEEKS_CONTINUOUS_PAST,
-): BlockWindow = BlockWindow(
-    startWeek = (weekIndex - past).coerceAtLeast(0),
-    rows = rows.coerceAtLeast(1),
-)
-
-/**
- * Okno siatki dla planu z blokiem ALBO bez niego — jedno wejście dla ekranu:
- * [fullBlockWeeks] null = plan bez bloku ([continuousGridWindow]), w przeciwnym
- * razie zwykłe okno bloku ([blockGridWindow]).
- */
-fun gridWindow(weekIndex: Int, fullBlockWeeks: Int?): BlockWindow =
-    if (fullBlockWeeks == null) {
-        continuousGridWindow(weekIndex)
-    } else {
-        blockGridWindow(weekIndex, fullBlockWeeks)
-    }
-
-/**
- * Poniedziałki rzędów siatki. Kotwicą jest poniedziałek tygodnia [today]
- * cofnięty o [weekIndexInBlock] tygodni — silnik liczy tygodnie bloku jako
- * pełne 7-dniowe okna od `plan.createdAt`, więc w kalendarzu (który zaczyna
- * tydzień w poniedziałek) blok kotwiczymy przez bieżący tydzień, nie przez
- * dokładną datę utworzenia planu.
- */
-fun blockWeekMondays(
-    today: LocalDate,
-    weekIndexInBlock: Int,
-    window: BlockWindow,
-): List<LocalDate> {
-    val blockFirstMonday = weekStartOf(today).minusWeeks(weekIndexInBlock.toLong())
-    return (0 until window.rows).map { row ->
-        blockFirstMonday.plusWeeks((window.startWeek + row).toLong())
-    }
+fun monthGridMondays(month: YearMonth): List<LocalDate> {
+    val firstMonday = weekStartOf(month.atDay(1))
+    val lastMonday = weekStartOf(month.atEndOfMonth())
+    val rows = ChronoUnit.WEEKS.between(firstMonday, lastMonday).toInt() + 1
+    return (0 until rows).map { row -> firstMonday.plusWeeks(row.toLong()) }
 }
 
 /**

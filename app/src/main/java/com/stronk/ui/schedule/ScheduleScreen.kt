@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -74,10 +75,12 @@ private val DayCardPadding = 18.dp
 /**
  * Harmonogram — ekran „Tydzień" (mock `wariant-c2-limonka.html`, ekran 2).
  *
- * Dominanta ekranu to SIATKA KWADRATÓW: 7 kolumn × tygodnie bieżącego bloku
- * w dół, numer dnia w kwadracie, stan niesiony wypełnieniem (zrobione), obrysem
- * (plan) albo brakiem obu (dzień wolny); „dziś" to limonkowy ring. Legenda ma
- * maks 2 pozycje — trzecia byłaby znakiem, że siatka przestała być czytelna.
+ * Dominanta ekranu to SIATKA KWADRATÓW w klasycznym układzie miesiąca: 7 kolumn
+ * × pełne tygodnie od 1. do ostatniego dnia miesiąca, numer dnia w kwadracie,
+ * stan niesiony wypełnieniem (zrobione), obrysem (plan) albo brakiem obu (dzień
+ * wolny); „dziś" to limonkowy ring. Miesiąc przewijają strzałki ‹ › w nagłówku
+ * (poprzedni/kolejny, też w całości). Legenda ma maks 2 pozycje — trzecia byłaby
+ * znakiem, że siatka przestała być czytelna.
  *
  * Pod siatką jest jedna karta wybranego dnia: „Środa · Full body B" i prosta
  * lista ćwiczeń (ikona + nazwa + chip „3 serie") — WGLĄD, nie start treningu:
@@ -184,37 +187,56 @@ fun ScheduleScreen(
                 .padding(top = StronkSpacing.sm, bottom = StronkSpacing.lg),
         ) {
             StronkScreenHeader(
-                title = state.blockLabel.ifEmpty { "Tydzień" },
-                subtitle = state.monthLabel.ifEmpty { null },
+                title = state.monthTitle,
+                subtitle = state.blockLabel.ifEmpty { null },
                 actions = {
-                    if (!state.todaySelected) {
-                        IconButton(onClick = viewModel::onBackToToday) {
+                    // Wszystkie ikony w JEDNYM dziecku nagłówka: `StronkScreenHeader`
+                    // rozdziela swoje dzieci `spacedBy(12dp)`, więc cztery osobne
+                    // akcje zjadłyby 36 dp szerokości tytułowi miesiąca.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = viewModel::onPreviousMonth) {
                             Icon(
-                                StronkIcons.today,
-                                contentDescription = "Dziś",
+                                StronkIcons.back,
+                                contentDescription = "Poprzedni miesiąc",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                    }
-                    if (state.planOptions.isNotEmpty()) {
-                        IconButton(onClick = { showAssignDialog = true }) {
+                        IconButton(onClick = viewModel::onNextMonth) {
                             Icon(
-                                StronkIcons.add,
-                                contentDescription = "Zaplanuj tydzień",
-                                tint = StronkTheme.colors.lime,
+                                StronkIcons.chevron,
+                                contentDescription = "Następny miesiąc",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                        if (state.showTodayAction) {
+                            IconButton(onClick = viewModel::onBackToToday) {
+                                Icon(
+                                    StronkIcons.today,
+                                    contentDescription = "Dziś",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (state.planOptions.isNotEmpty()) {
+                            IconButton(onClick = { showAssignDialog = true }) {
+                                Icon(
+                                    StronkIcons.add,
+                                    contentDescription = "Zaplanuj tydzień",
+                                    tint = StronkTheme.colors.lime,
+                                )
+                            }
                         }
                     }
                 },
             )
 
             Spacer(Modifier.height(BlockGap))
-            BlockCalendar(weeks = state.weeks, onSelectDay = viewModel::onSelectDay)
+            MonthCalendar(weeks = state.weeks, onSelectDay = viewModel::onSelectDay)
 
             Spacer(Modifier.height(LegendGap))
             // Trzecia pozycja legendy pojawia się tylko wtedy, gdy w siatce
             // faktycznie jest cardio — inaczej legenda puchnie bez powodu.
-            val anyCardio = state.weeks.any { week -> week.days.any { it.hasCardio } }
+            val anyCardio = state.weeks.any { week -> week.days.any { it?.hasCardio == true } }
             StronkDayLegend(cardioLabel = if (anyCardio) CardioTexts.SECTION_CARDIO else null)
 
             Spacer(Modifier.height(BlockGap))
@@ -281,11 +303,17 @@ fun ScheduleScreen(
 }
 
 /**
- * Siatka kwadratów bloku (mock: `.cal`) — nagłówek liter dni + rzędy tygodni.
- * Ring „dziś" rysuje się POZA kwadratem, więc odstęp 8 dp musi zostać.
+ * Klasyczna siatka miesiąca (mock: `.cal`) — nagłówek liter dni + rzędy pełnych
+ * tygodni pokrywających miesiąc. Ring „dziś" rysuje się POZA kwadratem, więc
+ * odstęp 8 dp musi zostać.
+ *
+ * Dni spoza miesiąca (`null` w [ScheduleWeekUi.days]) to PUSTE miejsca tej samej
+ * wielkości co kwadrat — bez liczby, bez tapu. Dzięki temu kolumny dni tygodnia
+ * stoją w pionie, a miesiąc zaczyna się i kończy dokładnie tam, gdzie w
+ * kalendarzu.
  */
 @Composable
-private fun BlockCalendar(
+private fun MonthCalendar(
     weeks: List<ScheduleWeekUi>,
     onSelectDay: (LocalDate) -> Unit,
 ) {
@@ -297,6 +325,14 @@ private fun BlockCalendar(
                 horizontalArrangement = Arrangement.spacedBy(DaySquareGap),
             ) {
                 week.days.forEach { day ->
+                    if (day == null) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .aspectRatio(1f),
+                        )
+                        return@forEach
+                    }
                     val marker = CalendarMarkers.marker(day.status, day.hasCardio)
                     StronkDaySquare(
                         day = day.dayOfMonth.toString(),
