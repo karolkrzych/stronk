@@ -2,6 +2,7 @@ package com.stronk.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DropdownMenu
@@ -21,6 +22,34 @@ import com.stronk.ui.profile.ProfileEquipment
 import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkTheme
+
+/**
+ * Menu rozwijane na dokładną szerokość kotwicy, w skórze „Limonka" (tło
+ * `surfaceMuted` odcięte od karty + hairline obrys) — wspólny rdzeń wizualny
+ * wyciągnięty z [StronkEquipmentFilterButton] (patrz jego doc dla historii
+ * pomiarów). Każdy trigger (ghost button, chip, cokolwiek) mierzy własną
+ * szerokość przez `Modifier.onSizeChanged` na opakowującym [Box] i przekazuje
+ * ją tu jako [anchorWidthPx] — reużywalne niezależnie od kształtu kotwicy.
+ */
+@Composable
+fun StronkAnchoredDropdownMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    anchorWidthPx: Int,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val density = LocalDensity.current
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        modifier = modifier.width(with(density) { anchorWidthPx.toDp() }),
+        shape = StronkRadius.innerShape,
+        containerColor = StronkTheme.colors.surfaceMuted,
+        border = BorderStroke(StronkSizes.hairline, StronkTheme.colors.line),
+        content = content,
+    )
+}
 
 /**
  * Full-width „Filtruj" pod tytułem arkusza zamienników + Material3
@@ -52,7 +81,6 @@ fun StronkEquipmentFilterButton(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var anchorWidthPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
     Box(
         modifier = modifier.onSizeChanged { anchorWidthPx = it.width },
     ) {
@@ -63,13 +91,10 @@ fun StronkEquipmentFilterButton(
             accent = selected.isNotEmpty(),
             modifier = Modifier.fillMaxWidth(),
         )
-        DropdownMenu(
+        StronkAnchoredDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.width(with(density) { anchorWidthPx.toDp() }),
-            shape = StronkRadius.innerShape,
-            containerColor = StronkTheme.colors.surfaceMuted,
-            border = BorderStroke(StronkSizes.hairline, StronkTheme.colors.line),
+            anchorWidthPx = anchorWidthPx,
         ) {
             groups.forEach { groupId ->
                 val isSelected = groupId in selected
