@@ -192,7 +192,7 @@ private fun TemplateStep(wizard: PlanWizardUi, onChoose: (PlanPreset?) -> Unit) 
         TemplateOption(
             title = "Od zera",
             description = "Pusty plan — ćwiczenia dobierasz sam z bazy.",
-            selected = wizard.selectedPresetId == null,
+            selected = wizard.templateChosen && wizard.selectedPresetId == null,
             onClick = { onChoose(null) },
         )
     }
