@@ -117,13 +117,17 @@ fun ScheduleScreen(
     // ta akcja jest jedyną siatką bezpieczeństwa. `dismiss()` zamyka ewentualny
     // wciąż widoczny poprzedni snackbar odwołania, żeby „Cofnij" nigdy nie
     // trafiało w nieaktualny (już zamknięty pod spodem) wpis.
+    // [SnackbarDuration.Long], nie Short: przy Short snackbar znikał, zanim
+    // dało się trafić w „Cofnij" (gate: 2 z 3 prób nie zdążyły) — okno na
+    // wycofanie przypadkowego tapu musi być realne, inaczej cała siatka
+    // bezpieczeństwa jest dekoracją.
     LaunchedEffect(cancelEvent) {
         val event = cancelEvent ?: return@LaunchedEffect
         snackbarHostState.currentSnackbarData?.dismiss()
         val result = snackbarHostState.showSnackbar(
             message = ScheduleTexts.WORKOUT_CANCELLED,
             actionLabel = ScheduleTexts.UNDO_CANCEL,
-            duration = SnackbarDuration.Short,
+            duration = SnackbarDuration.Long,
         )
         if (result == SnackbarResult.ActionPerformed) {
             viewModel.onRestoreEntry(event.entryId)

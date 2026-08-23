@@ -473,13 +473,20 @@ class ScheduleViewModel(
     }
 
     /**
-     * Jednorazowy sweep: kasuje przyszłe wpisy PLANNED planów, które są
-     * zarchiwizowane ([WeekPlanner.archivedPlanDeadEntryIds]) — samonaprawa
-     * kont, na których do archiwizacji doszło ZANIM istniało sprzątanie w
+     * Jednorazowy sweep: kasuje przyszłe wpisy zarchiwizowanych planów —
+     * PLANNED, MOVED i SKIPPED, nigdy DONE
+     * ([WeekPlanner.archivedPlanDeadEntryIds]) — samonaprawa kont, na których
+     * do archiwizacji doszło ZANIM istniało sprzątanie w
      * [com.stronk.ui.plans.PlanEditorViewModel.setArchived] (dokładnie
      * przypadek z tego zgłoszenia: plan zarchiwizowany, jego martwe wpisy
-     * zostały w `schedule` i blokowały nowy plan). Bez migracji danych —
-     * odpala się sam przy pierwszym otwarciu ekranu Tydzień.
+     * zostały w `schedule` — PLANNED blokowały nowy plan, a MOVED/SKIPPED
+     * renderowały się jako karty-widma „Przesunięty → …" obok normalnego
+     * treningu). Bez migracji danych — odpala się sam przy pierwszym otwarciu
+     * ekranu Tydzień.
+     *
+     * Przeszłe wpisy zostają w bazie (audit-trail), ale karta dnia i tak ich
+     * nie pokazuje — [buildState] ukrywa MOVED/SKIPPED zarchiwizowanych planów
+     * niezależnie od daty ([WeekPlanner.archivedPlanGhostEntryIds]).
      *
      * Idempotentne przez [archivedCleanupRequested] (patrz KDoc pola) i bez
      * ryzyka race'u z [maybeExtendContinuousPlans]: rolling już z definicji
@@ -520,10 +527,16 @@ class ScheduleViewModel(
 
     /**
      * [ScheduleEntry] → [ScheduleEntryRef]: [ScheduleEntryRef.archived] jest
-     * `true` wyłącznie dla wpisów PLANNED, których plan jest zarchiwizowany —
-     * DONE zawsze zostaje `false` (historia treningu blokuje niezależnie od
-     * archiwizacji, patrz KDoc [ScheduleEntryRef.archived]). Wspólne dla
-     * [onAssignPlan] i [cleanupArchivedPlanEntries].
+     * `true` dla KAŻDEGO wpisu zarchiwizowanego planu POZA DONE — czyli dla
+     * PLANNED, MOVED i SKIPPED. DONE zawsze zostaje `false` (historia treningu
+     * blokuje niezależnie od archiwizacji, patrz KDoc
+     * [ScheduleEntryRef.archived]).
+     *
+     * MOVED/SKIPPED muszą tu wpaść, bo inaczej sweep martwych wpisów
+     * ([cleanupArchivedPlanEntries]) i filtr renderu
+     * ([WeekPlanner.archivedPlanGhostEntryIds]) nigdy ich nie widzą i
+     * breadcrumby po zarchiwizowanym planie wiszą w karcie dnia na zawsze.
+     * Wspólne dla [onAssignPlan], [buildState] i obu sweepów.
      */
     private fun toEntryRefs(schedule: List<ScheduleEntry>, plansById: Map<String, Plan>): List<ScheduleEntryRef> =
         schedule.mapNotNull { entry ->
@@ -538,7 +551,7 @@ class ScheduleViewModel(
                         ScheduleStatus.MOVED -> ScheduleEntryKind.MOVED
                         ScheduleStatus.SKIPPED -> ScheduleEntryKind.SKIPPED
                     },
-                    archived = entry.status == ScheduleStatus.PLANNED && plansById[entry.planId]?.archived == true,
+                    archived = entry.status != ScheduleStatus.DONE && plansById[entry.planId]?.archived == true,
                     movedTo = entry.movedTo?.let { parseDate(it) },
                 )
             }
@@ -559,11 +572,17 @@ class ScheduleViewModel(
         val plansById = plans.associateBy { it.id }
         val plan = activePlan(schedule, plansById, today)
         val refs = toEntryRefs(schedule, plansById)
-        // Wpisy MOVED/SKIPPED przykryte żywym wpisem tego samego planu na tej
-        // samej dacie nie renderują się w ogóle — dzień z realnym treningiem nie
-        // może być naraz „przesunięty"/„odwołany" (sweep [cleanupShadowedEntries]
-        // kasuje je z bazy, tu tylko natychmiast znikają z oczu).
-        val shadowedIds = shadowedEntryIds(refs).toSet()
+        // Wpisy, które nie mają prawa renderować się w karcie dnia — dwie
+        // reguły, oba sweepy kasują je z bazy, tu znikają natychmiast z oczu:
+        // - [shadowedEntryIds]: MOVED/SKIPPED przykryte żywym wpisem TEGO
+        //   SAMEGO planu na TEJ SAMEJ dacie (dzień z realnym treningiem nie
+        //   może być naraz „przesunięty"/„odwołany") → [cleanupShadowedEntries];
+        // - [archivedPlanGhostEntryIds]: MOVED/SKIPPED planu ZARCHIWIZOWANEGO
+        //   (breadcrumb po planie, którego już nie ma — łapie też widma obok
+        //   treningu INNEGO planu, czego kluczowanie po (planId, data) wyżej
+        //   nie widzi) → [cleanupArchivedPlanEntries].
+        // DONE nie wpada do żadnej z nich — historia treningu jest nietykalna.
+        val hiddenIds = shadowedEntryIds(refs).toSet() + archivedPlanGhostEntryIds(refs)
 
         // Pozycja w bloku liczona WYŁĄCZNIE przez silnik progresji (ADR-004).
         // null = plan bez bloku: tygodnie lecą liniowo, siatka jedzie oknem.
@@ -624,7 +643,7 @@ class ScheduleViewModel(
             selectedDayLabel = ScheduleTexts.selectedDayLabel(selected, today),
             todaySelected = selected == today,
             selectedEntries = entriesByDate[selected.toString()].orEmpty()
-                .filterNot { it.id in shadowedIds }
+                .filterNot { it.id in hiddenIds }
                 .sortedBy { it.dayIndex }
                 .map { entryUi(it, selected, plansById, exercises) },
             selectedCardio = cardioByDate[selected.toString()].orEmpty().map { entry ->

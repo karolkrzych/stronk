@@ -202,7 +202,7 @@ fun isEligibleForRollingExtension(archived: Boolean, blockLengthWeeks: Int?): Bo
     !archived && blockLengthWeeks == null
 
 /**
- * Id-ki przyszłych (`date >= [today]`) wpisów PLANNED zarchiwizowanych planów
+ * Id-ki przyszłych (`date >= [today]`) wpisów zarchiwizowanych planów
  * ([ScheduleEntryRef.archived]) — martwe wpisy do skasowania batchem. Dwa
  * miejsca użycia (ten sam mechanizm, jedna funkcja):
  * - [PlanEditorViewModel.setArchived]: [refs] ograniczone do JEDNEGO planu
@@ -213,14 +213,43 @@ fun isEligibleForRollingExtension(archived: Boolean, blockLengthWeeks: Int?): Bo
  *   istnienia czyszczenia w [PlanEditorViewModel.setArchived] (dokładnie
  *   przypadek usera z tego zgłoszenia), bez migracji danych.
  *
- * DONE nigdy nie jest tu brane pod uwagę — [kind] filtruje tylko PLANNED, więc
- * historia treningu jest nietykalna niezależnie od tego, jak wołający zbudował
- * [ScheduleEntryRef.archived] dla wpisów DONE. Wpisy sprzed [today] też
- * zostają — audit-trail (patrz [Plan] KDoc archiwizacji).
+ * Martwy jest KAŻDY status poza DONE: PLANNED (trening, który się już nie
+ * odbędzie), ale też MOVED i SKIPPED. Te dwa ostatnie to breadcrumby
+ * („Przesunięty → czwartek", „Odwołany") sensowne tylko wtedy, gdy plan
+ * jeszcze żyje — po archiwizacji nie ma czego opisywać i wiszą w karcie dnia
+ * jako karty-widma (drugi artefakt z tego zgłoszenia: poniedziałek z kartą
+ * „Przesunięty → czwartek" obok normalnego treningu INNEGO planu; kluczowanie
+ * po (planId, data) w [shadowedEntryIds] takiej pary nie łapie, bo plany są
+ * różne).
+ *
+ * DONE nigdy nie jest tu brane pod uwagę — [kind] filtruje wyłącznie
+ * PLANNED/MOVED/SKIPPED, więc historia treningu jest nietykalna niezależnie od
+ * tego, jak wołający zbudował [ScheduleEntryRef.archived] dla wpisów DONE.
+ * Wpisy sprzed [today] też zostają — audit-trail (patrz [Plan] KDoc
+ * archiwizacji); z oczu znikają natychmiast przez [archivedPlanGhostEntryIds].
  */
 fun archivedPlanDeadEntryIds(refs: List<ScheduleEntryRef>, today: LocalDate = LocalDate.now()): List<String> =
     refs
-        .filter { it.kind == ScheduleEntryKind.PLANNED && it.archived && it.date >= today }
+        .filter { it.kind != ScheduleEntryKind.DONE && it.archived && it.date >= today }
+        .map { it.id }
+
+/**
+ * Id-ki wpisów MOVED/SKIPPED zarchiwizowanych planów — karty-widma do UKRYCIA
+ * w karcie dnia ([ScheduleViewModel.buildState]), wzorem [shadowedEntryIds]:
+ * render nie czeka na sweep bazy, artefakt znika w tej samej klatce.
+ *
+ * Świadoma asymetria wobec [archivedPlanDeadEntryIds]: sweep kasuje z bazy
+ * tylko wpisy od dziś w przód (przeszłość to audit-trail), a ten filtr ukrywa
+ * je NIEZALEŻNIE od daty — zarchiwizowany plan nie ma prawa opowiadać w
+ * kalendarzu o przesunięciach i odwołaniach, do których nigdy nie dojdzie.
+ * Jedyne, co po nim zostaje widoczne, to fakty: wpisy DONE (i przeszłe
+ * PLANNED — „zaplanowany, nie zrobiony" to też fakt).
+ *
+ * DONE nigdy nie wpada — filtr bierze wyłącznie MOVED i SKIPPED.
+ */
+fun archivedPlanGhostEntryIds(refs: List<ScheduleEntryRef>): List<String> =
+    refs
+        .filter { it.archived && (it.kind == ScheduleEntryKind.MOVED || it.kind == ScheduleEntryKind.SKIPPED) }
         .map { it.id }
 
 /**
@@ -329,10 +358,13 @@ enum class ScheduleEntryKind { PLANNED, DONE, MOVED, SKIPPED }
  * Minimalny widok wpisu harmonogramu pod [planReplacement] — zero zależności
  * od modelu Firestore, wzorem [PlannedSlot]/[OccupiedEntry].
  *
- * [archived]: plan-właściciel tego wpisu jest zarchiwizowany. Ma sens
- * WYŁĄCZNIE dla [ScheduleEntryKind.PLANNED] — taki wpis to „martwy" wpis
- * (plan zarchiwizowany, ale wpis w `schedule` przetrwał archiwizację) i nie ma
- * prawa blokować niczego, patrz [planReplacement] i [buildOccupiedEntries].
+ * [archived]: plan-właściciel tego wpisu jest zarchiwizowany. Wołający ustawia
+ * ją dla KAŻDEGO statusu poza [ScheduleEntryKind.DONE] — czyli dla PLANNED,
+ * MOVED i SKIPPED. Taki wpis to „martwy" wpis (plan zarchiwizowany, ale wpis w
+ * `schedule` przetrwał archiwizację): PLANNED nie ma prawa niczego blokować
+ * (patrz [planReplacement] i [buildOccupiedEntries]), a MOVED/SKIPPED nie mają
+ * prawa renderować się jako karty-widma (patrz [archivedPlanGhostEntryIds]);
+ * wszystkie trzy idą do skasowania przez [archivedPlanDeadEntryIds].
  * [ScheduleEntryKind.DONE] MUSI zawsze mieć `archived = false` — historia
  * treningu blokuje datę niezależnie od tego, czy plan, pod którym trening
  * poszedł, jest dziś zarchiwizowany (wołający pilnuje tego przy budowie).
@@ -403,6 +435,12 @@ fun activeMovedSlots(
  *
  * DONE nie jest tu nigdy kandydatem do ukrycia/kasacji — historia treningu jest
  * nietykalna, filtr bierze wyłącznie MOVED i SKIPPED.
+ *
+ * Klucz to para (planId, data), więc ta reguła z definicji NIE łapie widma
+ * INNEGO planu niż ten, który trzyma żywy wpis na tej dacie — takie widma
+ * (zwykle po planie zarchiwizowanym) sprząta [archivedPlanGhostEntryIds] i
+ * [archivedPlanDeadEntryIds]. Dwie reguły, wspólny cel: jeden dzień w karcie
+ * dnia nie może być naraz treningiem i notatką „Przesunięty/Odwołany".
  */
 fun shadowedEntryIds(entries: List<ScheduleEntryRef>): List<String> {
     val liveKeys = entries

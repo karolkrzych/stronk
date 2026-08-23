@@ -931,7 +931,7 @@ class WeekPlannerTest {
     // ---------- archivedPlanDeadEntryIds ----------
 
     @Test
-    fun `archivedPlanDeadEntryIds bierze tylko przyszle PLANNED zarchiwizowanych planow`() {
+    fun `archivedPlanDeadEntryIds bierze przyszle wpisy zarchiwizowanych planow poza DONE`() {
         val today = monday
         val entries = listOf(
             ScheduleEntryRef("przyszly-martwy", today, "planStary", ScheduleEntryKind.PLANNED, archived = true),
@@ -940,16 +940,139 @@ class WeekPlannerTest {
             ScheduleEntryRef("done-martwy", today, "planStary", ScheduleEntryKind.DONE, archived = false),
             ScheduleEntryRef("skipped-martwy", today, "planStary", ScheduleEntryKind.SKIPPED, archived = true),
         )
-        assertEquals(listOf("przyszly-martwy"), archivedPlanDeadEntryIds(entries, today))
+        assertEquals(listOf("przyszly-martwy", "skipped-martwy"), archivedPlanDeadEntryIds(entries, today))
     }
 
     @Test
-    fun `archivedPlanDeadEntryIds nigdy nie rusza DONE nawet gdyby bylo oznaczone archived`() {
-        // DONE.archived=true nie powinno sie zdarzyc w produkcyjnym kodzie (patrz
-        // kontrakt ScheduleEntryRef.archived), ale funkcja ma byc odporna: kind
-        // filtruje wylacznie PLANNED, niezaleznie od flagi archived na DONE.
+    fun `archivedPlanDeadEntryIds bierze MOVED zarchiwizowanego planu`() {
+        // Karta-widmo z gate'a: poniedzialek zarchiwizowanego planu "Przesuniety
+        // -> czwartek" wisi obok normalnego treningu AKTYWNEGO planu.
         val entries = listOf(
-            ScheduleEntryRef("done", monday, "planStary", ScheduleEntryKind.DONE, archived = true),
+            ScheduleEntryRef(
+                "widmo",
+                monday,
+                "planStary",
+                ScheduleEntryKind.MOVED,
+                archived = true,
+                movedTo = monday.plusDays(3),
+            ),
+        )
+        assertEquals(listOf("widmo"), archivedPlanDeadEntryIds(entries, monday))
+    }
+
+    @Test
+    fun `archivedPlanDeadEntryIds bierze SKIPPED zarchiwizowanego planu`() {
+        val entries = listOf(
+            ScheduleEntryRef("odwolany", monday, "planStary", ScheduleEntryKind.SKIPPED, archived = true),
+        )
+        assertEquals(listOf("odwolany"), archivedPlanDeadEntryIds(entries, monday))
+    }
+
+    @Test
+    fun `archivedPlanDeadEntryIds nie rusza MOVED AKTYWNEGO planu bez zywego wpisu na dacie`() {
+        // Breadcrumb aktywnego przesuniecia (cel skasowany albo jeszcze nie
+        // powstal) - ten sweep dotyczy WYLACZNIE planow zarchiwizowanych.
+        val entries = listOf(
+            ScheduleEntryRef(
+                "przesuniety",
+                monday,
+                "planAktywny",
+                ScheduleEntryKind.MOVED,
+                archived = false,
+                movedTo = monday.plusDays(3),
+            ),
+            ScheduleEntryRef("odwolany", monday.plusDays(1), "planAktywny", ScheduleEntryKind.SKIPPED, archived = false),
+        )
+        assertTrue(archivedPlanDeadEntryIds(entries, monday).isEmpty())
+    }
+
+    // ---------- archivedPlanGhostEntryIds (filtr renderu karty dnia) ----------
+
+    @Test
+    fun `archivedPlanGhostEntryIds ukrywa MOVED i SKIPPED zarchiwizowanego planu`() {
+        val entries = listOf(
+            ScheduleEntryRef(
+                "widmo-moved",
+                monday,
+                "planStary",
+                ScheduleEntryKind.MOVED,
+                archived = true,
+                movedTo = monday.plusDays(3),
+            ),
+            ScheduleEntryRef("widmo-skipped", monday, "planStary", ScheduleEntryKind.SKIPPED, archived = true),
+        )
+        assertEquals(listOf("widmo-moved", "widmo-skipped"), archivedPlanGhostEntryIds(entries))
+    }
+
+    @Test
+    fun `archivedPlanGhostEntryIds ukrywa widma takze w przeszlosci`() {
+        // Swiadoma asymetria wobec sweepu: baza trzyma przeszlosc (audit-trail),
+        // ale karta dnia nie ma pokazywac przesuniec planu, ktorego juz nie ma.
+        val entries = listOf(
+            ScheduleEntryRef(
+                "stare-widmo",
+                monday.minusWeeks(3),
+                "planStary",
+                ScheduleEntryKind.MOVED,
+                archived = true,
+                movedTo = monday.minusWeeks(3).plusDays(2),
+            ),
+        )
+        assertEquals(listOf("stare-widmo"), archivedPlanGhostEntryIds(entries))
+    }
+
+    @Test
+    fun `archivedPlanGhostEntryIds nie rusza DONE ani PLANNED zarchiwizowanego planu`() {
+        // DONE = historia; przeszly PLANNED = "zaplanowany, nie zrobiony", tez fakt.
+        val entries = listOf(
+            ScheduleEntryRef("zaliczony", monday, "planStary", ScheduleEntryKind.DONE, archived = false),
+            ScheduleEntryRef("przeszly-planned", monday, "planStary", ScheduleEntryKind.PLANNED, archived = true),
+        )
+        assertTrue(archivedPlanGhostEntryIds(entries).isEmpty())
+    }
+
+    @Test
+    fun `archivedPlanGhostEntryIds nie rusza MOVED aktywnego planu`() {
+        val entries = listOf(
+            ScheduleEntryRef(
+                "przesuniety",
+                monday,
+                "planAktywny",
+                ScheduleEntryKind.MOVED,
+                archived = false,
+                movedTo = monday.plusDays(3),
+            ),
+        )
+        assertTrue(archivedPlanGhostEntryIds(entries).isEmpty())
+    }
+
+    @Test
+    fun `scenariusz usera - widmo zarchiwizowanego planu obok treningu aktywnego planu`() {
+        // Dokladnie stan z gate'a: poniedzialek ma normalny trening planu
+        // aktywnego I karte "Przesuniety -> czwartek" po planie zarchiwizowanym,
+        // czwartek ma samotna karte "Przesuniety -> poniedzialek".
+        // shadowedEntryIds tego nie widzi (kluczuje po (planId, data), plany sa
+        // rozne) - lapie to dopiero regula "zarchiwizowany plan".
+        val thursday = monday.plusDays(3)
+        val entries = listOf(
+            ScheduleEntryRef("trening", monday, "planAktywny", ScheduleEntryKind.PLANNED, archived = false),
+            ScheduleEntryRef("widmo-pn", monday, "planStary", ScheduleEntryKind.MOVED, archived = true, movedTo = thursday),
+            ScheduleEntryRef("widmo-czw", thursday, "planStary", ScheduleEntryKind.MOVED, archived = true, movedTo = monday),
+        )
+        assertTrue("shadowedEntryIds nie ma prawa tego zlapac", shadowedEntryIds(entries).isEmpty())
+        assertEquals(listOf("widmo-pn", "widmo-czw"), archivedPlanGhostEntryIds(entries))
+        assertEquals(listOf("widmo-pn", "widmo-czw"), archivedPlanDeadEntryIds(entries, monday))
+    }
+
+    @Test
+    fun `archivedPlanDeadEntryIds nigdy nie rusza DONE zarchiwizowanego planu`() {
+        // Historia treningu jest nietykalna. Kontrakt ScheduleEntryRef.archived
+        // trzyma DONE na false (pierwszy wpis - realny przypadek), ale funkcja ma
+        // byc odporna takze na DONE blednie oznaczone flaga (drugi wpis): filtr
+        // wyklucza DONE po samym `kind`.
+        val entries = listOf(
+            ScheduleEntryRef("done", monday, "planStary", ScheduleEntryKind.DONE, archived = false),
+            ScheduleEntryRef("done-z-flaga", monday, "planStary", ScheduleEntryKind.DONE, archived = true),
         )
         assertTrue(archivedPlanDeadEntryIds(entries, monday).isEmpty())
     }
