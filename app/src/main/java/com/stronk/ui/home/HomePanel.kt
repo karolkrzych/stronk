@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -36,7 +35,6 @@ import com.stronk.ui.cardio.cardioIcon
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.theme.StronkRadius
 import com.stronk.ui.theme.StronkSizes
-import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
 import com.stronk.ui.theme.tabularNums
@@ -46,13 +44,6 @@ private val PanelIconTile = 40.dp
 
 /** Kółko „+" przy nagłówku CARDIO (mock: `.paddbtn.small` 28 — nagłówek jest mały). */
 private val AddButtonSizeSmall = 28.dp
-
-/** Duża liczba wiersza (mock: `.pnum` 22/800) — Figtree 800 z cyframi tabelarycznymi. */
-private val PanelNumber = StronkTextStyles.big.copy(
-    fontSize = 22.sp,
-    lineHeight = 26.sp,
-    letterSpacing = (-0.44).sp,
-)
 
 /** Wartość tekstowa wiersza (mock: `.pval` 17/700). */
 private val PanelValue = StronkTextStyles.h2.copy(fontWeight = FontWeight.Bold)
@@ -67,62 +58,24 @@ private val PanelStatValue = StronkTextStyles.bodyStrong
 
 /**
  * Panel dolny ekranu „Dziś" (mock rundy 5 `wariant-c-strefy.html`, `.panel`) —
- * karta `--s1` przypięta nad dolną nawigacją, w niej wiersze ĆWICZENIA i CARDIO.
+ * karta `--s1` przypięta nad dolną nawigacją z wierszami CARDIO.
  *
  * Cała reszta ekranu nad panelem zostaje PUSTA: strefa treningu u góry, panel na
- * dole, oddech w środku. To jedyne miejsce, gdzie ekran mówi o liczbach — same
- * ćwiczenia są za chevronem (bottom sheet), nie na ekranie.
+ * dole, oddech w środku. Karta ĆWICZENIA stąd wyleciała (decyzja Karola) —
+ * liczba ćwiczeń i wejście do listy siedzi teraz na CTA „Zacznij trening" u góry
+ * (ikona „i"), więc dolny panel mówi już tylko o cardio.
  *
- * @param exerciseCount null = nie ma treningu (pusty tydzień / brak planów), więc
- *        wiersza ĆWICZENIA w ogóle nie ma; CARDIO zostaje ZAWSZE — cardio nie
- *        zależy od siłowni. Zero traktujemy jak brak: dzień planu bez ćwiczeń
- *        dałby wiersz „0" prowadzący do pustego arkusza, a sekcja bez treści
- *        ma się nie renderować
  * @param onAddCardio JEDYNY punkt wejścia do dodawania cardio w całej apce
  * @param onCardioClick tap we wpis → sheet edycji/usuwania
  */
 @Composable
 fun HomeBottomPanel(
-    exerciseCount: Int?,
     cardio: List<CardioRowUi>,
-    onExercisesClick: () -> Unit,
     onAddCardio: () -> Unit,
     onCardioClick: (CardioRowUi) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Dwie osobne karty s1 — ĆWICZENIA i CARDIO są różnymi tematami, więc mają
-    // własne karty z przerwą między nimi (spójną z odstępem kart w Tygodniu),
-    // zamiast jednego wielkiego szarego bloku. Gdy nie ma treningu, karta
-    // ĆWICZENIA w ogóle się nie renderuje — bez przerwy nad samą CARDIO.
     Column(modifier = modifier.fillMaxWidth()) {
-        if (exerciseCount != null && exerciseCount > 0) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = StronkRadius.cardShape,
-                color = StronkTheme.colors.surfaceCard,
-            ) {
-                PanelRow(icon = StronkIcons.start, onClick = onExercisesClick) {
-                    PanelLabel(
-                        caption = HomeTexts.SECTION_EXERCISES,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(
-                            text = exerciseCount.toString(),
-                            style = PanelNumber,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                    Icon(
-                        imageVector = StronkIcons.chevron,
-                        contentDescription = null,
-                        tint = StronkTheme.colors.textDim,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.height(StronkSpacing.sm))
-        }
-
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = StronkRadius.cardShape,

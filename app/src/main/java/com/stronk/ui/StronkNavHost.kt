@@ -191,9 +191,6 @@ fun StronkNavHost() {
 
             composable(Routes.SCHEDULE) {
                 ScheduleScreen(
-                    onStartWorkout = { planId, dayIndex, scheduleEntryId ->
-                        navController.navigate(Routes.workout(planId, dayIndex, scheduleEntryId))
-                    },
                     onPlanClick = { planId -> navController.navigate(Routes.planEditor(planId)) },
                     onNewPlan = { navController.navigate(Routes.planEditor(null)) },
                     onExerciseClick = { id -> navController.navigate(Routes.exerciseDetail(id)) },

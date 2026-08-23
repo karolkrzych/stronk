@@ -266,12 +266,18 @@ private fun EditorContent(
                     shape = StronkRadius.innerShape,
                     singleLine = true,
                 )
-                Spacer(Modifier.height(StronkSpacing.sm))
-                BlockLengthRow(
-                    blockLengthWeeks = state.blockLengthWeeks,
-                    onChange = viewModel::onBlockLengthChange,
-                    onEnabledChange = viewModel::onBlockEnabledChange,
-                )
+                // Blok treningowy wybiera się w kroku BLOCK kreatora — pokazujemy
+                // sekcję ponownie dopiero przy edycji ISTNIEJĄCEGO planu (jedyne
+                // miejsce zmiany bloku po utworzeniu), żeby świeży plan z wizarda
+                // nie dublował tego samego przełącznika w tym samym flow.
+                if (shouldShowBlockLengthRow(isNew = state.isNew)) {
+                    Spacer(Modifier.height(StronkSpacing.sm))
+                    BlockLengthRow(
+                        blockLengthWeeks = state.blockLengthWeeks,
+                        onChange = viewModel::onBlockLengthChange,
+                        onEnabledChange = viewModel::onBlockEnabledChange,
+                    )
+                }
             }
         }
         state.days.forEachIndexed { dayIndex, day ->
@@ -386,6 +392,13 @@ private fun RemoveDayConfirmDialog(
 }
 
 // ---------- karta dnia ----------
+
+/**
+ * Sekcja bloku treningowego widoczna tylko przy edycji ISTNIEJĄCEGO planu —
+ * przy tworzeniu (`isNew == true`) blok jest już wybrany w kroku BLOCK
+ * kreatora i powtórka tego samego przełącznika w edytorze byłaby duplikatem.
+ */
+internal fun shouldShowBlockLengthRow(isNew: Boolean): Boolean = !isNew
 
 /**
  * Blok progresji (ADR-004) jako rzecz OPCJONALNA: przełącznik „Blok treningowy",
@@ -677,9 +690,9 @@ private fun ExercisePlanRow(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = exercise.name,
-                        // h1Small = ten sam Barlow SC, którym „następnie" w treningu
-                        // pokazuje nazwę ćwiczenia jako jedyną dominantę wiersza.
-                        style = StronkTextStyles.h1Small,
+                        // h1Tiny — mniejszy odpowiednik h1Small wg mocka W1 (17px),
+                        // żeby pełna nazwa mieściła się w wierszu-karcie edytora.
+                        style = StronkTextStyles.h1Tiny,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -699,7 +712,7 @@ private fun ExercisePlanRow(
                         exercise.exercise?.primaryMuscles?.firstOrNull()?.let(PlLabels::muscle)
                             ?: "ćwiczenie spoza bazy"
                         ).uppercase(),
-                    style = StronkTextStyles.cap,
+                    style = StronkTextStyles.capTiny,
                     color = StronkTheme.colors.textDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

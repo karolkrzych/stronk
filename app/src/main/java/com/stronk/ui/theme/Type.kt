@@ -169,6 +169,16 @@ object StronkTextStyles {
         letterSpacing = (-0.21).sp,
     )
 
+    /** 15 — nazwa ćwiczenia w wierszu-karcie edytora planu. Wg mocka W1 wychodziło 18sp (17px × 1,04);
+     * Karol po obejrzeniu na żywo kazał zejść niżej — 15 sp. Barlow 600. */
+    val h1Tiny = TextStyle(
+        fontFamily = Barlow,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 15.sp,
+        lineHeight = 19.sp,
+        letterSpacing = (-0.15).sp,
+    )
+
     /** 19 — tekst CTA. */
     val cta = TextStyle(
         fontFamily = Figtree,
@@ -230,6 +240,19 @@ object StronkTextStyles {
         fontSize = 11.sp,
         lineHeight = 14.sp,
         letterSpacing = 1.54.sp,
+    )
+
+    /**
+     * 10 — kapitalik partii mięśniowej w wierszu edytora planu. Po zejściu tytułu
+     * ćwiczenia do 15sp kapitalik `cap` 11sp wyglądał za duzo — o 1sp mniejszy,
+     * tracking utrzymany w tym samym stosunku `.14em`.
+     */
+    val capTiny = TextStyle(
+        fontFamily = Figtree,
+        fontWeight = FontWeight.Bold,
+        fontSize = 10.sp,
+        lineHeight = 13.sp,
+        letterSpacing = 1.4.sp,
     )
 
     /** Jednostka przy liczbie HERO (`.stat .u` = 19 px). */

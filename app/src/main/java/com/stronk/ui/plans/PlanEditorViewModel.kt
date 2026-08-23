@@ -121,6 +121,8 @@ data class PlanWizardUi(
     val presets: List<PlanPreset> = emptyList(),
     /** null = „zacznij od zera". */
     val selectedPresetId: String? = null,
+    /** Czy krok „od czego zaczynamy" ma już rozstrzygnięcie — bez tego ŻADNA opcja nie jest zaznaczona. */
+    val templateChosen: Boolean = false,
     /** Kroki 1 i 5 wymagają wyboru/nazwy; reszta zawsze przepuszcza dalej. */
     val canGoNext: Boolean = false,
     /** Tygodnie PRACY w bloku; null = plan bez bloku (ciągła progresja). */
@@ -204,10 +206,15 @@ class PlanEditorViewModel(
      * SAMYCH dni (tylko ćwiczenia wewnątrz dnia, [reorderExercise]), więc
      * kolejność [Draft.days] to jedyne źródło nowego indeksu przy zapisie.
      */
-    private data class DraftDay(val baseDayIndex: Int?, val day: PlanDay)
+    internal data class DraftDay(val baseDayIndex: Int?, val day: PlanDay)
 
-    /** Roboczy stan edycji — zapis do Firestore dopiero przy [save]. */
-    private data class Draft(
+    /**
+     * Roboczy stan edycji — zapis do Firestore dopiero przy [save].
+     * `internal`, nie `private`: [wizardUi] to czysta projekcja tego stanu,
+     * testowana bezpośrednio w `PlanWizardStateTest` bez stawiania ViewModelu
+     * (repozytoria + `viewModelScope` czynią to niepraktycznym w teście JVM).
+     */
+    internal data class Draft(
         val name: String = "",
         /** null = plan bez bloku; nowy plan ręczny startuje właśnie tak. */
         val blockLengthWeeks: Int? = null,
@@ -412,35 +419,6 @@ class PlanEditorViewModel(
     }
 
     // ---------- kreator nowego planu ----------
-
-    /** Widok kroku kreatora — czysta projekcja [Draft] (+ dataset dla opcji sprzętu). */
-    private fun wizardUi(d: Draft, all: List<Exercise>): PlanWizardUi {
-        val steps = PlanWizardStep.entries
-        val stepIndex = steps.indexOf(d.step)
-        // Te same wartości i ta sama etykieta/sortowanie co w ProfileViewModel —
-        // wybrane spoza datasetu (np. stary wpis) doklejamy, żeby dało się odznaczyć.
-        val equipmentOptions = all.mapNotNull { it.equipment }.distinct().sortedBy(PlLabels::equipment)
-        return PlanWizardUi(
-            step = d.step,
-            stepIndex = stepIndex,
-            stepCount = steps.size,
-            presets = PlanPresets.all,
-            selectedPresetId = d.preset?.id,
-            canGoNext = when (d.step) {
-                PlanWizardStep.TEMPLATE -> d.templateChosen
-                PlanWizardStep.NAME -> d.name.isNotBlank()
-                else -> true
-            },
-            blockLengthWeeks = d.blockLengthWeeks,
-            jointKeys = ProfileDefaults.JOINT_KEYS,
-            selectedJoints = d.joints,
-            equipmentOptions = equipmentOptions + d.equipment.filterNot { it in equipmentOptions },
-            selectedEquipment = d.equipment,
-            name = d.name,
-            summaryDays = d.preset?.days?.size ?: 1,
-            summaryExercises = d.preset?.slotCount ?: 0,
-        )
-    }
 
     /**
      * Krok „ograniczenia" startuje z tym, co już jest w profilu — user niczego
@@ -1042,6 +1020,41 @@ class PlanEditorViewModel(
     }
 
     companion object {
+        /**
+         * Widok kroku kreatora — czysta projekcja [Draft] (+ dataset dla opcji sprzętu).
+         * W `companion object`, nie instance method: pozwala przetestować projekcję
+         * bez stawiania całego ViewModelu (repozytoria + `viewModelScope` w `init`
+         * czynią to niepraktycznym w prostym teście JVM) — patrz `PlanWizardStateTest`.
+         */
+        internal fun wizardUi(d: Draft, all: List<Exercise>): PlanWizardUi {
+            val steps = PlanWizardStep.entries
+            val stepIndex = steps.indexOf(d.step)
+            // Te same wartości i ta sama etykieta/sortowanie co w ProfileViewModel —
+            // wybrane spoza datasetu (np. stary wpis) doklejamy, żeby dało się odznaczyć.
+            val equipmentOptions = all.mapNotNull { it.equipment }.distinct().sortedBy(PlLabels::equipment)
+            return PlanWizardUi(
+                step = d.step,
+                stepIndex = stepIndex,
+                stepCount = steps.size,
+                presets = PlanPresets.all,
+                selectedPresetId = d.preset?.id,
+                templateChosen = d.templateChosen,
+                canGoNext = when (d.step) {
+                    PlanWizardStep.TEMPLATE -> d.templateChosen
+                    PlanWizardStep.NAME -> d.name.isNotBlank()
+                    else -> true
+                },
+                blockLengthWeeks = d.blockLengthWeeks,
+                jointKeys = ProfileDefaults.JOINT_KEYS,
+                selectedJoints = d.joints,
+                equipmentOptions = equipmentOptions + d.equipment.filterNot { it in equipmentOptions },
+                selectedEquipment = d.equipment,
+                name = d.name,
+                summaryDays = d.preset?.days?.size ?: 1,
+                summaryExercises = d.preset?.slotCount ?: 0,
+            )
+        }
+
         /** Fabryka z parametrem planId — ręczna kompozycja z [StronkApplication]. */
         fun factory(planId: String?): ViewModelProvider.Factory = viewModelFactory {
             initializer {

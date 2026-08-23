@@ -7,11 +7,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -65,6 +68,12 @@ private const val CTA_PLAY_ALPHA = 0.16f
 private const val CTA_MUTED_ALPHA = 0.6f
 private const val CTA_ARROW_ALPHA = 0.55f
 
+/** Touch target ikony „i" na CTA — min. 48 dp, osobny od akcji startu treningu. */
+private val CtaInfoTarget = 48.dp
+
+/** Odstęp targetu „i" od prawej krawędzi CTA (mock trzyma treść w środku paska). */
+private val CtaEndGap = 10.dp
+
 /** Odstęp panelu dolnego od nawigacji (mock: `.panel { margin-bottom: 14px }`). */
 private val PanelBottomGap = 14.dp
 
@@ -75,8 +84,11 @@ private val PanelBottomGap = 14.dp
  * Ekran ma DWIE stałe strefy i pustkę między nimi:
  * - GÓRA: status, data + tydzień, klikalny tytuł dnia z chevronem (→ sheet
  *   „Szczegóły planu”) i CTA — albo belka „Trening ukończony”, gdy zrobione.
- * - DÓŁ, przypięty nad nawigacją: panel ĆWICZENIA / CARDIO. Lista ćwiczeń jest
- *   schowana w bottom sheecie, na ekranie zostaje sama liczba.
+ *   CTA niesie własny touch target „i" (info) po prawej, który otwiera ten sam
+ *   sheet z listą ćwiczeń dnia — karta ĆWICZENIA w dolnym panelu wyleciała,
+ *   bo dublowała tę samą informację (decyzja Karola).
+ * - DÓŁ, przypięty nad nawigacją: panel CARDIO. Lista ćwiczeń jest schowana
+ *   w bottom sheecie, otwieranym z ikony „i" na CTA.
  *
  * Świadomie NIE MA tu: nazwy planu pod tytułem (jest w sheecie planu), linku
  * „Cały tydzień" (jest zakładka Tydzień w nawigacji) ani „+" cardio w górnym
@@ -184,6 +196,7 @@ fun HomeScreen(
                         ctaLabel = HomeTexts.CTA_TODAY,
                         onStartWorkout = onStartWorkout,
                         onPlanClick = { planSheet = true },
+                        onExercisesClick = { exercisesSheet = true },
                     )
 
                     is HomeContent.UpcomingWorkout -> WorkoutZone(
@@ -191,6 +204,7 @@ fun HomeScreen(
                         ctaLabel = HomeTexts.CTA_UPCOMING,
                         onStartWorkout = onStartWorkout,
                         onPlanClick = { planSheet = true },
+                        onExercisesClick = { exercisesSheet = true },
                     )
 
                     is HomeContent.CompletedWorkout -> WorkoutZone(
@@ -198,6 +212,7 @@ fun HomeScreen(
                         ctaLabel = null,
                         onStartWorkout = onStartWorkout,
                         onPlanClick = { planSheet = true },
+                        onExercisesClick = { exercisesSheet = true },
                     )
 
                     HomeContent.NoSchedule -> Column {
@@ -225,9 +240,7 @@ fun HomeScreen(
             }
 
             HomeBottomPanel(
-                exerciseCount = workout?.exercises?.size,
                 cardio = state.cardio,
-                onExercisesClick = { exercisesSheet = true },
                 onAddCardio = { cardioSheet = CardioSheetTarget.New },
                 onCardioClick = { row -> cardioSheet = CardioSheetTarget.Edit(row) },
                 modifier = Modifier
@@ -293,6 +306,7 @@ private sealed interface CardioSheetTarget {
  *
  * @param ctaLabel null = trening już zrobiony → zamiast CTA belka z obrysem
  * @param onPlanClick tap w tytuł dnia — sheet „Szczegóły planu"
+ * @param onExercisesClick tap w ikonę „i" na CTA — sheet listy ćwiczeń dnia
  */
 @Composable
 private fun ColumnScope.WorkoutZone(
@@ -300,6 +314,7 @@ private fun ColumnScope.WorkoutZone(
     ctaLabel: String?,
     onStartWorkout: (planId: String, dayIndex: Int, scheduleEntryId: String?) -> Unit,
     onPlanClick: () -> Unit,
+    onExercisesClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -357,6 +372,7 @@ private fun ColumnScope.WorkoutZone(
             onClick = {
                 onStartWorkout(workout.planId, workout.dayIndex, workout.scheduleEntryId)
             },
+            onInfo = onExercisesClick,
         )
     }
 }
@@ -364,11 +380,16 @@ private fun ColumnScope.WorkoutZone(
 /**
  * CTA ekranu (mock: `.cta2`) — limonkowy pasek 68 dp z ciemnym kółkiem „play",
  * dwiema linijkami i chevronem. Jedyna duża plama limonki na ekranie.
+ *
+ * Osobny touch target „i" po prawej (min 48 dp) otwiera sheet listy ćwiczeń
+ * dnia — dawniej robiła to karta ĆWICZENIA w dolnym panelu (wyleciała, bo
+ * dublowała tę samą liczbę). Info stoi w OSOBNYM `IconButton` obok, nie na
+ * wspólnym `Surface.onClick`, żeby nie dało się omyłkowo wystartować
+ * treningu, celując w informację.
  */
 @Composable
-private fun WorkoutCta(label: String, caption: String, onClick: () -> Unit) {
+private fun WorkoutCta(label: String, caption: String, onClick: () -> Unit, onInfo: () -> Unit) {
     Surface(
-        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 26.dp)
@@ -376,46 +397,61 @@ private fun WorkoutCta(label: String, caption: String, onClick: () -> Unit) {
         shape = StronkRadius.innerShape,
         color = StronkTheme.colors.lime,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = StronkSpacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Surface(
-                modifier = Modifier.size(CtaPlayCircle),
-                shape = StronkRadius.pill,
-                color = StronkTheme.colors.limeInk.copy(alpha = CTA_PLAY_ALPHA),
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(onClick = onClick)
+                    .padding(start = StronkSpacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = null,
-                        tint = StronkTheme.colors.limeInk,
-                        modifier = Modifier.size(22.dp),
+                Surface(
+                    modifier = Modifier.size(CtaPlayCircle),
+                    shape = StronkRadius.pill,
+                    color = StronkTheme.colors.limeInk.copy(alpha = CTA_PLAY_ALPHA),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Rounded.PlayArrow,
+                            contentDescription = null,
+                            tint = StronkTheme.colors.limeInk,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = label,
+                        style = StronkTextStyles.cta.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                        color = StronkTheme.colors.limeInk,
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = caption,
+                        style = StronkTextStyles.hint.copy(fontWeight = FontWeight.SemiBold),
+                        color = StronkTheme.colors.limeInk.copy(alpha = CTA_MUTED_ALPHA),
+                        maxLines = 1,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    style = StronkTextStyles.cta.copy(fontSize = 18.sp, lineHeight = 22.sp),
-                    color = StronkTheme.colors.limeInk,
-                    maxLines = 1,
-                )
-                Text(
-                    text = caption,
-                    style = StronkTextStyles.hint.copy(fontWeight = FontWeight.SemiBold),
-                    color = StronkTheme.colors.limeInk.copy(alpha = CTA_MUTED_ALPHA),
-                    maxLines = 1,
-                    modifier = Modifier.padding(top = 2.dp),
+                Icon(
+                    imageVector = StronkIcons.chevron,
+                    contentDescription = null,
+                    tint = StronkTheme.colors.limeInk.copy(alpha = CTA_ARROW_ALPHA),
+                    modifier = Modifier.size(19.dp),
                 )
             }
-            Icon(
-                imageVector = StronkIcons.chevron,
-                contentDescription = null,
-                tint = StronkTheme.colors.limeInk.copy(alpha = CTA_ARROW_ALPHA),
-                modifier = Modifier.size(19.dp),
-            )
+            IconButton(onClick = onInfo, modifier = Modifier.size(CtaInfoTarget)) {
+                Icon(
+                    imageVector = StronkIcons.info,
+                    contentDescription = "Ćwiczenia dnia",
+                    tint = StronkTheme.colors.limeInk,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(CtaEndGap))
         }
     }
 }
