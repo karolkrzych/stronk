@@ -80,6 +80,20 @@ class PlanEditorSaveTest {
     }
 
     @Test
+    fun `nowy plan z kreatora zachowuje blockLengthWeeks wybrany w kroku BLOCK`() {
+        // Sekcja bloku znika w edytorze dla swiezego planu (shouldShowBlockLengthRow),
+        // ale wartosc ustawiona w kroku BLOCK wizarda musi mimo to trafic do zapisu.
+        val saved = buildPlanForSave(
+            base = null,
+            name = "Plan z kreatora",
+            blockLengthWeeks = 5,
+            days = days,
+            newId = { "swiezy-id" },
+        )
+        assertEquals(5, saved.blockLengthWeeks)
+    }
+
+    @Test
     fun `nowy plan dostaje swiezy id i brak wzorca dni tygodnia`() {
         val saved = buildPlanForSave(
             base = null,
@@ -230,5 +244,17 @@ class PlanEditorSaveTest {
         // przesadza o zmianie tozsamosci, mimo ze rownoczesnie przybyl nowy dzien.
         val remap = dayIndexRemap(listOf(0, 2, null))
         assertTrue(dayIdentityChanged(remap, baseDayCount = 3))
+    }
+
+    // ---------- shouldShowBlockLengthRow ----------
+
+    @Test
+    fun `shouldShowBlockLengthRow ukryta przy tworzeniu nowego planu`() {
+        assertFalse(shouldShowBlockLengthRow(isNew = true))
+    }
+
+    @Test
+    fun `shouldShowBlockLengthRow widoczna przy edycji istniejacego planu`() {
+        assertTrue(shouldShowBlockLengthRow(isNew = false))
     }
 }
