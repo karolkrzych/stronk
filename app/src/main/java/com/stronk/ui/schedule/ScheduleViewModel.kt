@@ -161,6 +161,23 @@ class ScheduleViewModel(
     val assignmentMessage: StateFlow<String?> = _assignmentMessage
 
     /**
+     * Zdarzenie odwołania wpisu — pod Snackbar „Trening odwołany" z akcją
+     * „Cofnij" w [ScheduleScreen] (zero-friction: [onCancelEntry] działa od razu,
+     * bez dialogu; to jedyna siatka bezpieczeństwa przed przypadkowym tapem).
+     * [CancelEvent.token] rośnie przy każdym wywołaniu, więc odwołanie TEGO
+     * SAMEGO wpisu drugi raz (po cofnięciu i ponownym odwołaniu) też odpala
+     * `LaunchedEffect` — sam `entryId` jako klucz by się powtórzył i StateFlow
+     * wygasiłby emisję jako „bez zmiany". [ScheduleScreen] zamyka stary
+     * snackbar, zanim pokaże nowy, więc akcja „Cofnij" trafia zawsze we
+     * WŁAŚCIWY, ostatnio odwołany wpis.
+     */
+    data class CancelEvent(val entryId: String, val token: Long)
+
+    private val _cancelEvent = MutableStateFlow<CancelEvent?>(null)
+    val cancelEvent: StateFlow<CancelEvent?> = _cancelEvent
+    private var cancelEventToken = 0L
+
+    /**
      * Idempotencja rolling generation: planId → [ScheduleEntry.date] najpóźniejszego
      * wpisu, od którego już próbowaliśmy dogenerować. Chroni przed wielokrotnym
      * odpaleniem w tym samym cyklu (Flow potrafi odpalić się ponownie, zanim własny
@@ -265,6 +282,13 @@ class ScheduleViewModel(
         val entry = latestEntries.firstOrNull { it.id == entryId } ?: return
         if (entry.status != ScheduleStatus.PLANNED) return
         scheduleRepository.save(entry.copy(status = ScheduleStatus.SKIPPED))
+        cancelEventToken += 1
+        _cancelEvent.value = CancelEvent(entryId, cancelEventToken)
+    }
+
+    /** Snackbar w [ScheduleScreen] pokazał/zamknął się — czyścimy, żeby się nie powtarzał. */
+    fun onCancelEventShown() {
+        _cancelEvent.value = null
     }
 
     /** Cofnięcie odwołania — przypadkowy tap nie może przepadać bez wyjścia. */

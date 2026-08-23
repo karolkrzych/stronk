@@ -18,8 +18,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -97,6 +99,7 @@ fun ScheduleScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val assignmentMessage by viewModel.assignmentMessage.collectAsState()
+    val cancelEvent by viewModel.cancelEvent.collectAsState()
     var showAssignDialog by remember { mutableStateOf(false) }
     var moveEntryId by remember { mutableStateOf<String?>(null) }
 
@@ -110,14 +113,40 @@ fun ScheduleScreen(
         }
     }
 
+    // „Odwołaj" na karcie dnia działa od razu, bez dialogu (zero friction) —
+    // ta akcja jest jedyną siatką bezpieczeństwa. `dismiss()` zamyka ewentualny
+    // wciąż widoczny poprzedni snackbar odwołania, żeby „Cofnij" nigdy nie
+    // trafiało w nieaktualny (już zamknięty pod spodem) wpis.
+    LaunchedEffect(cancelEvent) {
+        val event = cancelEvent ?: return@LaunchedEffect
+        snackbarHostState.currentSnackbarData?.dismiss()
+        val result = snackbarHostState.showSnackbar(
+            message = ScheduleTexts.WORKOUT_CANCELLED,
+            actionLabel = ScheduleTexts.UNDO_CANCEL,
+            duration = SnackbarDuration.Short,
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            viewModel.onRestoreEntry(event.entryId)
+        }
+        viewModel.onCancelEventShown()
+    }
+
     Scaffold(
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data ->
-                StronkNoteCard(
-                    text = data.visuals.message,
-                    icon = StronkIcons.info,
+                Row(
                     modifier = Modifier.padding(StronkSpacing.screen),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    StronkNoteCard(
+                        text = data.visuals.message,
+                        icon = StronkIcons.info,
+                        modifier = Modifier.weight(1f),
+                    )
+                    data.visuals.actionLabel?.let { actionLabel ->
+                        ScheduleLinkAction(text = actionLabel, onClick = { data.performAction() })
+                    }
+                }
             }
         },
     ) { innerPadding ->

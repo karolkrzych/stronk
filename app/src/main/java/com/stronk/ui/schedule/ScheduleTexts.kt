@@ -116,6 +116,16 @@ internal object ScheduleTexts {
     fun periodConflictNote(otherPlanName: String): String =
         "Ten okres ma już zaplanowany plan „$otherPlanName\"."
 
+    /**
+     * Snackbar po „Odwołaj" na karcie dnia ([ScheduleViewModel.onCancelEntry]) —
+     * zero-friction akcja (bez dialogu potwierdzenia) dostaje siatkę bezpieczeństwa
+     * w postaci cofnięcia zamiast pytania z góry.
+     */
+    const val WORKOUT_CANCELLED = "Trening odwołany."
+
+    /** Akcja snackbara [WORKOUT_CANCELLED] — przywraca wpis ([ScheduleViewModel.onRestoreEntry]). */
+    const val UNDO_CANCEL = "Cofnij"
+
     private fun setWord(count: Int): String = when {
         count == 1 -> "seria"
         count % 10 in 2..4 && count % 100 !in 12..14 -> "serie"
