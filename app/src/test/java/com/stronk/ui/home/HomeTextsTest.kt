@@ -2,6 +2,7 @@ package com.stronk.ui.home
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -77,6 +78,23 @@ class HomeTextsTest {
         assertNull(HomeTexts.planSubtitle("(powrót)"))
         assertEquals("Plan ()", HomeTexts.planTitle("Plan ()"))
         assertNull(HomeTexts.planSubtitle("Plan ()"))
+    }
+
+    // ---------- dzień wolny ----------
+
+    @Test
+    fun `zapowiedz nastepnego treningu to dzien tygodnia i nazwa dnia planu`() {
+        assertEquals(
+            "poniedziałek · Full body A",
+            HomeTexts.nextWorkout("poniedziałek", "Full body A"),
+        )
+    }
+
+    @Test
+    fun `teksty dnia wolnego maja polskie diakrytyki i zero obietnicy startu`() {
+        assertEquals("Dzień wolny", HomeTexts.FREE_DAY)
+        assertEquals("NASTĘPNY TRENING", HomeTexts.NEXT_WORKOUT.uppercase())
+        assertTrue(HomeTexts.FREE_DAY_HINT.contains("cardio"))
     }
 
     // ---------- podgląd dnia w arkuszu planu ----------

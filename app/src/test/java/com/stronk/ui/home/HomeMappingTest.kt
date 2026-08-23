@@ -73,6 +73,88 @@ class HomeMappingTest {
         assertNull(entries.upcoming)
     }
 
+    // ---------- wariant ekranu na dziś ----------
+
+    @Test
+    fun `wolna niedziela przy planie pon-sr-pt to dzien wolny z zapowiedzia poniedzialku`() {
+        // Niedziela 2026-08-23; plan biega w poniedziałki, środy i piątki.
+        val niedziela = "2026-08-23"
+        val entries = HomeMapping.selectEntries(
+            schedule = listOf(
+                entry("piatek", "2026-08-21", ScheduleStatus.DONE),
+                entry("poniedzialek", "2026-08-24", ScheduleStatus.PLANNED),
+                entry("sroda", "2026-08-26", ScheduleStatus.PLANNED),
+                entry("piatek-2", "2026-08-28", ScheduleStatus.PLANNED),
+            ),
+            todayKey = niedziela,
+        )
+        assertNull(entries.today)
+        assertNull(entries.todayDone)
+        assertEquals("poniedzialek", entries.upcoming?.id)
+        assertEquals(
+            HomeMapping.DayState.FREE_DAY,
+            HomeMapping.dayState(entries, hasActivePlan = true),
+        )
+    }
+
+    @Test
+    fun `dzisiejszy wpis wygrywa z dniem wolnym`() {
+        val entries = HomeMapping.selectEntries(
+            schedule = listOf(
+                entry("dzis", today, ScheduleStatus.PLANNED),
+                entry("jutro", "2026-08-22", ScheduleStatus.PLANNED),
+            ),
+            todayKey = today,
+        )
+        assertEquals(
+            HomeMapping.DayState.WORKOUT,
+            HomeMapping.dayState(entries, hasActivePlan = true),
+        )
+    }
+
+    @Test
+    fun `zaliczony dzisiejszy trening zostaje na ekranie mimo kolejnego wpisu`() {
+        val entries = HomeMapping.selectEntries(
+            schedule = listOf(
+                entry("dzis", today, ScheduleStatus.DONE),
+                entry("jutro", "2026-08-22", ScheduleStatus.PLANNED),
+            ),
+            todayKey = today,
+        )
+        assertEquals(
+            HomeMapping.DayState.DONE,
+            HomeMapping.dayState(entries, hasActivePlan = true),
+        )
+    }
+
+    @Test
+    fun `plan bez przyszlych wpisow to pusty harmonogram, nie dzien wolny`() {
+        val entries = HomeMapping.selectEntries(
+            schedule = listOf(entry("stary", "2026-08-19", ScheduleStatus.DONE)),
+            todayKey = today,
+        )
+        assertEquals(
+            HomeMapping.DayState.NO_SCHEDULE,
+            HomeMapping.dayState(entries, hasActivePlan = true),
+        )
+    }
+
+    @Test
+    fun `bez planu ekran prosi o plan, nawet gdy wiszą stare wpisy`() {
+        val entries = HomeMapping.selectEntries(
+            schedule = listOf(entry("sierota", "2026-08-24", ScheduleStatus.PLANNED)),
+            todayKey = today,
+        )
+        assertEquals(
+            HomeMapping.DayState.NO_PLANS,
+            HomeMapping.dayState(entries, hasActivePlan = false),
+        )
+        assertEquals(
+            HomeMapping.DayState.NO_PLANS,
+            HomeMapping.dayState(HomeMapping.selectEntries(emptyList(), today), false),
+        )
+    }
+
     // ---------- liczniki CTA / belki ukończenia ----------
 
     @Test
@@ -151,13 +233,21 @@ class HomeMappingTest {
         val workout = scheduledWorkout()
         assertEquals(workout, HomeContent.TodayWorkout(workout).scheduledWorkout)
         assertEquals(workout, HomeContent.CompletedWorkout(workout).scheduledWorkout)
-        assertEquals(workout, HomeContent.UpcomingWorkout(workout).scheduledWorkout)
     }
 
     @Test
     fun `puste stany nie daja treningu, wiec panel gubi wiersz cwiczen`() {
         assertNull(HomeContent.NoSchedule.scheduledWorkout)
         assertNull(HomeContent.NoPlans.scheduledWorkout)
+    }
+
+    @Test
+    fun `dzien wolny nie oddaje treningu, wiec nie da sie go wystartowac`() {
+        val freeDay = HomeContent.FreeDay(
+            dateCaption = "Niedziela · 23.08",
+            nextLabel = HomeTexts.nextWorkout("poniedziałek", "Full body A"),
+        )
+        assertNull(freeDay.scheduledWorkout)
     }
 
     // ---------- fixtures ----------

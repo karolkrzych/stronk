@@ -42,7 +42,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stronk.ui.cardio.CardioRowUi
 import com.stronk.ui.cardio.CardioSheet
+import com.stronk.ui.components.StronkCard
 import com.stronk.ui.components.StronkEmptyState
+import com.stronk.ui.components.StronkIconBadge
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkMetaChip
 import com.stronk.ui.components.StronkNoteCard
@@ -83,7 +85,11 @@ private val PanelBottomGap = 14.dp
  *
  * Ekran ma DWIE stałe strefy i pustkę między nimi:
  * - GÓRA: status, data + tydzień, klikalny tytuł dnia z chevronem (→ sheet
- *   „Szczegóły planu”) i CTA — albo belka „Trening ukończony”, gdy zrobione.
+ *   „Szczegóły planu”) i CTA — albo belka „Trening ukończony”, gdy zrobione,
+ *   albo karta „Dzień wolny”, gdy na dziś nic nie zaplanowano. Data w
+ *   kapitaliku to ZAWSZE dzisiejszy dzień: ekran „Dziś" nie ma prawa
+ *   podstawiać pod nią jutrzejszego treningu (start z wyprzedzeniem nie
+ *   istnieje, więc dzień wolny nie dostaje żadnego przycisku startu).
  *   CTA niesie własny touch target „i" (info) po prawej, który otwiera ten sam
  *   sheet z listą ćwiczeń dnia — karta ĆWICZENIA w dolnym panelu wyleciała,
  *   bo dublowała tę samą informację (decyzja Karola).
@@ -199,12 +205,9 @@ fun HomeScreen(
                         onExercisesClick = { exercisesSheet = true },
                     )
 
-                    is HomeContent.UpcomingWorkout -> WorkoutZone(
-                        workout = content.workout,
-                        ctaLabel = HomeTexts.CTA_UPCOMING,
-                        onStartWorkout = onStartWorkout,
-                        onPlanClick = { planSheet = true },
-                        onExercisesClick = { exercisesSheet = true },
+                    is HomeContent.FreeDay -> FreeDayZone(
+                        dateCaption = content.dateCaption,
+                        nextLabel = content.nextLabel,
                     )
 
                     is HomeContent.CompletedWorkout -> WorkoutZone(
@@ -316,21 +319,7 @@ private fun ColumnScope.WorkoutZone(
     onPlanClick: () -> Unit,
     onExercisesClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = StronkSpacing.md),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = workout.dateCaption.uppercase(),
-            style = StronkTextStyles.cap,
-            color = StronkTheme.colors.textDim,
-            maxLines = 1,
-            modifier = Modifier.weight(1f),
-        )
-        workout.weekChip?.let { StronkMetaChip(it) }
-    }
+    DayCaptionRow(caption = workout.dateCaption, chip = workout.weekChip)
 
     // Tytuł dnia to JEDYNA dominanta strefy — nazwa planu wisi w sheecie za
     // chevronem, bo na ekranie była drugą linijką, której nikt nie czytał.
@@ -374,6 +363,88 @@ private fun ColumnScope.WorkoutZone(
             },
             onInfo = onExercisesClick,
         )
+    }
+}
+
+/**
+ * KAPITALIK daty na górze strefy (mock: `.traincaprow`) — ta sama linijka w
+ * KAŻDYM stanie ekranu, bo „Dziś" ma zawsze pokazywać dzisiejszą datę.
+ *
+ * @param chip opcjonalny chip bloku („Tydzień 1/6"); dzień wolny go nie ma
+ */
+@Composable
+private fun DayCaptionRow(caption: String, chip: String?) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = StronkSpacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = caption.uppercase(),
+            style = StronkTextStyles.cap,
+            color = StronkTheme.colors.textDim,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        chip?.let { StronkMetaChip(it) }
+    }
+}
+
+/**
+ * Dzień wolny — spokojna karta zamiast strefy treningu. Zero limonki i ZERO
+ * przycisku startu: treningu z wyprzedzeniem nie zaczynamy, więc zapowiedź
+ * następnego dnia jest tu tylko informacją (kapitalik + jedna linijka).
+ *
+ * Panel CARDIO pod spodem działa jak zawsze — cardio w dzień wolny to normalka.
+ */
+@Composable
+private fun ColumnScope.FreeDayZone(dateCaption: String, nextLabel: String?) {
+    DayCaptionRow(caption = dateCaption, chip = null)
+
+    StronkCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StronkIconBadge(icon = StronkIcons.restDay)
+            Column(Modifier.padding(start = StronkSpacing.sm)) {
+                Text(
+                    text = HomeTexts.FREE_DAY,
+                    style = StronkTextStyles.h1Small,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = HomeTexts.FREE_DAY_HINT,
+                    style = StronkTextStyles.meta,
+                    color = StronkTheme.colors.textDim,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
+        }
+    }
+
+    if (nextLabel != null) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = StronkSpacing.lg),
+        ) {
+            Text(
+                text = HomeTexts.NEXT_WORKOUT.uppercase(),
+                style = StronkTextStyles.cap,
+                color = StronkTheme.colors.textDim,
+            )
+            Text(
+                text = nextLabel,
+                style = StronkTextStyles.bodyStrong,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 5.dp),
+            )
+        }
     }
 }
 
