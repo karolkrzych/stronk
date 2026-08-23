@@ -15,20 +15,25 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.stronk.ui.components.StronkAnchoredDropdownMenu
 import com.stronk.ui.components.StronkChoiceChip
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkNoteCard
@@ -234,7 +239,7 @@ fun AssignPlanDialog(
                         title = "Dni tygodnia",
                         trailing = {
                             Text(
-                                text = "tapnij, by zmienić",
+                                text = "tapnij, by wybrać",
                                 style = StronkTextStyles.meta,
                                 color = StronkTheme.colors.textDim,
                             )
@@ -301,7 +306,14 @@ fun AssignPlanDialog(
     }
 }
 
-/** Wiersz „poniedziałek → [dzień planu / wolne]"; tap krąży po dniach planu. */
+/**
+ * Wiersz „poniedziałek → [dzień planu / wolne]"; tap w chip otwiera menu ze
+ * WSZYSTKIMI dostępnymi opcjami naraz (Wolne + każdy dzień planu, aktualna
+ * zaznaczona check-markiem) — wybór jednym tapem, bez przeklikiwania się po
+ * kolei ([nextAssignment] cyklem null→0→1→…→null to poprzedni, odrzucony
+ * wzorzec). Wizualnie to ten sam skórowany [StronkAnchoredDropdownMenu], co
+ * filtr sprzętu w zamiennikach — menu na szerokość chipa-kotwicy.
+ */
 @Composable
 private fun WeekdayAssignmentRow(
     dayOfWeek: DayOfWeek,
@@ -310,32 +322,82 @@ private fun WeekdayAssignmentRow(
     onAssign: (Int?) -> Unit,
 ) {
     val assignedName = assignedDayIndex?.let { dayNames.getOrNull(it) }
-    Row(
+    var expanded by remember { mutableStateOf(false) }
+    var anchorWidthPx by remember { mutableIntStateOf(0) }
+    // Kotwiczymy menu na CAŁYM wierszu dnia (nie na wąskim chipie) — inaczej
+    // menu dziedziczy szerokość chipa i długie opcje ("Full body A") łamią się
+    // litera po literze. Ten sam wzorzec co StronkEquipmentFilterButton: Box
+    // mierzy swoją szerokość przez onSizeChanged, DropdownMenu wewnątrz niego
+    // dostaje tę szerokość — tu Box owija cały Row, więc menu jest pełnej
+    // szerokości wiersza, chip zostaje wizualnie po prawej.
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .onSizeChanged { anchorWidthPx = it.width },
     ) {
-        Text(
-            text = ScheduleConstants.DAY_NAMES.getValue(dayOfWeek)
-                .replaceFirstChar { it.titlecase(polishLocale) },
-            style = StronkTextStyles.bodyStrong,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            modifier = Modifier.weight(1f),
-        )
-        StronkChoiceChip(
-            label = assignedName ?: "wolne",
-            selected = assignedName != null,
-            onClick = { onAssign(nextAssignment(assignedDayIndex, dayNames.size)) },
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = ScheduleConstants.DAY_NAMES.getValue(dayOfWeek)
+                    .replaceFirstChar { it.titlecase(polishLocale) },
+                style = StronkTextStyles.bodyStrong,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            StronkChoiceChip(
+                label = assignedName ?: "wolne",
+                selected = assignedName != null,
+                onClick = { expanded = true },
+            )
+        }
+        StronkAnchoredDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            anchorWidthPx = anchorWidthPx,
+        ) {
+                DropdownMenuItem(
+                    text = { Text("wolne") },
+                    onClick = {
+                        onAssign(null)
+                        expanded = false
+                    },
+                    trailingIcon = if (assignedDayIndex == null) {
+                        {
+                            Icon(
+                                imageVector = StronkIcons.done,
+                                contentDescription = null,
+                                tint = StronkTheme.colors.lime,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+                dayNames.forEachIndexed { index, dayName ->
+                    DropdownMenuItem(
+                        text = { Text(dayName) },
+                        onClick = {
+                            onAssign(index)
+                            expanded = false
+                        },
+                        trailingIcon = if (assignedDayIndex == index) {
+                            {
+                                Icon(
+                                    imageVector = StronkIcons.done,
+                                    contentDescription = null,
+                                    tint = StronkTheme.colors.lime,
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
+            }
+        }
     }
-}
-
-/** Kolejny stan chipa dnia: null → 0 → 1 → … → ostatni → null (wolne). */
-private fun nextAssignment(current: Int?, dayCount: Int): Int? = when {
-    dayCount <= 0 -> null
-    current == null -> 0
-    current + 1 < dayCount -> current + 1
-    else -> null
-}

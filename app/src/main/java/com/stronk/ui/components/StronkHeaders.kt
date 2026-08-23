@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,6 +29,14 @@ import com.stronk.ui.theme.StronkTheme
  * @param title tytuł ekranu, krótki (1–3 słowa), np. "Tydzień 1/6"
  * @param subtitle drugi wiersz, wygaszony — daty, kontekst
  * @param meta tekst chipa po prawej; null = brak chipa
+ * @param titleTrailing mały slot tuż obok tytułu (ta sama linia), np. akcja
+ *        "Zaplanuj" — dla akcji, która logicznie należy do tytułu, nie do
+ *        grupy `actions` po prawej krawędzi. Gdy podany, tytuł dzieli z nim
+ *        wiersz (maxLines = 1, kurczy się przed nim zamiast go spychać).
+ * @param titleStyle styl tytułu; domyślnie `h1` (24). Węższe nagłówki
+ *        (np. Tydzień z trzema IconButtonami + "Zaplanuj" obok tytułu) mogą
+ *        podać `h1Small` (21), żeby najdłuższy wariant tytułu zmieścił się
+ *        w jednej linii bez łamania layoutu.
  * @param actions slot na ikony akcji po prawej (np. dyskretne „i")
  */
 @Composable
@@ -35,6 +45,8 @@ fun StronkScreenHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     meta: String? = null,
+    titleTrailing: (@Composable () -> Unit)? = null,
+    titleStyle: androidx.compose.ui.text.TextStyle = StronkTextStyles.h1,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
@@ -43,13 +55,28 @@ fun StronkScreenHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = StronkTextStyles.h1,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (titleTrailing != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        style = titleStyle,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Spacer(Modifier.width(StronkSpacing.xs))
+                    titleTrailing()
+                }
+            } else {
+                Text(
+                    text = title,
+                    style = titleStyle,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             if (subtitle != null) {
                 Text(
                     text = subtitle,

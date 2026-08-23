@@ -7,10 +7,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -18,8 +20,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +54,7 @@ import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkListRow
 import com.stronk.ui.components.StronkNoteCard
 import com.stronk.ui.components.StronkScreenHeader
+import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
 import com.stronk.ui.components.StronkWeekdayHeader
 import com.stronk.ui.theme.StronkSpacing
@@ -70,12 +75,25 @@ private val LegendGap = 14.dp
 private val DayCardPadding = 18.dp
 
 /**
+ * Touch target IconButtonów w nagłówku Tygodnia ([dziś][‹][›]) — ściśnięty
+ * z domyślnych 48dp, żeby zrobić miejsce tytułowi miesiąca + "Zaplanuj"
+ * (patrz [StronkScreenHeader] wywołanie niżej). 40dp ma precedens w
+ * HomeScreen.kt (ikona profilu); wciąż nad progiem 40dp minimum a11y.
+ */
+private val HeaderIconTarget = 40.dp
+
+/** Ikona wewnątrz [HeaderIconTarget] — domyślne 24dp byłoby nieproporcjonalne. */
+private val HeaderIconSize = 20.dp
+
+/**
  * Harmonogram — ekran „Tydzień" (mock `wariant-c2-limonka.html`, ekran 2).
  *
- * Dominanta ekranu to SIATKA KWADRATÓW: 7 kolumn × tygodnie bieżącego bloku
- * w dół, numer dnia w kwadracie, stan niesiony wypełnieniem (zrobione), obrysem
- * (plan) albo brakiem obu (dzień wolny); „dziś" to limonkowy ring. Legenda ma
- * maks 2 pozycje — trzecia byłaby znakiem, że siatka przestała być czytelna.
+ * Dominanta ekranu to SIATKA KWADRATÓW w klasycznym układzie miesiąca: 7 kolumn
+ * × pełne tygodnie od 1. do ostatniego dnia miesiąca, numer dnia w kwadracie,
+ * stan niesiony wypełnieniem (zrobione), obrysem (plan) albo brakiem obu (dzień
+ * wolny); „dziś" to limonkowy ring. Miesiąc przewijają strzałki ‹ › w nagłówku
+ * (poprzedni/kolejny, też w całości). Legenda ma maks 2 pozycje — trzecia byłaby
+ * znakiem, że siatka przestała być czytelna.
  *
  * Pod siatką jest jedna karta wybranego dnia: „Środa · Full body B" i prosta
  * lista ćwiczeń (ikona + nazwa + chip „3 serie") — WGLĄD, nie start treningu:
@@ -97,6 +115,7 @@ fun ScheduleScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val assignmentMessage by viewModel.assignmentMessage.collectAsState()
+    val cancelEvent by viewModel.cancelEvent.collectAsState()
     var showAssignDialog by remember { mutableStateOf(false) }
     var moveEntryId by remember { mutableStateOf<String?>(null) }
 
@@ -110,14 +129,55 @@ fun ScheduleScreen(
         }
     }
 
+    // „Odwołaj" na karcie dnia działa od razu, bez dialogu (zero friction) —
+    // ta akcja jest jedyną siatką bezpieczeństwa. `dismiss()` zamyka ewentualny
+    // wciąż widoczny poprzedni snackbar odwołania, żeby „Cofnij" nigdy nie
+    // trafiało w nieaktualny (już zamknięty pod spodem) wpis.
+    // [SnackbarDuration.Long], nie Short: przy Short snackbar znikał, zanim
+    // dało się trafić w „Cofnij" (gate: 2 z 3 prób nie zdążyły) — okno na
+    // wycofanie przypadkowego tapu musi być realne, inaczej cała siatka
+    // bezpieczeństwa jest dekoracją.
+    // Klucz to TOKEN, nie całe zdarzenie: gdy [ScheduleViewModel.onCancelEventShown]
+    // wyzeruje zdarzenie, klucz zmienia się na `null` i efekt startuje od nowa —
+    // wynik `showSnackbar` musi więc być obsłużony ZANIM zdarzenie zniknie
+    // (inaczej restart ubiłby korutynę czekającą na „Cofnij").
+    // `finally` domyka drugi przypadek: efekt anulowany razem z kompozycją
+    // (przełączenie zakładki przy widocznym snackbarze) też KONSUMUJE zdarzenie —
+    // bez tego wisiałoby ono w [ScheduleViewModel] i po powrocie na ekran
+    // odpalało snackbar „Cofnij" do dawno odwołanego treningu.
+    LaunchedEffect(cancelEvent?.token) {
+        val event = cancelEvent ?: return@LaunchedEffect
+        snackbarHostState.currentSnackbarData?.dismiss()
+        try {
+            val result = snackbarHostState.showSnackbar(
+                message = ScheduleTexts.WORKOUT_CANCELLED,
+                actionLabel = ScheduleTexts.UNDO_CANCEL,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.onRestoreEntry(event.entryId)
+            }
+        } finally {
+            viewModel.onCancelEventShown()
+        }
+    }
+
     Scaffold(
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data ->
-                StronkNoteCard(
-                    text = data.visuals.message,
-                    icon = StronkIcons.info,
+                Row(
                     modifier = Modifier.padding(StronkSpacing.screen),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    StronkNoteCard(
+                        text = data.visuals.message,
+                        icon = StronkIcons.info,
+                        modifier = Modifier.weight(1f),
+                    )
+                    data.visuals.actionLabel?.let { actionLabel ->
+                        ScheduleLinkAction(text = actionLabel, onClick = { data.performAction() })
+                    }
+                }
             }
         },
     ) { innerPadding ->
@@ -140,24 +200,69 @@ fun ScheduleScreen(
                 .padding(top = StronkSpacing.sm, bottom = StronkSpacing.lg),
         ) {
             StronkScreenHeader(
-                title = state.blockLabel.ifEmpty { "Tydzień" },
-                subtitle = state.monthLabel.ifEmpty { null },
+                title = state.monthTitle,
+                subtitle = state.blockLabel.ifEmpty { null },
+                // Trzy IconButtony + "Zaplanuj" obok tytułu na 411dp to ciasno —
+                // h1Small (21 vs 24) daje tytułowi margines, żeby najdłuższy
+                // miesiąc ("Październik 2026") zmieścił się w całości bez
+                // łamania na dwie linie (patrz też compact IconButtony niżej).
+                titleStyle = StronkTextStyles.h1Small,
+                titleTrailing = if (state.planOptions.isNotEmpty()) {
+                    {
+                        StronkTextAction(
+                            text = "Zaplanuj",
+                            onClick = { showAssignDialog = true },
+                            tone = StronkTone.ACCENT,
+                        )
+                    }
+                } else {
+                    null
+                },
                 actions = {
-                    if (!state.todaySelected) {
-                        IconButton(onClick = viewModel::onBackToToday) {
+                    // Layout stały: kolejność [dziś] [‹] [›] się nie zmienia i nic
+                    // nie znika z drzewa — ikona „dziś" tylko przygasa, gdy jesteśmy
+                    // już w bieżącym miesiącu z zaznaczonym dziś (showTodayAction).
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Touch target ściśnięty do 40dp (wzorzec: profil na Dziś,
+                        // HomeScreen.kt) zamiast domyślnych 48dp — trzy przyciski
+                        // obok tytułu i "Zaplanuj" na 411dp inaczej się nie mieszczą
+                        // bez łamania tytułu do dwóch linii.
+                        IconButton(
+                            onClick = viewModel::onBackToToday,
+                            enabled = state.showTodayAction,
+                            modifier = Modifier.size(HeaderIconTarget),
+                        ) {
                             Icon(
                                 StronkIcons.today,
-                                contentDescription = "Dziś",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                contentDescription = "Wróć do dzisiaj",
+                                tint = if (state.showTodayAction) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    StronkTheme.colors.textDim
+                                },
+                                modifier = Modifier.size(HeaderIconSize),
                             )
                         }
-                    }
-                    if (state.planOptions.isNotEmpty()) {
-                        IconButton(onClick = { showAssignDialog = true }) {
+                        IconButton(
+                            onClick = viewModel::onPreviousMonth,
+                            modifier = Modifier.size(HeaderIconTarget),
+                        ) {
                             Icon(
-                                StronkIcons.add,
-                                contentDescription = "Zaplanuj tydzień",
-                                tint = StronkTheme.colors.lime,
+                                StronkIcons.back,
+                                contentDescription = "Poprzedni miesiąc",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(HeaderIconSize),
+                            )
+                        }
+                        IconButton(
+                            onClick = viewModel::onNextMonth,
+                            modifier = Modifier.size(HeaderIconTarget),
+                        ) {
+                            Icon(
+                                StronkIcons.chevron,
+                                contentDescription = "Następny miesiąc",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(HeaderIconSize),
                             )
                         }
                     }
@@ -165,12 +270,12 @@ fun ScheduleScreen(
             )
 
             Spacer(Modifier.height(BlockGap))
-            BlockCalendar(weeks = state.weeks, onSelectDay = viewModel::onSelectDay)
+            MonthCalendar(weeks = state.weeks, onSelectDay = viewModel::onSelectDay)
 
             Spacer(Modifier.height(LegendGap))
             // Trzecia pozycja legendy pojawia się tylko wtedy, gdy w siatce
             // faktycznie jest cardio — inaczej legenda puchnie bez powodu.
-            val anyCardio = state.weeks.any { week -> week.days.any { it.hasCardio } }
+            val anyCardio = state.weeks.any { week -> week.days.any { it?.hasCardio == true } }
             StronkDayLegend(cardioLabel = if (anyCardio) CardioTexts.SECTION_CARDIO else null)
 
             Spacer(Modifier.height(BlockGap))
@@ -237,11 +342,17 @@ fun ScheduleScreen(
 }
 
 /**
- * Siatka kwadratów bloku (mock: `.cal`) — nagłówek liter dni + rzędy tygodni.
- * Ring „dziś" rysuje się POZA kwadratem, więc odstęp 8 dp musi zostać.
+ * Klasyczna siatka miesiąca (mock: `.cal`) — nagłówek liter dni + rzędy pełnych
+ * tygodni pokrywających miesiąc. Ring „dziś" rysuje się POZA kwadratem, więc
+ * odstęp 8 dp musi zostać.
+ *
+ * Dni spoza miesiąca (`null` w [ScheduleWeekUi.days]) to PUSTE miejsca tej samej
+ * wielkości co kwadrat — bez liczby, bez tapu. Dzięki temu kolumny dni tygodnia
+ * stoją w pionie, a miesiąc zaczyna się i kończy dokładnie tam, gdzie w
+ * kalendarzu.
  */
 @Composable
-private fun BlockCalendar(
+private fun MonthCalendar(
     weeks: List<ScheduleWeekUi>,
     onSelectDay: (LocalDate) -> Unit,
 ) {
@@ -253,6 +364,14 @@ private fun BlockCalendar(
                 horizontalArrangement = Arrangement.spacedBy(DaySquareGap),
             ) {
                 week.days.forEach { day ->
+                    if (day == null) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .aspectRatio(1f),
+                        )
+                        return@forEach
+                    }
                     val marker = CalendarMarkers.marker(day.status, day.hasCardio)
                     StronkDaySquare(
                         day = day.dayOfMonth.toString(),

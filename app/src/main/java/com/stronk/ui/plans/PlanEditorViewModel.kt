@@ -907,12 +907,14 @@ class PlanEditorViewModel(
      * planów są same karty). Zapisuje aktualny stan edycji razem z flagą, żeby
      * jedno tapnięcie nie gubiło zmian zrobionych przed nim.
      *
-     * Archiwizacja (`archived = true`) dodatkowo sprząta przyszłe wpisy PLANNED
-     * TEGO planu ([archivedPlanDeadEntryIds] — batch, [ScheduleRepository.replacePlannedEntries]
-     * z pustą listą nowych wpisów) — inaczej zostają martwe, niewidoczne w
-     * `planOptions` (odfiltrowane jako zarchiwizowane), ale wciąż blokujące
-     * planowanie nowego planu na tych datach (dokładnie bug z tego zgłoszenia).
-     * DONE nietykalne (historia), przeszłe PLANNED/SKIPPED/MOVED zostają
+     * Archiwizacja (`archived = true`) dodatkowo sprząta przyszłe wpisy TEGO
+     * planu — PLANNED, MOVED i SKIPPED ([archivedPlanDeadEntryIds] — batch,
+     * [ScheduleRepository.replacePlannedEntries] z pustą listą nowych wpisów).
+     * Inaczej zostają martwe, niewidoczne w `planOptions` (odfiltrowane jako
+     * zarchiwizowane), ale wciąż szkodliwe: PLANNED blokuje planowanie nowego
+     * planu na tych datach, a MOVED/SKIPPED wiszą w karcie dnia jako
+     * karty-widma („Przesunięty → czwartek" po planie, którego już nie ma).
+     * DONE nietykalne (historia), przeszłe wpisy zostają
      * (audit-trail) — [archivedPlanDeadEntryIds] pilnuje obu warunków. Przy
      * przywróceniu (`archived = false`) nic dodatkowo nie robimy — stare wpisy
      * już są skasowane, nowe user zaplanuje przez [com.stronk.ui.schedule.AssignPlanDialog].
@@ -958,10 +960,11 @@ class PlanEditorViewModel(
 
     /**
      * [ScheduleEntry] → [ScheduleEntryRef] pod [archivedPlanDeadEntryIds]:
-     * `archived = true` wyłącznie dla wpisów PLANNED planu [archivedPlanId]
-     * (właśnie archiwizowanego przez [setArchived]) — pozostałe plany tu nie
-     * mają znaczenia, więc nie potrzeba pełnego `plansById` jak w
-     * [com.stronk.ui.schedule.ScheduleViewModel].
+     * `archived = true` dla wpisów planu [archivedPlanId] (właśnie
+     * archiwizowanego przez [setArchived]) w KAŻDYM statusie poza DONE —
+     * PLANNED, MOVED i SKIPPED, wzorem `ScheduleViewModel.toEntryRefs`.
+     * Pozostałe plany tu nie mają znaczenia, więc nie potrzeba pełnego
+     * `plansById` jak w [com.stronk.ui.schedule.ScheduleViewModel].
      */
     private fun scheduleEntryRefsFor(schedule: List<ScheduleEntry>, archivedPlanId: String): List<ScheduleEntryRef> =
         schedule.mapNotNull { entry ->
@@ -973,9 +976,11 @@ class PlanEditorViewModel(
                     kind = when (entry.status) {
                         ScheduleStatus.PLANNED -> ScheduleEntryKind.PLANNED
                         ScheduleStatus.DONE -> ScheduleEntryKind.DONE
-                        else -> ScheduleEntryKind.OTHER
+                        ScheduleStatus.MOVED -> ScheduleEntryKind.MOVED
+                        ScheduleStatus.SKIPPED -> ScheduleEntryKind.SKIPPED
                     },
-                    archived = entry.status == ScheduleStatus.PLANNED && entry.planId == archivedPlanId,
+                    archived = entry.status != ScheduleStatus.DONE && entry.planId == archivedPlanId,
+                    movedTo = entry.movedTo?.let { parseDate(it) },
                 )
             }
         }
@@ -984,9 +989,11 @@ class PlanEditorViewModel(
      * [ScheduleEntry] → [ScheduleEntryRef] ogólny (wszystkie plany, nie tylko
      * jeden archiwizowany jak [scheduleEntryRefsFor]) — pod [reconcileScheduleOnSave]
      * / [planReplacement], wzorem `ScheduleViewModel.toEntryRefs`: `archived`
-     * na PLANNED odzwierciedla archiwizację WŁAŚCICIELA wpisu (dowolnego
-     * planu), żeby [planReplacement] poprawnie traktował martwe wpisy cudzych
-     * zarchiwizowanych planów jako niekolidujące.
+     * na każdym statusie poza DONE odzwierciedla archiwizację WŁAŚCICIELA
+     * wpisu (dowolnego planu), żeby [planReplacement] poprawnie traktował
+     * martwe wpisy PLANNED cudzych zarchiwizowanych planów jako
+     * niekolidujące, a kontrakt [ScheduleEntryRef.archived] był ten sam w obu
+     * budowniczych refów.
      */
     private fun toEntryRefs(schedule: List<ScheduleEntry>, plansById: Map<String, Plan>): List<ScheduleEntryRef> =
         schedule.mapNotNull { entry ->
@@ -998,9 +1005,11 @@ class PlanEditorViewModel(
                     kind = when (entry.status) {
                         ScheduleStatus.PLANNED -> ScheduleEntryKind.PLANNED
                         ScheduleStatus.DONE -> ScheduleEntryKind.DONE
-                        else -> ScheduleEntryKind.OTHER
+                        ScheduleStatus.MOVED -> ScheduleEntryKind.MOVED
+                        ScheduleStatus.SKIPPED -> ScheduleEntryKind.SKIPPED
                     },
-                    archived = entry.status == ScheduleStatus.PLANNED && plansById[entry.planId]?.archived == true,
+                    archived = entry.status != ScheduleStatus.DONE && plansById[entry.planId]?.archived == true,
+                    movedTo = entry.movedTo?.let { parseDate(it) },
                 )
             }
         }

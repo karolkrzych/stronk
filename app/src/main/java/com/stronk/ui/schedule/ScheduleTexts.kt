@@ -1,6 +1,7 @@
 package com.stronk.ui.schedule
 
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -22,8 +23,8 @@ internal object ScheduleTexts {
     /** „środa 19 sierpnia" — dzień z datą, bez roku. */
     private val fullDayFormatter = DateTimeFormatter.ofPattern("EEEE d MMMM", polishLocale)
 
-    /** „sierpień" — nazwa miesiąca w mianowniku (wzorzec standalone). */
-    private val monthFormatter = DateTimeFormatter.ofPattern("LLLL", polishLocale)
+    /** „sierpień 2026" — miesiąc w mianowniku (wzorzec standalone) z rokiem. */
+    private val monthYearFormatter = DateTimeFormatter.ofPattern("LLLL yyyy", polishLocale)
 
     /** „środa, 19 sierpnia" — data startu w dialogu przypisania planu. */
     private val startDateFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM", polishLocale)
@@ -49,20 +50,12 @@ internal object ScheduleTexts {
         }
 
     /**
-     * Podtytuł nagłówka: miesiąc (albo dwa) objęte siatką bloku, np. „Sierpień"
-     * lub „Sierpień – wrzesień". Rok dopisywany tylko wtedy, gdy siatka wychodzi
-     * poza rok [today] — bez szumu w typowym widoku.
+     * Tytuł nagłówka klasycznego widoku miesiąca, np. „Sierpień 2026". Rok jest
+     * ZAWSZE — po strzałkach ‹ › można zajechać dowolnie daleko, więc sam
+     * miesiąc byłby dwuznaczny.
      */
-    fun monthRangeLabel(from: LocalDate, to: LocalDate, today: LocalDate): String {
-        val sameMonth = from.month == to.month && from.year == to.year
-        val base = if (sameMonth) {
-            monthFormatter.format(from)
-        } else {
-            "${monthFormatter.format(from)} – ${monthFormatter.format(to)}"
-        }
-        val yearSuffix = if (from.year != today.year || to.year != today.year) " ${to.year}" else ""
-        return base.replaceFirstChar { it.titlecase(polishLocale) } + yearSuffix
-    }
+    fun monthTitle(month: YearMonth): String =
+        monthYearFormatter.format(month).replaceFirstChar { it.titlecase(polishLocale) }
 
     /** Tytuł karty dnia (mock: `.daycard .nm` = „Środa · Full body B"). */
     fun dayCardTitle(date: LocalDate, dayName: String?): String {
@@ -115,6 +108,16 @@ internal object ScheduleTexts {
     /** Notka w dialogu, gdy okres koliduje z INNYM planem — blokuje CTA. */
     fun periodConflictNote(otherPlanName: String): String =
         "Ten okres ma już zaplanowany plan „$otherPlanName\"."
+
+    /**
+     * Snackbar po „Odwołaj" na karcie dnia ([ScheduleViewModel.onCancelEntry]) —
+     * zero-friction akcja (bez dialogu potwierdzenia) dostaje siatkę bezpieczeństwa
+     * w postaci cofnięcia zamiast pytania z góry.
+     */
+    const val WORKOUT_CANCELLED = "Trening odwołany."
+
+    /** Akcja snackbara [WORKOUT_CANCELLED] — przywraca wpis ([ScheduleViewModel.onRestoreEntry]). */
+    const val UNDO_CANCEL = "Cofnij"
 
     private fun setWord(count: Int): String = when {
         count == 1 -> "seria"

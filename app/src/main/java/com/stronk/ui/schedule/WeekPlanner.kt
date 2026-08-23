@@ -2,6 +2,7 @@ package com.stronk.ui.schedule
 
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
@@ -23,12 +24,6 @@ data class PlannedSlot(val date: LocalDate, val dayIndex: Int)
  * to nazwa planu w chwili budowy stanu (nie referencja — plan może zniknąć).
  */
 data class OccupiedEntry(val date: LocalDate, val planId: String, val planName: String)
-
-/**
- * Okno tygodni bloku pokazywane w siatce kwadratów: [startWeek] to 0-based
- * indeks pierwszego rzędu w bloku, [rows] to liczba rzędów.
- */
-data class BlockWindow(val startWeek: Int, val rows: Int)
 
 private val polishLocale = Locale.forLanguageTag("pl")
 private val dayMonthFormatter = DateTimeFormatter.ofPattern("d MMMM", polishLocale)
@@ -60,76 +55,21 @@ fun weekLabel(weekStart: LocalDate, today: LocalDate): String {
 }
 
 /**
- * Które tygodnie bloku trafiają do siatki kwadratów.
+ * Poniedziałki rzędów KLASYCZNEJ siatki miesiąca [month]: od poniedziałku
+ * tygodnia, w którym leży 1. dzień miesiąca, po poniedziałek tygodnia, w którym
+ * leży ostatni dzień. Zawsze pełne tygodnie (kolumny = dni tygodnia się nie
+ * rozjeżdżają) — dni spoza [month] renderują się jako PUSTE placeholdery, patrz
+ * [ScheduleViewModel.buildState].
  *
- * Blok mieszczący się w limicie pokazujemy w całości od tygodnia 0 (typowy
- * przypadek: 5 tygodni pracy + 1 lekki = 6 rzędów, dokładnie jak mock).
- * Blok krótszy niż [minRows] dopełniamy kolejnymi tygodniami kalendarza
- * (siatka ma być dominantą ekranu, a nie dwoma rzędami), a blok dłuższy niż
- * [maxRows] pokazujemy oknem wyśrodkowanym na bieżącym tygodniu.
- *
- * @param weekIndexInBlock 0-based pozycja bieżącego tygodnia w bloku
- *   (z `ProgressionEngine.weekIndexInBlock` — silnik jest źródłem prawdy)
- * @param blockLengthWeeks pełna długość bloku (praca + tydzień lekki)
+ * Liczba rzędów wychodzi z kalendarza, nie z konfiguracji: 4 (luty roku
+ * nieprzestępnego zaczynający się w poniedziałek) do 6 (długi miesiąc
+ * zaczynający się pod koniec tygodnia).
  */
-fun blockGridWindow(
-    weekIndexInBlock: Int,
-    blockLengthWeeks: Int,
-    minRows: Int = ScheduleConstants.GRID_WEEKS_MIN,
-    maxRows: Int = ScheduleConstants.GRID_WEEKS_MAX,
-): BlockWindow {
-    val length = blockLengthWeeks.coerceAtLeast(1)
-    val rows = length.coerceIn(minRows.coerceAtMost(maxRows), maxRows)
-    if (rows >= length) return BlockWindow(startWeek = 0, rows = rows)
-    val centered = weekIndexInBlock - (rows - 1) / 2
-    return BlockWindow(startWeek = centered.coerceIn(0, length - rows), rows = rows)
-}
-
-/**
- * Okno siatki dla planu BEZ bloku (`Plan.blockLengthWeeks == null`): stałe
- * [rows] tygodni wokół bieżącego, z [past] tygodniami przeszłości. Bloku nie ma
- * czego domykać, więc siatka po prostu jedzie razem z planem w nieskończoność.
- *
- * @param weekIndex liniowy numer tygodnia planu, 0-based
- *   (z `ProgressionEngine.weekIndexForBlock` dla planu bez bloku)
- */
-fun continuousGridWindow(
-    weekIndex: Int,
-    rows: Int = ScheduleConstants.GRID_WEEKS_CONTINUOUS,
-    past: Int = ScheduleConstants.GRID_WEEKS_CONTINUOUS_PAST,
-): BlockWindow = BlockWindow(
-    startWeek = (weekIndex - past).coerceAtLeast(0),
-    rows = rows.coerceAtLeast(1),
-)
-
-/**
- * Okno siatki dla planu z blokiem ALBO bez niego — jedno wejście dla ekranu:
- * [fullBlockWeeks] null = plan bez bloku ([continuousGridWindow]), w przeciwnym
- * razie zwykłe okno bloku ([blockGridWindow]).
- */
-fun gridWindow(weekIndex: Int, fullBlockWeeks: Int?): BlockWindow =
-    if (fullBlockWeeks == null) {
-        continuousGridWindow(weekIndex)
-    } else {
-        blockGridWindow(weekIndex, fullBlockWeeks)
-    }
-
-/**
- * Poniedziałki rzędów siatki. Kotwicą jest poniedziałek tygodnia [today]
- * cofnięty o [weekIndexInBlock] tygodni — silnik liczy tygodnie bloku jako
- * pełne 7-dniowe okna od `plan.createdAt`, więc w kalendarzu (który zaczyna
- * tydzień w poniedziałek) blok kotwiczymy przez bieżący tydzień, nie przez
- * dokładną datę utworzenia planu.
- */
-fun blockWeekMondays(
-    today: LocalDate,
-    weekIndexInBlock: Int,
-    window: BlockWindow,
-): List<LocalDate> {
-    val blockFirstMonday = weekStartOf(today).minusWeeks(weekIndexInBlock.toLong())
-    return (0 until window.rows).map { row ->
-        blockFirstMonday.plusWeeks((window.startWeek + row).toLong())
-    }
+fun monthGridMondays(month: YearMonth): List<LocalDate> {
+    val firstMonday = weekStartOf(month.atDay(1))
+    val lastMonday = weekStartOf(month.atEndOfMonth())
+    val rows = ChronoUnit.WEEKS.between(firstMonday, lastMonday).toInt() + 1
+    return (0 until rows).map { row -> firstMonday.plusWeeks(row.toLong()) }
 }
 
 /**
@@ -202,7 +142,7 @@ fun isEligibleForRollingExtension(archived: Boolean, blockLengthWeeks: Int?): Bo
     !archived && blockLengthWeeks == null
 
 /**
- * Id-ki przyszłych (`date >= [today]`) wpisów PLANNED zarchiwizowanych planów
+ * Id-ki przyszłych (`date >= [today]`) wpisów zarchiwizowanych planów
  * ([ScheduleEntryRef.archived]) — martwe wpisy do skasowania batchem. Dwa
  * miejsca użycia (ten sam mechanizm, jedna funkcja):
  * - [PlanEditorViewModel.setArchived]: [refs] ograniczone do JEDNEGO planu
@@ -213,14 +153,43 @@ fun isEligibleForRollingExtension(archived: Boolean, blockLengthWeeks: Int?): Bo
  *   istnienia czyszczenia w [PlanEditorViewModel.setArchived] (dokładnie
  *   przypadek usera z tego zgłoszenia), bez migracji danych.
  *
- * DONE nigdy nie jest tu brane pod uwagę — [kind] filtruje tylko PLANNED, więc
- * historia treningu jest nietykalna niezależnie od tego, jak wołający zbudował
- * [ScheduleEntryRef.archived] dla wpisów DONE. Wpisy sprzed [today] też
- * zostają — audit-trail (patrz [Plan] KDoc archiwizacji).
+ * Martwy jest KAŻDY status poza DONE: PLANNED (trening, który się już nie
+ * odbędzie), ale też MOVED i SKIPPED. Te dwa ostatnie to breadcrumby
+ * („Przesunięty → czwartek", „Odwołany") sensowne tylko wtedy, gdy plan
+ * jeszcze żyje — po archiwizacji nie ma czego opisywać i wiszą w karcie dnia
+ * jako karty-widma (drugi artefakt z tego zgłoszenia: poniedziałek z kartą
+ * „Przesunięty → czwartek" obok normalnego treningu INNEGO planu; kluczowanie
+ * po (planId, data) w [shadowedEntryIds] takiej pary nie łapie, bo plany są
+ * różne).
+ *
+ * DONE nigdy nie jest tu brane pod uwagę — [kind] filtruje wyłącznie
+ * PLANNED/MOVED/SKIPPED, więc historia treningu jest nietykalna niezależnie od
+ * tego, jak wołający zbudował [ScheduleEntryRef.archived] dla wpisów DONE.
+ * Wpisy sprzed [today] też zostają — audit-trail (patrz [Plan] KDoc
+ * archiwizacji); z oczu znikają natychmiast przez [archivedPlanGhostEntryIds].
  */
 fun archivedPlanDeadEntryIds(refs: List<ScheduleEntryRef>, today: LocalDate = LocalDate.now()): List<String> =
     refs
-        .filter { it.kind == ScheduleEntryKind.PLANNED && it.archived && it.date >= today }
+        .filter { it.kind != ScheduleEntryKind.DONE && it.archived && it.date >= today }
+        .map { it.id }
+
+/**
+ * Id-ki wpisów MOVED/SKIPPED zarchiwizowanych planów — karty-widma do UKRYCIA
+ * w karcie dnia ([ScheduleViewModel.buildState]), wzorem [shadowedEntryIds]:
+ * render nie czeka na sweep bazy, artefakt znika w tej samej klatce.
+ *
+ * Świadoma asymetria wobec [archivedPlanDeadEntryIds]: sweep kasuje z bazy
+ * tylko wpisy od dziś w przód (przeszłość to audit-trail), a ten filtr ukrywa
+ * je NIEZALEŻNIE od daty — zarchiwizowany plan nie ma prawa opowiadać w
+ * kalendarzu o przesunięciach i odwołaniach, do których nigdy nie dojdzie.
+ * Jedyne, co po nim zostaje widoczne, to fakty: wpisy DONE (i przeszłe
+ * PLANNED — „zaplanowany, nie zrobiony" to też fakt).
+ *
+ * DONE nigdy nie wpada — filtr bierze wyłącznie MOVED i SKIPPED.
+ */
+fun archivedPlanGhostEntryIds(refs: List<ScheduleEntryRef>): List<String> =
+    refs
+        .filter { it.archived && (it.kind == ScheduleEntryKind.MOVED || it.kind == ScheduleEntryKind.SKIPPED) }
         .map { it.id }
 
 /**
@@ -313,22 +282,44 @@ fun isWeekPlanDirty(baseline: Map<DayOfWeek, Int>, assignments: Map<DayOfWeek, I
 /**
  * Rodzaj wpisu istotny dla przeplanowania: [PLANNED] wybranego planu jest
  * kasowany i zastępowany, [DONE] (dowolnego planu, także tego samego —
- * historia treningu) blokuje datę, [OTHER] (SKIPPED/MOVED) jest neutralny —
- * nie blokuje i nie jest kasowany (obecne traktowanie occupied, zachowane).
+ * historia treningu) blokuje datę, [SKIPPED] jest neutralny — nie blokuje i
+ * nie jest kasowany (user świadomie odwołał trening, dzień ma wrócić do puli).
+ *
+ * [MOVED] to NIE to samo co [SKIPPED], mimo że oba są „nieaktywne": trening z
+ * tej daty nadal istnieje, tyle że pod INNĄ datą ([ScheduleEntryRef.movedTo]).
+ * Data źródłowa aktywnego przesunięcia jest dla WŁASNEGO planu zajęta
+ * (patrz [activeMovedSlots], [planReplacement]) — inaczej ponowna
+ * materializacja tego samego wzorca tygodnia dokłada na nią DRUGI wpis
+ * PLANNED i dzień jest naraz „przesunięty" i „zaplanowany".
  */
-enum class ScheduleEntryKind { PLANNED, DONE, OTHER }
+enum class ScheduleEntryKind { PLANNED, DONE, MOVED, SKIPPED }
 
 /**
  * Minimalny widok wpisu harmonogramu pod [planReplacement] — zero zależności
  * od modelu Firestore, wzorem [PlannedSlot]/[OccupiedEntry].
  *
- * [archived]: plan-właściciel tego wpisu jest zarchiwizowany. Ma sens
- * WYŁĄCZNIE dla [ScheduleEntryKind.PLANNED] — taki wpis to „martwy" wpis
- * (plan zarchiwizowany, ale wpis w `schedule` przetrwał archiwizację) i nie ma
- * prawa blokować niczego, patrz [planReplacement] i [buildOccupiedEntries].
+ * [archived]: plan-właściciel tego wpisu jest zarchiwizowany. Wołający ustawia
+ * ją dla KAŻDEGO statusu poza [ScheduleEntryKind.DONE] — czyli dla PLANNED,
+ * MOVED i SKIPPED. Taki wpis to „martwy" wpis (plan zarchiwizowany, ale wpis w
+ * `schedule` przetrwał archiwizację): PLANNED nie ma prawa niczego blokować
+ * (patrz [planReplacement] i [buildOccupiedEntries]), a MOVED/SKIPPED nie mają
+ * prawa renderować się jako karty-widma (patrz [archivedPlanGhostEntryIds]);
+ * wszystkie trzy idą do skasowania przez [archivedPlanDeadEntryIds].
  * [ScheduleEntryKind.DONE] MUSI zawsze mieć `archived = false` — historia
  * treningu blokuje datę niezależnie od tego, czy plan, pod którym trening
  * poszedł, jest dziś zarchiwizowany (wołający pilnuje tego przy budowie).
+ *
+ * [movedTo]: data, NA KTÓRĄ trening pojechał — wypełniona wyłącznie dla
+ * [ScheduleEntryKind.MOVED] (`ScheduleEntry.movedTo`). Bez niej nie da się
+ * odróżnić żywego przesunięcia (cel wciąż istnieje) od osieroconego wpisu po
+ * skasowanym celu, patrz [activeMovedSlots].
+ *
+ * [dayIndex]: indeks dnia planu (`ScheduleEntry.dayIndex`) — jedyna tożsamość
+ * TRENINGU, jaką niesie wpis. Potrzebna w [moveResolution]: bez niej okruch
+ * „Full body A pojechał na środę" skleiłby się z przesunięciem „Full body B"
+ * wychodzącym z tej samej środy (ten sam plan, ta sama data) i skasował cudzy,
+ * całkiem poprawny breadcrumb. Domyślnie 0 — wołający, których sklejanie
+ * łańcucha nie dotyczy, nie muszą go wypełniać.
  */
 data class ScheduleEntryRef(
     val id: String,
@@ -336,7 +327,156 @@ data class ScheduleEntryRef(
     val planId: String,
     val kind: ScheduleEntryKind,
     val archived: Boolean = false,
+    val movedTo: LocalDate? = null,
+    val dayIndex: Int = 0,
 )
+
+/** Aktywne przesunięcie: trening z dnia [from] leży pod datą [to]. */
+data class MovedSlot(val from: LocalDate, val to: LocalDate)
+
+/**
+ * Aktywne przesunięcia [planId] o dacie ŹRÓDŁOWEJ od [since] w przód: wpisy
+ * MOVED tego planu, których cel ([ScheduleEntryRef.movedTo]) NADAL trzyma żywy
+ * wpis (PLANNED albo DONE) TEGO SAMEGO planu.
+ *
+ * Warunek „cel wciąż żyje" jest kluczowy: osierocony MOVED (cel skasowany albo
+ * odwołany) nie ma prawa blokować swojej daty na zawsze — inaczej jedno
+ * przesunięcie wykluczyłoby ten dzień tygodnia z planu do końca świata.
+ * Osieroconym zajmuje się dopiero [shadowedEntryIds] (gdy jest zdublowany) albo
+ * kolejne przeplanowanie.
+ *
+ * Wynik podaje OBIE daty pary: źródłowa jest dla tego planu zajęta (trening już
+ * z niej wyszedł), docelowa też (trening tam leży) — patrz [planReplacement].
+ */
+fun activeMovedSlots(
+    entries: List<ScheduleEntryRef>,
+    planId: String,
+    since: LocalDate,
+): List<MovedSlot> {
+    val liveDates = entries
+        .filter {
+            it.planId == planId &&
+                (it.kind == ScheduleEntryKind.PLANNED || it.kind == ScheduleEntryKind.DONE)
+        }
+        .mapTo(HashSet()) { it.date }
+    return entries
+        .filter { it.kind == ScheduleEntryKind.MOVED && it.planId == planId && it.date >= since }
+        .mapNotNull { entry ->
+            entry.movedTo
+                ?.takeIf { it in liveDates }
+                ?.let { target -> MovedSlot(from = entry.date, to = target) }
+        }
+}
+
+/**
+ * Id-ki wpisów MOVED/SKIPPED „przykrytych" żywym wpisem: na TEJ SAMEJ dacie i w
+ * TYM SAMYM planie leży wpis PLANNED albo DONE. Taki wpis nie niesie już żadnej
+ * informacji — dzień ma realny trening, a etykieta „Przesunięty/Odwołany" obok
+ * niego to czysta sprzeczność (dokładnie artefakt z tego zgłoszenia: poniedziałek
+ * naraz „Przesunięty → czwartek" i z pełną listą ćwiczeń).
+ *
+ * Jedna reguła, dwa użycia (wzorem [archivedPlanDeadEntryIds]):
+ * - [ScheduleViewModel.buildState] UKRYWA te wpisy w karcie dnia — natychmiastowa
+ *   naprawa wyświetlania, także dla stanu, który dopiero co powstał;
+ * - sweep przy starcie ekranu Tydzień KASUJE je z bazy — samonaprawa kont, na
+ *   których duplikat już siedzi (bez ręcznej edycji Firestore).
+ *
+ * DONE nie jest tu nigdy kandydatem do ukrycia/kasacji — historia treningu jest
+ * nietykalna, filtr bierze wyłącznie MOVED i SKIPPED.
+ *
+ * Klucz to para (planId, data), więc ta reguła z definicji NIE łapie widma
+ * INNEGO planu niż ten, który trzyma żywy wpis na tej dacie — takie widma
+ * (zwykle po planie zarchiwizowanym) sprząta [archivedPlanGhostEntryIds] i
+ * [archivedPlanDeadEntryIds]. Dwie reguły, wspólny cel: jeden dzień w karcie
+ * dnia nie może być naraz treningiem i notatką „Przesunięty/Odwołany".
+ */
+fun shadowedEntryIds(entries: List<ScheduleEntryRef>): List<String> {
+    val liveKeys = entries
+        .filter { it.kind == ScheduleEntryKind.PLANNED || it.kind == ScheduleEntryKind.DONE }
+        .mapTo(HashSet()) { it.planId to it.date }
+    return entries
+        .filter { it.kind == ScheduleEntryKind.MOVED || it.kind == ScheduleEntryKind.SKIPPED }
+        .filter { (it.planId to it.date) in liveKeys }
+        .map { it.id }
+}
+
+// ---------- przesunięcie pojedynczego treningu (łańcuch okruchów) ----------
+
+/** Okruch MOVED do przekierowania: wpis [id] ma odtąd wskazywać [movedTo]. */
+data class MovedCrumbRedirect(val id: String, val movedTo: LocalDate)
+
+/**
+ * Co zrobić z okruchami MOVED przy przesunięciu jednego treningu — wynik
+ * [moveResolution], wykonywany przez [ScheduleViewModel.onMoveEntry].
+ *
+ * [crumbIdsToDelete]: okruchy do skasowania (trening wrócił do punktu wyjścia).
+ * [crumbsToRedirect]: okruchy, które mają wskazywać nową datę docelową.
+ * [createCrumbAtSource]: czy na dacie ŹRÓDŁOWEJ ma powstać NOWY okruch
+ * („Przesunięty → …"). `false` znaczy „data źródłowa była tylko przystankiem" —
+ * wpis po prostu jedzie dalej pod nową datę, bez zostawiania śladu.
+ */
+data class MoveResolution(
+    val crumbIdsToDelete: List<String>,
+    val crumbsToRedirect: List<MovedCrumbRedirect>,
+    val createCrumbAtSource: Boolean,
+)
+
+/**
+ * Przesunięcie wpisu [movedEntry] z jego daty (dalej „X") na [newDate] („Y") —
+ * reguła SKLEJANIA łańcucha okruchów. Bez niej każdy przystanek zostawiał
+ * własną kartę „Przesunięty → …" i po odesłaniu treningu z powrotem zostawał
+ * na kalendarzu śmieć: dzień, który nigdy nie był dniem wzorca, trzymał trwałą
+ * notatkę o przesunięciu (zgłoszenie: pon → wt → pon zostawiało wtorek z kartą
+ * „Przesunięty → poniedziałek", której nie łapie ani [shadowedEntryIds] — na
+ * wtorku nie ma żywego wpisu — ani [activeMovedSlots], bo cel przesunięcia żyje).
+ *
+ * Reguła:
+ * - X BYŁO PRZYSTANKIEM (istnieje okruch MOVED tego samego planu z
+ *   `movedTo == X`, czyli trening przyszedł na X przesunięciem z jakiegoś W):
+ *   ten okruch przejmuje nowy cel — `movedTo = Y` — a gdy Y jest jego WŁASNĄ
+ *   datą (`W == Y`, trening wrócił do punktu wyjścia), okruch leci do kasacji.
+ *   Na X nowy okruch NIE powstaje: przystanek nie zostawia śladu.
+ * - X NIE było przystankiem (normalny dzień wzorca): powstaje zwykły okruch
+ *   MOVED(X → Y), jak dotąd.
+ *
+ * Własności, które z tego wynikają (pokryte w `WeekPlannerTest`):
+ * - X → Y → X kończy się ZEROWĄ liczbą okruchów (X znów ma PLANNED, Y jest puste);
+ * - X → Y → Z kończy się JEDNYM okruchem MOVED(X → Z) (Y puste, Z ma PLANNED);
+ * - pojedyncze X → Y zachowuje się dokładnie jak dotąd.
+ *
+ * Liczą się wyłącznie okruchy TEGO SAMEGO treningu: ten sam plan I ten sam
+ * [ScheduleEntryRef.dayIndex]. Sam plan + data to za mało — na jednej dacie
+ * potrafią spotkać się dwa różne dni tego samego planu („Full body A"
+ * przesunięty na środę, na której od zawsze siedzi „Full body B"), a wtedy
+ * przesunięcie B skleiłoby się z okruchem A i skasowało cudzy, poprawny
+ * breadcrumb (złapane na emulatorze przy weryfikacji tej reguły).
+ */
+fun moveResolution(
+    entries: List<ScheduleEntryRef>,
+    movedEntry: ScheduleEntryRef,
+    newDate: LocalDate,
+): MoveResolution {
+    val stopoverCrumbs = entries.filter {
+        it.kind == ScheduleEntryKind.MOVED &&
+            it.planId == movedEntry.planId &&
+            it.dayIndex == movedEntry.dayIndex &&
+            it.id != movedEntry.id &&
+            it.movedTo == movedEntry.date
+    }
+    if (stopoverCrumbs.isEmpty()) {
+        return MoveResolution(
+            crumbIdsToDelete = emptyList(),
+            crumbsToRedirect = emptyList(),
+            createCrumbAtSource = true,
+        )
+    }
+    val (returnedHome, redirected) = stopoverCrumbs.partition { it.date == newDate }
+    return MoveResolution(
+        crumbIdsToDelete = returnedHome.map { it.id },
+        crumbsToRedirect = redirected.map { MovedCrumbRedirect(it.id, newDate) },
+        createCrumbAtSource = false,
+    )
+}
 
 /**
  * Wynik przeplanowania: id-ki starych wpisów PLANNED wybranego planu do
@@ -418,9 +558,20 @@ fun saveReplanWeeks(fullBlockWeeks: Int?): Int = fullBlockWeeks ?: ScheduleConst
  * Nietykalne: wpisy DONE (dowolnego planu — historia treningu) i PLANNED
  * INNEGO, NIEZARCHIWIZOWANEGO planu blokują datę (nowy slot tam nie
  * powstaje), tak jak [conflictingOtherPlanEntry]/[buildOccupiedEntries]
- * blokują CTA w dialogu. SKIPPED/MOVED ([ScheduleEntryKind.OTHER]) nie
- * blokują i nie są kasowane. Stare wpisy PLANNED TEGO SAMEGO planu nie
+ * blokują CTA w dialogu. SKIPPED nie blokuje i nie jest kasowany (odwołany
+ * trening = dzień wraca do puli). Stare wpisy PLANNED TEGO SAMEGO planu nie
  * blokują nowych slotów — i tak trafiają do [ReplanResult.idsToDelete].
+ *
+ * AKTYWNE PRZESUNIĘCIA tego planu ([activeMovedSlots]) są respektowane w
+ * całości — „przesunięty znaczy przesunięty":
+ * - data ŹRÓDŁOWA jest zajęta → nie powstaje na niej nowy slot (bez tego na
+ *   dacie z wpisem MOVED lądował DRUGI wpis PLANNED i dzień był naraz
+ *   „Przesunięty na czwartek" i normalnym dniem treningowym);
+ * - data DOCELOWA jest zajęta ORAZ leżący tam wpis PLANNED jest wyjęty z
+ *   [ReplanResult.idsToDelete] — inaczej samo zablokowanie źródła zjadałoby
+ *   trening w całości (źródło zablokowane, cel skasowany).
+ *
+ * MOVED INNEGO planu nie blokuje — to dzień wolny z punktu widzenia tego planu.
  *
  * PLANNED INNEGO, ZARCHIWIZOWANEGO planu ([ScheduleEntryRef.archived]) to
  * martwy wpis — nie blokuje daty (traktowany jak wolny dzień) I jeśli na jego
@@ -440,8 +591,13 @@ fun planReplacement(
     today: LocalDate = LocalDate.now(),
 ): ReplanResult {
     val effectiveStartDate = clampStartDateToToday(startDate, today)
+    val movedSlots = activeMovedSlots(currentEntries, selectedPlanId, effectiveStartDate)
+    val movedTargets = movedSlots.mapTo(HashSet()) { it.to }
     val ownIdsToDelete = currentEntries
-        .filter { it.planId == selectedPlanId && it.kind == ScheduleEntryKind.PLANNED && it.date >= effectiveStartDate }
+        .filter {
+            it.planId == selectedPlanId && it.kind == ScheduleEntryKind.PLANNED &&
+                it.date >= effectiveStartDate && it.date !in movedTargets
+        }
         .map { it.id }
     val occupied = currentEntries
         .filter {
@@ -449,7 +605,7 @@ fun planReplacement(
                 (it.kind == ScheduleEntryKind.PLANNED && it.planId != selectedPlanId && !it.archived)
         }
         .map { it.date }
-        .toSet()
+        .toSet() + movedSlots.map { it.from } + movedTargets
     val slots = generatePlannedSlots(assignments, effectiveStartDate, weeks, occupied)
     val newSlotDates = slots.mapTo(HashSet()) { it.date }
     val deadIdsToDelete = currentEntries

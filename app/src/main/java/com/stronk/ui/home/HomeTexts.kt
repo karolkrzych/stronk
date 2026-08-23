@@ -15,11 +15,21 @@ internal object HomeTexts {
 
     const val TITLE = "Dziś"
 
-    /** CTA, gdy trening wypada DZIŚ. */
+    /**
+     * CTA — jedyne. Trening da się zacząć TYLKO w dniu, na który jest
+     * zaplanowany; startu z wyprzedzeniem nie ma (dlatego zniknęło osobne
+     * „Zacznij teraz" dla treningu z przyszłości).
+     */
     const val CTA_TODAY = "Zacznij trening"
 
-    /** CTA, gdy najbliższy trening jest w innym dniu. */
-    const val CTA_UPCOMING = "Zacznij teraz"
+    /** Nagłówek dnia bez treningu — plan biegnie, dziś jest po prostu wolne. */
+    const val FREE_DAY = "Dzień wolny"
+
+    /** Jedno zdanie pod „Dzień wolny" — mówi też, co jeszcze można tu zrobić. */
+    const val FREE_DAY_HINT = "Nie masz dziś treningu w planie — odpocznij albo dorzuć cardio."
+
+    /** KAPITALIK nad zapowiedzią następnego treningu (wersaliki robi ekran). */
+    const val NEXT_WORKOUT = "Następny trening"
 
     const val DONE_BAR = "Trening ukończony"
     const val STATUS_DONE = "Dzisiejszy trening zaliczony."
@@ -50,6 +60,13 @@ internal object HomeTexts {
 
     /** Licznik ukrytych miniatur na karcie dnia („+3"); 0 = kwadracika nie ma. */
     fun moreLabel(hidden: Int): String = "+$hidden"
+
+    /**
+     * Zapowiedź w dniu wolnym: „poniedziałek · Full body A". Jedna wygaszona
+     * linijka pod kapitalikiem [NEXT_WORKOUT] — bez daty dziennej i bez CTA,
+     * bo to informacja, a nie akcja.
+     */
+    fun nextWorkout(dayLabel: String, dayName: String): String = "$dayLabel · $dayName"
 
     /**
      * Nagłówek sheetu planu — nazwa BEZ dopisku w nawiasie: presety nazywają się

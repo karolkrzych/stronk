@@ -23,9 +23,36 @@ internal object HomeMapping {
         val today: ScheduleEntry?,
         /** Dzisiejszy wpis DONE — ekran pokazuje belkę „Trening ukończony". */
         val todayDone: ScheduleEntry?,
-        /** Najbliższy PLANNED po dziś — gdy dziś nie ma nic zaplanowanego. */
+        /**
+         * Najbliższy PLANNED po dziś. To TYLKO zapowiedź („następny trening"),
+         * nigdy treść ekranu: dzień wolny zostaje dniem wolnym, a treningu
+         * z wyprzedzeniem nie da się z ekranu „Dziś" wystartować.
+         */
         val upcoming: ScheduleEntry?,
     )
+
+    /**
+     * Co ekran „Dziś" ma dziś pokazać. Kolejność pytań jest ta sama co na
+     * ekranie, a stan [FREE_DAY] istnieje po to, żeby ekran mówił PRAWDĘ:
+     * przy planie 3×/tydz. wolna niedziela ma wyglądać jak wolna niedziela,
+     * a nie jak jutrzejszy trening podstawiony pod dzisiejszą datę.
+     */
+    enum class DayState {
+        /** Dziś jest zaplanowany trening — pełna strefa treningu z CTA. */
+        WORKOUT,
+
+        /** Dzisiejszy trening zaliczony — belka „Trening ukończony". */
+        DONE,
+
+        /** Dziś nic nie zaplanowano, ale plan biegnie dalej — „Dzień wolny". */
+        FREE_DAY,
+
+        /** Jest plan, ale harmonogram nic nie wie o przyszłości. */
+        NO_SCHEDULE,
+
+        /** Zero aktywnych planów — zachęta do stworzenia pierwszego. */
+        NO_PLANS,
+    }
 
     /**
      * Wybór wpisów na dziś/najbliżej. [schedule] przychodzi posortowany
@@ -40,6 +67,23 @@ internal object HomeMapping {
             },
             upcoming = planned.firstOrNull { it.date > todayKey },
         )
+    }
+
+    /**
+     * Wariant ekranu na dziś — czysta decyzja z [selectEntries] i jednej flagi.
+     *
+     * „Dzień wolny" wymaga zapowiedzi ([Entries.upcoming]): plan, który się
+     * skończył (same przeszłe wpisy), to nie odpoczynek tylko pusty
+     * harmonogram — tam ekran ma prosić o zaplanowanie kolejnych dni.
+     *
+     * @param hasActivePlan czy user ma choć jeden nie zarchiwizowany plan
+     */
+    fun dayState(entries: Entries, hasActivePlan: Boolean): DayState = when {
+        entries.today != null -> DayState.WORKOUT
+        entries.todayDone != null -> DayState.DONE
+        !hasActivePlan -> DayState.NO_PLANS
+        entries.upcoming != null -> DayState.FREE_DAY
+        else -> DayState.NO_SCHEDULE
     }
 
     /** Wiersze ćwiczeń jednego dnia planu — bez ciężarów, z chipem liczby serii. */

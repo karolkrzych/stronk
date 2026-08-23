@@ -106,8 +106,15 @@ sealed interface HomeContent {
      */
     data class CompletedWorkout(val workout: ScheduledWorkoutUi) : HomeContent
 
-    /** Dziś nic nie ma — pokazujemy najbliższy zaplanowany. */
-    data class UpcomingWorkout(val workout: ScheduledWorkoutUi) : HomeContent
+    /**
+     * Dziś nic nie ma, a plan biegnie dalej — ekran mówi to wprost zamiast
+     * podstawiać pod dzisiejszą datę trening z przyszłości.
+     *
+     * @param dateCaption ZAWSZE dzisiejsza data („Niedziela · 23.08")
+     * @param nextLabel dyskretna zapowiedź („poniedziałek · Full body A"),
+     *        null gdy wpis wskazuje nieistniejący plan/dzień; nigdy przycisk
+     */
+    data class FreeDay(val dateCaption: String, val nextLabel: String?) : HomeContent
 
     /** Są plany, ale harmonogram jest pusty. */
     data object NoSchedule : HomeContent
@@ -121,7 +128,7 @@ val HomeContent.scheduledWorkout: ScheduledWorkoutUi?
     get() = when (this) {
         is HomeContent.TodayWorkout -> workout
         is HomeContent.CompletedWorkout -> workout
-        is HomeContent.UpcomingWorkout -> workout
+        is HomeContent.FreeDay -> null
         HomeContent.NoSchedule, HomeContent.NoPlans -> null
     }
 
@@ -208,16 +215,25 @@ class HomeViewModel(
         val todayKey = today.toString()
         val entries = HomeMapping.selectEntries(schedule, todayKey)
 
+        val hasActivePlan = plans.any { !it.archived }
+
         val todayUi = entries.today?.let { workoutUi(it, plans, exercises) }
         val doneUi = entries.todayDone?.let { workoutUi(it, plans, exercises) }
-        val upcomingUi = entries.upcoming?.let { workoutUi(it, plans, exercises) }
-        val content = when {
-            todayUi != null -> HomeContent.TodayWorkout(todayUi)
-            doneUi != null -> HomeContent.CompletedWorkout(doneUi)
-            upcomingUi != null -> HomeContent.UpcomingWorkout(upcomingUi)
-            plans.any { !it.archived } -> HomeContent.NoSchedule
-            else -> HomeContent.NoPlans
-        }
+        // Dzień wolny wiezie dzisiejszą datę (nie datę zapowiadanego wpisu) —
+        // nagłówek dnia NIGDY nie kłamie o tym, który dziś jest dzień.
+        val freeDay = HomeContent.FreeDay(
+            dateCaption = dateCaption(today),
+            nextLabel = entries.upcoming?.let { nextLabel(it, plans) },
+        )
+        val content = when (HomeMapping.dayState(entries, hasActivePlan)) {
+            HomeMapping.DayState.WORKOUT -> todayUi?.let(HomeContent::TodayWorkout)
+            HomeMapping.DayState.DONE -> doneUi?.let(HomeContent::CompletedWorkout)
+            HomeMapping.DayState.FREE_DAY -> freeDay
+            HomeMapping.DayState.NO_SCHEDULE -> HomeContent.NoSchedule
+            HomeMapping.DayState.NO_PLANS -> HomeContent.NoPlans
+        // Wpis wskazujący nieistniejący plan/dzień (skasowany plan) nie ma czego
+        // pokazać — dla ekranu to zwykły dzień bez treningu.
+        } ?: if (hasActivePlan) freeDay else HomeContent.NoPlans
         return HomeUiState(
             loading = false,
             todayDone = entries.todayDone != null,
@@ -267,6 +283,17 @@ class HomeViewModel(
             setCount = HomeMapping.setCount(day),
             plan = overview,
         )
+    }
+
+    /**
+     * Zapowiedź następnego treningu w dniu wolnym („poniedziałek · Full body A")
+     * albo null, gdy wpis wskazuje nieistniejący plan/dzień.
+     */
+    private fun nextLabel(entry: ScheduleEntry, plans: List<Plan>): String? {
+        val plan = plans.firstOrNull { it.id == entry.planId } ?: return null
+        val day = plan.days.getOrNull(entry.dayIndex) ?: return null
+        val date = runCatching { LocalDate.parse(entry.date) }.getOrNull() ?: return null
+        return HomeTexts.nextWorkout(weekdayFormatter.format(date), day.name)
     }
 
     companion object {
