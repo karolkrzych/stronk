@@ -973,9 +973,11 @@ class PlanEditorViewModel(
                     kind = when (entry.status) {
                         ScheduleStatus.PLANNED -> ScheduleEntryKind.PLANNED
                         ScheduleStatus.DONE -> ScheduleEntryKind.DONE
-                        else -> ScheduleEntryKind.OTHER
+                        ScheduleStatus.MOVED -> ScheduleEntryKind.MOVED
+                        ScheduleStatus.SKIPPED -> ScheduleEntryKind.SKIPPED
                     },
                     archived = entry.status == ScheduleStatus.PLANNED && entry.planId == archivedPlanId,
+                    movedTo = entry.movedTo?.let { parseDate(it) },
                 )
             }
         }
@@ -998,9 +1000,11 @@ class PlanEditorViewModel(
                     kind = when (entry.status) {
                         ScheduleStatus.PLANNED -> ScheduleEntryKind.PLANNED
                         ScheduleStatus.DONE -> ScheduleEntryKind.DONE
-                        else -> ScheduleEntryKind.OTHER
+                        ScheduleStatus.MOVED -> ScheduleEntryKind.MOVED
+                        ScheduleStatus.SKIPPED -> ScheduleEntryKind.SKIPPED
                     },
                     archived = entry.status == ScheduleStatus.PLANNED && plansById[entry.planId]?.archived == true,
+                    movedTo = entry.movedTo?.let { parseDate(it) },
                 )
             }
         }

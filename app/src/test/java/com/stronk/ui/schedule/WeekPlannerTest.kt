@@ -405,11 +405,150 @@ class WeekPlannerTest {
     @Test
     fun `planReplacement ignoruje SKIPPED - nie blokuje nowego slotu i nie jest kasowany`() {
         val entries = listOf(
-            ScheduleEntryRef("skipped", monday, "planA", ScheduleEntryKind.OTHER),
+            ScheduleEntryRef("skipped", monday, "planA", ScheduleEntryKind.SKIPPED),
         )
         val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 1, today = monday)
         assertTrue(result.idsToDelete.isEmpty())
         assertTrue(result.slots.any { it.date == monday })
+    }
+
+    // ---------- planReplacement: przesuniecia (MOVED) ----------
+
+    @Test
+    fun `planReplacement nie generuje PLANNED na dacie z aktywnym MOVED tego samego planu`() {
+        // Scenariusz z buga: trening z poniedzialku przesuniety na czwartek,
+        // potem ponowne "Zaplanuj tydzien" z tym samym wzorcem (poniedzialek).
+        val thursday = monday.plusDays(3)
+        val entries = listOf(
+            ScheduleEntryRef("zrodlo", monday, "planA", ScheduleEntryKind.MOVED, movedTo = thursday),
+            ScheduleEntryRef("cel", thursday, "planA", ScheduleEntryKind.PLANNED),
+        )
+        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 1, today = monday)
+        assertTrue(result.slots.none { it.date == monday })
+        // Wpis MOVED zostaje (nie jest kasowany), a trening pod nowa data przezywa.
+        assertTrue(result.idsToDelete.isEmpty())
+    }
+
+    @Test
+    fun `planReplacement nie kasuje wpisu docelowego przesuniecia - trening nie znika z tygodnia`() {
+        val thursday = monday.plusDays(3)
+        val entries = listOf(
+            ScheduleEntryRef("zrodlo", monday, "planA", ScheduleEntryKind.MOVED, movedTo = thursday),
+            ScheduleEntryRef("cel", thursday, "planA", ScheduleEntryKind.PLANNED),
+            ScheduleEntryRef("sroda", monday.plusDays(2), "planA", ScheduleEntryKind.PLANNED),
+        )
+        val result = planReplacement(
+            currentEntries = entries,
+            selectedPlanId = "planA",
+            assignments = mapOf(DayOfWeek.MONDAY to 0, DayOfWeek.WEDNESDAY to 1),
+            startDate = monday,
+            weeks = 1,
+            today = monday,
+        )
+        // Zwykly PLANNED tego planu leci do wymiany, wpis docelowy przesuniecia NIE.
+        assertEquals(listOf("sroda"), result.idsToDelete)
+        // Ani na zrodle, ani na celu nie powstaje nowy slot — trening jest dokladnie jeden.
+        assertTrue(result.slots.none { it.date == monday || it.date == thursday })
+        assertTrue(result.slots.any { it.date == monday.plusDays(2) })
+    }
+
+    @Test
+    fun `planReplacement ignoruje osierocony MOVED - cel juz nie istnieje, dzien wraca do planowania`() {
+        val entries = listOf(
+            ScheduleEntryRef("zrodlo", monday, "planA", ScheduleEntryKind.MOVED, movedTo = monday.plusDays(3)),
+        )
+        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 1, today = monday)
+        assertTrue(result.slots.any { it.date == monday })
+    }
+
+    @Test
+    fun `planReplacement nie blokuje sie na MOVED innego planu`() {
+        val thursday = monday.plusDays(3)
+        val entries = listOf(
+            ScheduleEntryRef("zrodlo", monday, "planB", ScheduleEntryKind.MOVED, movedTo = thursday),
+            ScheduleEntryRef("cel", thursday, "planB", ScheduleEntryKind.PLANNED),
+        )
+        val result = planReplacement(entries, "planA", mapOf(DayOfWeek.MONDAY to 0), monday, weeks = 1, today = monday)
+        assertTrue(result.slots.any { it.date == monday })
+    }
+
+    // ---------- activeMovedSlots ----------
+
+    @Test
+    fun `activeMovedSlots zwraca pare zrodlo-cel gdy cel trzyma zywy wpis tego planu`() {
+        val thursday = monday.plusDays(3)
+        val entries = listOf(
+            ScheduleEntryRef("zrodlo", monday, "planA", ScheduleEntryKind.MOVED, movedTo = thursday),
+            ScheduleEntryRef("cel", thursday, "planA", ScheduleEntryKind.PLANNED),
+        )
+        assertEquals(listOf(MovedSlot(monday, thursday)), activeMovedSlots(entries, "planA", monday))
+    }
+
+    @Test
+    fun `activeMovedSlots liczy tez cel zaliczony (DONE)`() {
+        val thursday = monday.plusDays(3)
+        val entries = listOf(
+            ScheduleEntryRef("zrodlo", monday, "planA", ScheduleEntryKind.MOVED, movedTo = thursday),
+            ScheduleEntryRef("cel", thursday, "planA", ScheduleEntryKind.DONE),
+        )
+        assertEquals(listOf(MovedSlot(monday, thursday)), activeMovedSlots(entries, "planA", monday))
+    }
+
+    @Test
+    fun `activeMovedSlots pomija osierocone i cudze przesuniecia oraz daty sprzed since`() {
+        val thursday = monday.plusDays(3)
+        val entries = listOf(
+            // cel skasowany
+            ScheduleEntryRef("osierocony", monday, "planA", ScheduleEntryKind.MOVED, movedTo = thursday),
+            // inny plan
+            ScheduleEntryRef("cudzy", monday, "planB", ScheduleEntryKind.MOVED, movedTo = thursday),
+            ScheduleEntryRef("cudzy-cel", thursday, "planB", ScheduleEntryKind.PLANNED),
+            // zrodlo sprzed okna
+            ScheduleEntryRef("stary", monday.minusDays(7), "planA", ScheduleEntryKind.MOVED, movedTo = monday.plusDays(2)),
+            ScheduleEntryRef("stary-cel", monday.plusDays(2), "planA", ScheduleEntryKind.PLANNED),
+        )
+        assertTrue(activeMovedSlots(entries, "planA", monday).isEmpty())
+    }
+
+    // ---------- shadowedEntryIds (duplikat na jednej dacie) ----------
+
+    @Test
+    fun `shadowedEntryIds bierze MOVED przykryty wpisem PLANNED tego samego planu na tej samej dacie`() {
+        // Dokladnie zepsuty stan z konta: E1 MOVED + E3 PLANNED na 24 sierpnia.
+        val entries = listOf(
+            ScheduleEntryRef("e1", monday, "planA", ScheduleEntryKind.MOVED, movedTo = monday.plusDays(3)),
+            ScheduleEntryRef("e3", monday, "planA", ScheduleEntryKind.PLANNED),
+        )
+        assertEquals(listOf("e1"), shadowedEntryIds(entries))
+    }
+
+    @Test
+    fun `shadowedEntryIds bierze SKIPPED przykryty wpisem DONE tego samego planu`() {
+        val entries = listOf(
+            ScheduleEntryRef("odwolany", monday, "planA", ScheduleEntryKind.SKIPPED),
+            ScheduleEntryRef("zaliczony", monday, "planA", ScheduleEntryKind.DONE),
+        )
+        assertEquals(listOf("odwolany"), shadowedEntryIds(entries))
+    }
+
+    @Test
+    fun `shadowedEntryIds nie rusza samotnego MOVED ani SKIPPED`() {
+        val entries = listOf(
+            ScheduleEntryRef("przesuniety", monday, "planA", ScheduleEntryKind.MOVED, movedTo = monday.plusDays(3)),
+            ScheduleEntryRef("odwolany", monday.plusDays(1), "planA", ScheduleEntryKind.SKIPPED),
+            // zywy wpis, ale INNEGO planu — nie przykrywa
+            ScheduleEntryRef("obcy", monday, "planB", ScheduleEntryKind.PLANNED),
+        )
+        assertTrue(shadowedEntryIds(entries).isEmpty())
+    }
+
+    @Test
+    fun `shadowedEntryIds nigdy nie zwraca wpisow DONE ani PLANNED`() {
+        val entries = listOf(
+            ScheduleEntryRef("done", monday, "planA", ScheduleEntryKind.DONE),
+            ScheduleEntryRef("planned", monday, "planA", ScheduleEntryKind.PLANNED),
+        )
+        assertTrue(shadowedEntryIds(entries).isEmpty())
     }
 
     // ---------- clampStartDateToToday (Łatka 1: data startu w przeszłości) ----------
@@ -696,9 +835,10 @@ class WeekPlannerTest {
     }
 
     @Test
-    fun `buildOccupiedEntries pomija SKIPPED-MOVED (OTHER) jak dotad`() {
+    fun `buildOccupiedEntries pomija SKIPPED i MOVED jak dotad`() {
         val refs = listOf(
-            ScheduleEntryRef("odwolany", monday, "planA", ScheduleEntryKind.OTHER),
+            ScheduleEntryRef("odwolany", monday, "planA", ScheduleEntryKind.SKIPPED),
+            ScheduleEntryRef("przesuniety", monday, "planA", ScheduleEntryKind.MOVED, movedTo = monday.plusDays(3)),
         )
         assertEquals(emptyList<OccupiedEntry>(), buildOccupiedEntries(refs) { "Plan A" })
     }
@@ -798,7 +938,7 @@ class WeekPlannerTest {
             ScheduleEntryRef("przyszly-zywy", today, "planNowy", ScheduleEntryKind.PLANNED, archived = false),
             ScheduleEntryRef("przeszly-martwy", today.minusDays(1), "planStary", ScheduleEntryKind.PLANNED, archived = true),
             ScheduleEntryRef("done-martwy", today, "planStary", ScheduleEntryKind.DONE, archived = false),
-            ScheduleEntryRef("other-martwy", today, "planStary", ScheduleEntryKind.OTHER, archived = true),
+            ScheduleEntryRef("skipped-martwy", today, "planStary", ScheduleEntryKind.SKIPPED, archived = true),
         )
         assertEquals(listOf("przyszly-martwy"), archivedPlanDeadEntryIds(entries, today))
     }

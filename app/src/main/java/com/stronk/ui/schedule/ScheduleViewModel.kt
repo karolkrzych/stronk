@@ -227,6 +227,9 @@ class ScheduleViewModel(
      */
     private val archivedCleanupRequested = mutableSetOf<String>()
 
+    /** Idempotencja sweepu przykrytych wpisów ([cleanupShadowedEntries]) — wzorem [archivedCleanupRequested]. */
+    private val shadowedCleanupRequested = mutableSetOf<String>()
+
     init {
         viewModelScope.launch {
             exercisesById.value = exerciseRepository.getAll().associateBy { it.id }
@@ -241,7 +244,10 @@ class ScheduleViewModel(
         // samonaprawa stanu sprzed istnienia czyszczenia w
         // PlanEditorViewModel.setArchived (patrz KDoc [cleanupArchivedPlanEntries]).
         viewModelScope.launch {
-            uiState.collect { cleanupArchivedPlanEntries(latestEntries, latestPlans) }
+            uiState.collect {
+                cleanupArchivedPlanEntries(latestEntries, latestPlans)
+                cleanupShadowedEntries(latestEntries, latestPlans)
+            }
         }
     }
 
@@ -416,6 +422,7 @@ class ScheduleViewModel(
         val today = LocalDate.now()
         val plansById = plans.associateBy { it.id }
         val plannedByPlan = plannedSlotsByPlan(schedule)
+        val refs = toEntryRefs(schedule, plansById)
 
         plannedByPlan.forEach { (planId, slots) ->
             val plan = plansById[planId] ?: return@forEach
@@ -437,13 +444,18 @@ class ScheduleViewModel(
             if (assignments.isEmpty()) return@forEach
             rollingExtensionCursor[planId] = lastPlannedDate
 
+            val generationStart = lastPlannedDate.plusDays(1)
+            // Daty źródłowe aktywnych przesunięć TEGO planu są zajęte tak samo
+            // jak PLANNED/DONE — trening z nich już wyszedł pod inną datę, więc
+            // dogenerowanie tam nowego wpisu zrobiłoby dzień naraz „przesunięty"
+            // i „zaplanowany" (ta sama reguła co w [planReplacement]).
             val occupied = schedule
                 .filter { it.status == ScheduleStatus.PLANNED || it.status == ScheduleStatus.DONE }
                 .mapNotNull { entry -> parseDate(entry.date) }
-                .toSet()
+                .toSet() + activeMovedSlots(refs, planId, generationStart).map { it.from }
             val newSlots = generatePlannedSlots(
                 assignments = assignments,
-                startDate = lastPlannedDate.plusDays(1),
+                startDate = generationStart,
                 weeks = ScheduleConstants.GENERATION_WEEKS,
                 occupiedDates = occupied,
             )
@@ -485,6 +497,28 @@ class ScheduleViewModel(
     }
 
     /**
+     * Sweep duplikatów na jednej dacie: kasuje wpisy MOVED/SKIPPED przykryte
+     * żywym wpisem (PLANNED/DONE) TEGO SAMEGO planu na TEJ SAMEJ dacie
+     * ([WeekPlanner.shadowedEntryIds]) — samonaprawa kont, na których taki
+     * duplikat już powstał, zanim [planReplacement] zaczął respektować
+     * przesunięcia (dokładnie artefakt z tego zgłoszenia: poniedziałek naraz
+     * „Przesunięty na czwartek" i z pełną listą ćwiczeń).
+     *
+     * DONE nietykalne — [shadowedEntryIds] bierze wyłącznie MOVED/SKIPPED, więc
+     * historia treningu nie ma prawa tu wpaść. Idempotentne przez
+     * [shadowedCleanupRequested] (patrz KDoc [archivedCleanupRequested]).
+     * [buildState] i tak UKRYWA te wpisy natychmiast — sweep tylko domyka temat
+     * w bazie, więc opóźnienie zapisu nic nie psuje.
+     */
+    private fun cleanupShadowedEntries(schedule: List<ScheduleEntry>, plans: List<Plan>) {
+        val idsToDelete = shadowedEntryIds(toEntryRefs(schedule, plans.associateBy { it.id }))
+            .filterNot { it in shadowedCleanupRequested }
+        if (idsToDelete.isEmpty()) return
+        shadowedCleanupRequested += idsToDelete
+        scheduleRepository.replacePlannedEntries(deleteIds = idsToDelete, newEntries = emptyList())
+    }
+
+    /**
      * [ScheduleEntry] → [ScheduleEntryRef]: [ScheduleEntryRef.archived] jest
      * `true` wyłącznie dla wpisów PLANNED, których plan jest zarchiwizowany —
      * DONE zawsze zostaje `false` (historia treningu blokuje niezależnie od
@@ -501,9 +535,11 @@ class ScheduleViewModel(
                     kind = when (entry.status) {
                         ScheduleStatus.PLANNED -> ScheduleEntryKind.PLANNED
                         ScheduleStatus.DONE -> ScheduleEntryKind.DONE
-                        else -> ScheduleEntryKind.OTHER
+                        ScheduleStatus.MOVED -> ScheduleEntryKind.MOVED
+                        ScheduleStatus.SKIPPED -> ScheduleEntryKind.SKIPPED
                     },
                     archived = entry.status == ScheduleStatus.PLANNED && plansById[entry.planId]?.archived == true,
+                    movedTo = entry.movedTo?.let { parseDate(it) },
                 )
             }
         }
@@ -522,6 +558,12 @@ class ScheduleViewModel(
         val cardioByDate = cardio.groupBy { it.date }
         val plansById = plans.associateBy { it.id }
         val plan = activePlan(schedule, plansById, today)
+        val refs = toEntryRefs(schedule, plansById)
+        // Wpisy MOVED/SKIPPED przykryte żywym wpisem tego samego planu na tej
+        // samej dacie nie renderują się w ogóle — dzień z realnym treningiem nie
+        // może być naraz „przesunięty"/„odwołany" (sweep [cleanupShadowedEntries]
+        // kasuje je z bazy, tu tylko natychmiast znikają z oczu).
+        val shadowedIds = shadowedEntryIds(refs).toSet()
 
         // Pozycja w bloku liczona WYŁĄCZNIE przez silnik progresji (ADR-004).
         // null = plan bez bloku: tygodnie lecą liniowo, siatka jedzie oknem.
@@ -582,6 +624,7 @@ class ScheduleViewModel(
             selectedDayLabel = ScheduleTexts.selectedDayLabel(selected, today),
             todaySelected = selected == today,
             selectedEntries = entriesByDate[selected.toString()].orEmpty()
+                .filterNot { it.id in shadowedIds }
                 .sortedBy { it.dayIndex }
                 .map { entryUi(it, selected, plansById, exercises) },
             selectedCardio = cardioByDate[selected.toString()].orEmpty().map { entry ->
@@ -609,7 +652,7 @@ class ScheduleViewModel(
             // planów — takie wpisy nie mają prawa blokować CTA w AssignPlanDialog
             // (conflictingOtherPlanEntry), DONE blokuje zawsze niezależnie od
             // archiwizacji planu-właściciela.
-            occupiedEntries = buildOccupiedEntries(toEntryRefs(schedule, plansById)) { id ->
+            occupiedEntries = buildOccupiedEntries(refs) { id ->
                 plansById[id]?.name ?: "usunięty plan"
             },
             plannedSlotsByPlan = plannedSlotsByPlan(schedule),

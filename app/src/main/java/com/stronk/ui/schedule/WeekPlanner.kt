@@ -313,10 +313,17 @@ fun isWeekPlanDirty(baseline: Map<DayOfWeek, Int>, assignments: Map<DayOfWeek, I
 /**
  * Rodzaj wpisu istotny dla przeplanowania: [PLANNED] wybranego planu jest
  * kasowany i zastępowany, [DONE] (dowolnego planu, także tego samego —
- * historia treningu) blokuje datę, [OTHER] (SKIPPED/MOVED) jest neutralny —
- * nie blokuje i nie jest kasowany (obecne traktowanie occupied, zachowane).
+ * historia treningu) blokuje datę, [SKIPPED] jest neutralny — nie blokuje i
+ * nie jest kasowany (user świadomie odwołał trening, dzień ma wrócić do puli).
+ *
+ * [MOVED] to NIE to samo co [SKIPPED], mimo że oba są „nieaktywne": trening z
+ * tej daty nadal istnieje, tyle że pod INNĄ datą ([ScheduleEntryRef.movedTo]).
+ * Data źródłowa aktywnego przesunięcia jest dla WŁASNEGO planu zajęta
+ * (patrz [activeMovedSlots], [planReplacement]) — inaczej ponowna
+ * materializacja tego samego wzorca tygodnia dokłada na nią DRUGI wpis
+ * PLANNED i dzień jest naraz „przesunięty" i „zaplanowany".
  */
-enum class ScheduleEntryKind { PLANNED, DONE, OTHER }
+enum class ScheduleEntryKind { PLANNED, DONE, MOVED, SKIPPED }
 
 /**
  * Minimalny widok wpisu harmonogramu pod [planReplacement] — zero zależności
@@ -329,6 +336,11 @@ enum class ScheduleEntryKind { PLANNED, DONE, OTHER }
  * [ScheduleEntryKind.DONE] MUSI zawsze mieć `archived = false` — historia
  * treningu blokuje datę niezależnie od tego, czy plan, pod którym trening
  * poszedł, jest dziś zarchiwizowany (wołający pilnuje tego przy budowie).
+ *
+ * [movedTo]: data, NA KTÓRĄ trening pojechał — wypełniona wyłącznie dla
+ * [ScheduleEntryKind.MOVED] (`ScheduleEntry.movedTo`). Bez niej nie da się
+ * odróżnić żywego przesunięcia (cel wciąż istnieje) od osieroconego wpisu po
+ * skasowanym celu, patrz [activeMovedSlots].
  */
 data class ScheduleEntryRef(
     val id: String,
@@ -336,7 +348,71 @@ data class ScheduleEntryRef(
     val planId: String,
     val kind: ScheduleEntryKind,
     val archived: Boolean = false,
+    val movedTo: LocalDate? = null,
 )
+
+/** Aktywne przesunięcie: trening z dnia [from] leży pod datą [to]. */
+data class MovedSlot(val from: LocalDate, val to: LocalDate)
+
+/**
+ * Aktywne przesunięcia [planId] o dacie ŹRÓDŁOWEJ od [since] w przód: wpisy
+ * MOVED tego planu, których cel ([ScheduleEntryRef.movedTo]) NADAL trzyma żywy
+ * wpis (PLANNED albo DONE) TEGO SAMEGO planu.
+ *
+ * Warunek „cel wciąż żyje" jest kluczowy: osierocony MOVED (cel skasowany albo
+ * odwołany) nie ma prawa blokować swojej daty na zawsze — inaczej jedno
+ * przesunięcie wykluczyłoby ten dzień tygodnia z planu do końca świata.
+ * Osieroconym zajmuje się dopiero [shadowedEntryIds] (gdy jest zdublowany) albo
+ * kolejne przeplanowanie.
+ *
+ * Wynik podaje OBIE daty pary: źródłowa jest dla tego planu zajęta (trening już
+ * z niej wyszedł), docelowa też (trening tam leży) — patrz [planReplacement].
+ */
+fun activeMovedSlots(
+    entries: List<ScheduleEntryRef>,
+    planId: String,
+    since: LocalDate,
+): List<MovedSlot> {
+    val liveDates = entries
+        .filter {
+            it.planId == planId &&
+                (it.kind == ScheduleEntryKind.PLANNED || it.kind == ScheduleEntryKind.DONE)
+        }
+        .mapTo(HashSet()) { it.date }
+    return entries
+        .filter { it.kind == ScheduleEntryKind.MOVED && it.planId == planId && it.date >= since }
+        .mapNotNull { entry ->
+            entry.movedTo
+                ?.takeIf { it in liveDates }
+                ?.let { target -> MovedSlot(from = entry.date, to = target) }
+        }
+}
+
+/**
+ * Id-ki wpisów MOVED/SKIPPED „przykrytych" żywym wpisem: na TEJ SAMEJ dacie i w
+ * TYM SAMYM planie leży wpis PLANNED albo DONE. Taki wpis nie niesie już żadnej
+ * informacji — dzień ma realny trening, a etykieta „Przesunięty/Odwołany" obok
+ * niego to czysta sprzeczność (dokładnie artefakt z tego zgłoszenia: poniedziałek
+ * naraz „Przesunięty → czwartek" i z pełną listą ćwiczeń).
+ *
+ * Jedna reguła, dwa użycia (wzorem [archivedPlanDeadEntryIds]):
+ * - [ScheduleViewModel.buildState] UKRYWA te wpisy w karcie dnia — natychmiastowa
+ *   naprawa wyświetlania, także dla stanu, który dopiero co powstał;
+ * - sweep przy starcie ekranu Tydzień KASUJE je z bazy — samonaprawa kont, na
+ *   których duplikat już siedzi (bez ręcznej edycji Firestore).
+ *
+ * DONE nie jest tu nigdy kandydatem do ukrycia/kasacji — historia treningu jest
+ * nietykalna, filtr bierze wyłącznie MOVED i SKIPPED.
+ */
+fun shadowedEntryIds(entries: List<ScheduleEntryRef>): List<String> {
+    val liveKeys = entries
+        .filter { it.kind == ScheduleEntryKind.PLANNED || it.kind == ScheduleEntryKind.DONE }
+        .mapTo(HashSet()) { it.planId to it.date }
+    return entries
+        .filter { it.kind == ScheduleEntryKind.MOVED || it.kind == ScheduleEntryKind.SKIPPED }
+        .filter { (it.planId to it.date) in liveKeys }
+        .map { it.id }
+}
 
 /**
  * Wynik przeplanowania: id-ki starych wpisów PLANNED wybranego planu do
@@ -418,9 +494,20 @@ fun saveReplanWeeks(fullBlockWeeks: Int?): Int = fullBlockWeeks ?: ScheduleConst
  * Nietykalne: wpisy DONE (dowolnego planu — historia treningu) i PLANNED
  * INNEGO, NIEZARCHIWIZOWANEGO planu blokują datę (nowy slot tam nie
  * powstaje), tak jak [conflictingOtherPlanEntry]/[buildOccupiedEntries]
- * blokują CTA w dialogu. SKIPPED/MOVED ([ScheduleEntryKind.OTHER]) nie
- * blokują i nie są kasowane. Stare wpisy PLANNED TEGO SAMEGO planu nie
+ * blokują CTA w dialogu. SKIPPED nie blokuje i nie jest kasowany (odwołany
+ * trening = dzień wraca do puli). Stare wpisy PLANNED TEGO SAMEGO planu nie
  * blokują nowych slotów — i tak trafiają do [ReplanResult.idsToDelete].
+ *
+ * AKTYWNE PRZESUNIĘCIA tego planu ([activeMovedSlots]) są respektowane w
+ * całości — „przesunięty znaczy przesunięty":
+ * - data ŹRÓDŁOWA jest zajęta → nie powstaje na niej nowy slot (bez tego na
+ *   dacie z wpisem MOVED lądował DRUGI wpis PLANNED i dzień był naraz
+ *   „Przesunięty na czwartek" i normalnym dniem treningowym);
+ * - data DOCELOWA jest zajęta ORAZ leżący tam wpis PLANNED jest wyjęty z
+ *   [ReplanResult.idsToDelete] — inaczej samo zablokowanie źródła zjadałoby
+ *   trening w całości (źródło zablokowane, cel skasowany).
+ *
+ * MOVED INNEGO planu nie blokuje — to dzień wolny z punktu widzenia tego planu.
  *
  * PLANNED INNEGO, ZARCHIWIZOWANEGO planu ([ScheduleEntryRef.archived]) to
  * martwy wpis — nie blokuje daty (traktowany jak wolny dzień) I jeśli na jego
@@ -440,8 +527,13 @@ fun planReplacement(
     today: LocalDate = LocalDate.now(),
 ): ReplanResult {
     val effectiveStartDate = clampStartDateToToday(startDate, today)
+    val movedSlots = activeMovedSlots(currentEntries, selectedPlanId, effectiveStartDate)
+    val movedTargets = movedSlots.mapTo(HashSet()) { it.to }
     val ownIdsToDelete = currentEntries
-        .filter { it.planId == selectedPlanId && it.kind == ScheduleEntryKind.PLANNED && it.date >= effectiveStartDate }
+        .filter {
+            it.planId == selectedPlanId && it.kind == ScheduleEntryKind.PLANNED &&
+                it.date >= effectiveStartDate && it.date !in movedTargets
+        }
         .map { it.id }
     val occupied = currentEntries
         .filter {
@@ -449,7 +541,7 @@ fun planReplacement(
                 (it.kind == ScheduleEntryKind.PLANNED && it.planId != selectedPlanId && !it.archived)
         }
         .map { it.date }
-        .toSet()
+        .toSet() + movedSlots.map { it.from } + movedTargets
     val slots = generatePlannedSlots(assignments, effectiveStartDate, weeks, occupied)
     val newSlotDates = slots.mapTo(HashSet()) { it.date }
     val deadIdsToDelete = currentEntries
