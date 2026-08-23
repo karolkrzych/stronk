@@ -169,6 +169,15 @@ object StronkTextStyles {
         letterSpacing = (-0.21).sp,
     )
 
+    /** 18 — nazwa ćwiczenia w wierszu-karcie edytora planu (mock W1: 17px). Barlow 600, 17 × 1,04 ≈ 18 sp. */
+    val h1Tiny = TextStyle(
+        fontFamily = Barlow,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 18.sp,
+        lineHeight = 22.sp,
+        letterSpacing = (-0.18).sp,
+    )
+
     /** 19 — tekst CTA. */
     val cta = TextStyle(
         fontFamily = Figtree,

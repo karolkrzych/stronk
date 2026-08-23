@@ -677,9 +677,9 @@ private fun ExercisePlanRow(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = exercise.name,
-                        // h1Small = ten sam Barlow SC, którym „następnie" w treningu
-                        // pokazuje nazwę ćwiczenia jako jedyną dominantę wiersza.
-                        style = StronkTextStyles.h1Small,
+                        // h1Tiny — mniejszy odpowiednik h1Small wg mocka W1 (17px),
+                        // żeby pełna nazwa mieściła się w wierszu-karcie edytora.
+                        style = StronkTextStyles.h1Tiny,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
