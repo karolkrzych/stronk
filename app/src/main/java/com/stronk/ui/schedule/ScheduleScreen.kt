@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -72,6 +73,17 @@ private val LegendGap = 14.dp
 
 /** Wewnętrzny padding karty dnia (mock: `.daycard { padding: 18px }`). */
 private val DayCardPadding = 18.dp
+
+/**
+ * Touch target IconButtonów w nagłówku Tygodnia ([dziś][‹][›]) — ściśnięty
+ * z domyślnych 48dp, żeby zrobić miejsce tytułowi miesiąca + "Zaplanuj"
+ * (patrz [StronkScreenHeader] wywołanie niżej). 40dp ma precedens w
+ * HomeScreen.kt (ikona profilu); wciąż nad progiem 40dp minimum a11y.
+ */
+private val HeaderIconTarget = 40.dp
+
+/** Ikona wewnątrz [HeaderIconTarget] — domyślne 24dp byłoby nieproporcjonalne. */
+private val HeaderIconSize = 20.dp
 
 /**
  * Harmonogram — ekran „Tydzień" (mock `wariant-c2-limonka.html`, ekran 2).
@@ -190,6 +202,11 @@ fun ScheduleScreen(
             StronkScreenHeader(
                 title = state.monthTitle,
                 subtitle = state.blockLabel.ifEmpty { null },
+                // Trzy IconButtony + "Zaplanuj" obok tytułu na 411dp to ciasno —
+                // h1Small (21 vs 24) daje tytułowi margines, żeby najdłuższy
+                // miesiąc ("Październik 2026") zmieścił się w całości bez
+                // łamania na dwie linie (patrz też compact IconButtony niżej).
+                titleStyle = StronkTextStyles.h1Small,
                 titleTrailing = if (state.planOptions.isNotEmpty()) {
                     {
                         StronkTextAction(
@@ -206,7 +223,15 @@ fun ScheduleScreen(
                     // nie znika z drzewa — ikona „dziś" tylko przygasa, gdy jesteśmy
                     // już w bieżącym miesiącu z zaznaczonym dziś (showTodayAction).
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = viewModel::onBackToToday, enabled = state.showTodayAction) {
+                        // Touch target ściśnięty do 40dp (wzorzec: profil na Dziś,
+                        // HomeScreen.kt) zamiast domyślnych 48dp — trzy przyciski
+                        // obok tytułu i "Zaplanuj" na 411dp inaczej się nie mieszczą
+                        // bez łamania tytułu do dwóch linii.
+                        IconButton(
+                            onClick = viewModel::onBackToToday,
+                            enabled = state.showTodayAction,
+                            modifier = Modifier.size(HeaderIconTarget),
+                        ) {
                             Icon(
                                 StronkIcons.today,
                                 contentDescription = "Wróć do dzisiaj",
@@ -215,20 +240,29 @@ fun ScheduleScreen(
                                 } else {
                                     StronkTheme.colors.textDim
                                 },
+                                modifier = Modifier.size(HeaderIconSize),
                             )
                         }
-                        IconButton(onClick = viewModel::onPreviousMonth) {
+                        IconButton(
+                            onClick = viewModel::onPreviousMonth,
+                            modifier = Modifier.size(HeaderIconTarget),
+                        ) {
                             Icon(
                                 StronkIcons.back,
                                 contentDescription = "Poprzedni miesiąc",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(HeaderIconSize),
                             )
                         }
-                        IconButton(onClick = viewModel::onNextMonth) {
+                        IconButton(
+                            onClick = viewModel::onNextMonth,
+                            modifier = Modifier.size(HeaderIconTarget),
+                        ) {
                             Icon(
                                 StronkIcons.chevron,
                                 contentDescription = "Następny miesiąc",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(HeaderIconSize),
                             )
                         }
                     }

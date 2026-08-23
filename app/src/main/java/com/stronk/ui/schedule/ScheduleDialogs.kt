@@ -324,33 +324,42 @@ private fun WeekdayAssignmentRow(
     val assignedName = assignedDayIndex?.let { dayNames.getOrNull(it) }
     var expanded by remember { mutableStateOf(false) }
     var anchorWidthPx by remember { mutableIntStateOf(0) }
-    Row(
+    // Kotwiczymy menu na CAŁYM wierszu dnia (nie na wąskim chipie) — inaczej
+    // menu dziedziczy szerokość chipa i długie opcje ("Full body A") łamią się
+    // litera po literze. Ten sam wzorzec co StronkEquipmentFilterButton: Box
+    // mierzy swoją szerokość przez onSizeChanged, DropdownMenu wewnątrz niego
+    // dostaje tę szerokość — tu Box owija cały Row, więc menu jest pełnej
+    // szerokości wiersza, chip zostaje wizualnie po prawej.
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .onSizeChanged { anchorWidthPx = it.width },
     ) {
-        Text(
-            text = ScheduleConstants.DAY_NAMES.getValue(dayOfWeek)
-                .replaceFirstChar { it.titlecase(polishLocale) },
-            style = StronkTextStyles.bodyStrong,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            modifier = Modifier.weight(1f),
-        )
-        Box(
-            modifier = Modifier.onSizeChanged { anchorWidthPx = it.width },
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            Text(
+                text = ScheduleConstants.DAY_NAMES.getValue(dayOfWeek)
+                    .replaceFirstChar { it.titlecase(polishLocale) },
+                style = StronkTextStyles.bodyStrong,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
             StronkChoiceChip(
                 label = assignedName ?: "wolne",
                 selected = assignedName != null,
                 onClick = { expanded = true },
             )
-            StronkAnchoredDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                anchorWidthPx = anchorWidthPx,
-            ) {
+        }
+        StronkAnchoredDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            anchorWidthPx = anchorWidthPx,
+        ) {
                 DropdownMenuItem(
                     text = { Text("wolne") },
                     onClick = {
@@ -392,4 +401,3 @@ private fun WeekdayAssignmentRow(
             }
         }
     }
-}
