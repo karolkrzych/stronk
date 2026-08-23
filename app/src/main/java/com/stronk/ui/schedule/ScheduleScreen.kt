@@ -53,6 +53,7 @@ import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkListRow
 import com.stronk.ui.components.StronkNoteCard
 import com.stronk.ui.components.StronkScreenHeader
+import com.stronk.ui.components.StronkTextAction
 import com.stronk.ui.components.StronkTone
 import com.stronk.ui.components.StronkWeekdayHeader
 import com.stronk.ui.theme.StronkSpacing
@@ -189,11 +190,33 @@ fun ScheduleScreen(
             StronkScreenHeader(
                 title = state.monthTitle,
                 subtitle = state.blockLabel.ifEmpty { null },
+                titleTrailing = if (state.planOptions.isNotEmpty()) {
+                    {
+                        StronkTextAction(
+                            text = "Zaplanuj",
+                            onClick = { showAssignDialog = true },
+                            tone = StronkTone.ACCENT,
+                        )
+                    }
+                } else {
+                    null
+                },
                 actions = {
-                    // Wszystkie ikony w JEDNYM dziecku nagłówka: `StronkScreenHeader`
-                    // rozdziela swoje dzieci `spacedBy(12dp)`, więc cztery osobne
-                    // akcje zjadłyby 36 dp szerokości tytułowi miesiąca.
+                    // Layout stały: kolejność [dziś] [‹] [›] się nie zmienia i nic
+                    // nie znika z drzewa — ikona „dziś" tylko przygasa, gdy jesteśmy
+                    // już w bieżącym miesiącu z zaznaczonym dziś (showTodayAction).
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = viewModel::onBackToToday, enabled = state.showTodayAction) {
+                            Icon(
+                                StronkIcons.today,
+                                contentDescription = "Wróć do dzisiaj",
+                                tint = if (state.showTodayAction) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    StronkTheme.colors.textDim
+                                },
+                            )
+                        }
                         IconButton(onClick = viewModel::onPreviousMonth) {
                             Icon(
                                 StronkIcons.back,
@@ -207,24 +230,6 @@ fun ScheduleScreen(
                                 contentDescription = "Następny miesiąc",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        }
-                        if (state.showTodayAction) {
-                            IconButton(onClick = viewModel::onBackToToday) {
-                                Icon(
-                                    StronkIcons.today,
-                                    contentDescription = "Dziś",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        if (state.planOptions.isNotEmpty()) {
-                            IconButton(onClick = { showAssignDialog = true }) {
-                                Icon(
-                                    StronkIcons.add,
-                                    contentDescription = "Zaplanuj tydzień",
-                                    tint = StronkTheme.colors.lime,
-                                )
-                            }
                         }
                     }
                 },
