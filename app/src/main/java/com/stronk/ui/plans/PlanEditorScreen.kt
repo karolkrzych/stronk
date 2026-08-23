@@ -699,7 +699,7 @@ private fun ExercisePlanRow(
                         exercise.exercise?.primaryMuscles?.firstOrNull()?.let(PlLabels::muscle)
                             ?: "ćwiczenie spoza bazy"
                         ).uppercase(),
-                    style = StronkTextStyles.cap,
+                    style = StronkTextStyles.capTiny,
                     color = StronkTheme.colors.textDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

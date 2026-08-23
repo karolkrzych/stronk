@@ -242,6 +242,19 @@ object StronkTextStyles {
         letterSpacing = 1.54.sp,
     )
 
+    /**
+     * 10 — kapitalik partii mięśniowej w wierszu edytora planu. Po zejściu tytułu
+     * ćwiczenia do 15sp kapitalik `cap` 11sp wyglądał za duzo — o 1sp mniejszy,
+     * tracking utrzymany w tym samym stosunku `.14em`.
+     */
+    val capTiny = TextStyle(
+        fontFamily = Figtree,
+        fontWeight = FontWeight.Bold,
+        fontSize = 10.sp,
+        lineHeight = 13.sp,
+        letterSpacing = 1.4.sp,
+    )
+
     /** Jednostka przy liczbie HERO (`.stat .u` = 19 px). */
     val unitHero = TextStyle(
         fontFamily = Figtree,
