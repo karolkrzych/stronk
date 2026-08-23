@@ -58,10 +58,6 @@ data class ScheduleEntryUi(
     val movedToLabel: String?,
     val exercises: List<ScheduleExerciseRow>,
 ) {
-    /** Start treningu tylko z zaplanowanego wpisu wskazującego istniejący dzień planu. */
-    val canStart: Boolean
-        get() = status == ScheduleStatus.PLANNED && dayName != null
-
     /** Plan zniknął spod wpisu — karta mówi to wprost zamiast udawać trening. */
     val planMissing: Boolean
         get() = dayName == null

@@ -49,11 +49,9 @@ import com.stronk.ui.components.StronkIconBadge
 import com.stronk.ui.components.StronkIcons
 import com.stronk.ui.components.StronkListRow
 import com.stronk.ui.components.StronkNoteCard
-import com.stronk.ui.components.StronkPrimaryButton
 import com.stronk.ui.components.StronkScreenHeader
 import com.stronk.ui.components.StronkTone
 import com.stronk.ui.components.StronkWeekdayHeader
-import com.stronk.ui.theme.StronkSizes
 import com.stronk.ui.theme.StronkSpacing
 import com.stronk.ui.theme.StronkTextStyles
 import com.stronk.ui.theme.StronkTheme
@@ -79,20 +77,19 @@ private val DayCardPadding = 18.dp
  * (plan) albo brakiem obu (dzień wolny); „dziś" to limonkowy ring. Legenda ma
  * maks 2 pozycje — trzecia byłaby znakiem, że siatka przestała być czytelna.
  *
- * Pod siatką jest jedna karta wybranego dnia: „Środa · Full body B", CTA
- * „Zacznij trening" i prosta lista ćwiczeń (ikona + nazwa + chip „3 serie").
+ * Pod siatką jest jedna karta wybranego dnia: „Środa · Full body B" i prosta
+ * lista ćwiczeń (ikona + nazwa + chip „3 serie") — WGLĄD, nie start treningu:
+ * start jest wyłącznie na ekranie Dziś (przypadkowy tap tu nie miesza
+ * w progresji/rollingu; przesunięcie treningu obsługują akcje niżej).
  * Akcje drugorzędne (przesuń/odwołaj) to podkreślone linki, nie przyciski.
  * Dolna nawigacja żyje w [com.stronk.ui.StronkNavHost] — ten ekran jej nie rysuje.
  *
- * @param onStartWorkout start treningu dnia planu; scheduleEntryId wpisu,
- *   żeby tryb treningu mógł go po zakończeniu oznaczyć jako DONE.
  * @param onPlanClick otwiera edytor planu (nazwa planu w karcie dnia).
  * @param onNewPlan otwiera edytor nowego planu (empty state bez planów).
  * @param onExerciseClick podgląd ćwiczenia w bazie (wiersz w karcie dnia).
  */
 @Composable
 fun ScheduleScreen(
-    onStartWorkout: (planId: String, dayIndex: Int, scheduleEntryId: String?) -> Unit,
     onPlanClick: (planId: String) -> Unit,
     onNewPlan: () -> Unit,
     onExerciseClick: (exerciseId: String) -> Unit,
@@ -190,7 +187,6 @@ fun ScheduleScreen(
                     if (index > 0) Spacer(Modifier.height(StronkSpacing.sm))
                     DayCard(
                         entry = entry,
-                        onStartWorkout = onStartWorkout,
                         onPlanClick = onPlanClick,
                         onExerciseClick = onExerciseClick,
                         onMove = { moveEntryId = it },
@@ -290,7 +286,6 @@ private fun DayMarker.toSquareState(): StronkDayState = when (this) {
 @Composable
 private fun DayCard(
     entry: ScheduleEntryUi,
-    onStartWorkout: (planId: String, dayIndex: Int, scheduleEntryId: String?) -> Unit,
     onPlanClick: (planId: String) -> Unit,
     onExerciseClick: (exerciseId: String) -> Unit,
     onMove: (entryId: String) -> Unit,
@@ -328,16 +323,6 @@ private fun DayCard(
                 }
             }
             EntryStatusBadge(entry.status)
-        }
-
-        if (entry.canStart) {
-            Spacer(Modifier.height(StronkSpacing.lg))
-            StronkPrimaryButton(
-                text = "Zacznij trening",
-                icon = StronkIcons.start,
-                height = StronkSizes.ctaSmall,
-                onClick = { onStartWorkout(entry.planId, entry.dayIndex, entry.entryId) },
-            )
         }
 
         if (entry.status == ScheduleStatus.MOVED && entry.movedToLabel != null) {
